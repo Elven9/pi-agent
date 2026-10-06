@@ -1,0 +1,134 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { getScenario } from "../shared/scenarios/index.ts";
+import type { Task } from "../shared/task.ts";
+import { runTask } from "./run.ts";
+
+// Wrapper end to end against testdata/fake-pi.mjs, which replays a recorded pi 1.0.4 run
+// (testdata/demo-run.*: the demo scenario calling bash, read and submit_result).
+// Re-record the fixtures when updating pi (see README).
+
+const testdata = fileURLToPath(new URL("../../testdata/", import.meta.url));
+const fakePi = join(testdata, "fake-pi.mjs");
+const task: Task = { taskId: "t-1", scenario: "demo", prompt: "go" };
+
+async function run(env: Record<string, string>, opts: { signal?: AbortSignal; piBin?: string } = {}) {
+  const dir = await mkdtemp(join(tmpdir(), "pi-agent-run-"));
+  const argsFile = join(dir, "args.json");
+  for (const k of ["FAKE_PI_EVENTS", "FAKE_PI_SESSION", "FAKE_PI_STDERR", "FAKE_PI_EXIT", "FAKE_PI_HANG"]) delete process.env[k];
+  Object.assign(process.env, { FAKE_PI_ARGS: argsFile }, env);
+  const report = await runTask({
+    task,
+    scenario: getScenario("demo"),
+    workdir: dir,
+    out: join(dir, "out"),
+    piBin: opts.piBin ?? fakePi,
+    extensionPath: "/app/dist/extension.js",
+    rootDir: "/app",
+    signal: opts.signal,
+    log: () => {},
+  });
+  const args = JSON.parse(await readFile(argsFile, "utf8").catch(() => "null"));
+  return { report, args, dir };
+}
+
+/** JSONL fixture from records. */
+async function events(...records: object[]): Promise<string> {
+  const file = join(await mkdtemp(join(tmpdir(), "pi-agent-ev-")), "events.jsonl");
+  await writeFile(file, records.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  return file;
+}
+const header = { type: "session", version: 3, id: "s-1", timestamp: "", cwd: "/w" };
+const assistant = (extra: object) => ({ type: "message_end", message: { role: "assistant", content: [], ...extra } });
+
+test("recorded demo run: ok with result, tool calls, usage and session file", async () => {
+  const { report, args } = await run({
+    FAKE_PI_EVENTS: join(testdata, "demo-run.events.jsonl"),
+    FAKE_PI_SESSION: join(testdata, "demo-run.session.jsonl"),
+  });
+  assert.equal(args[args.indexOf("--scenario") + 1], "demo");
+  assert.equal(report.status, "ok", JSON.stringify(report.errors));
+  assert.deepEqual(report.errors, []);
+  assert.deepEqual(report.result, {
+    summary:
+      "pi-agent is a Node.js project that provides pi resources including skills and prompts, along with a sandbox runner that extends the pi CLI and generates a report.json output.",
+    detailKind: "demo/v1",
+    detail: { projectName: "pi-agent", filesRead: ["package.json"] },
+  });
+  assert.deepEqual(
+    report.toolCalls.map((c) => [c.tool, c.turn, c.isError]),
+    [["bash", 1, false], ["read", 2, false], ["submit_result", 3, false]],
+  );
+  const m = report.metrics;
+  assert.deepEqual(m.tokens, { input: 4284, output: 304, cacheRead: 0, cacheWrite: 0 });
+  assert.equal(m.costUsd, 0.005804);
+  assert.equal(m.turns, 3);
+  assert.equal(m.model.calls, 3);
+  assert.equal(m.contextPeakPercent, 1);
+  assert.deepEqual(Object.keys(m.tools).sort(), ["bash", "read", "submit_result"]);
+  assert.deepEqual(report.session, {
+    id: "01a10f4a-289c-70d3-a6eb-7a130b22c090",
+    file: "sessions/2026-01-01T00-00-00-000Z_01a10f4a-289c-70d3-a6eb-7a130b22c090.jsonl",
+  });
+});
+
+test("no submit_result: no_result", async () => {
+  const file = await events(header, { type: "agent_start" }, { type: "turn_start" }, assistant({ stopReason: "stop" }));
+  const { report } = await run({ FAKE_PI_EVENTS: file });
+  assert.equal(report.status, "no_result");
+  assert.deepEqual(report.errors, []);
+  assert.equal(report.session?.file, null);
+});
+
+test("model error without a result: error, with the model's message", async () => {
+  const file = await events(header, { type: "agent_start" }, assistant({ stopReason: "error", errorMessage: "529 overloaded" }));
+  const { report } = await run({ FAKE_PI_EVENTS: file });
+  assert.equal(report.status, "error");
+  assert.deepEqual(report.errors, [{ phase: "run", message: "529 overloaded" }]);
+});
+
+test("invalid submitted result: error in validate", async () => {
+  const file = await events(header, { type: "agent_start" }, {
+    type: "tool_execution_end",
+    toolCallId: "c",
+    toolName: "submit_result",
+    isError: false,
+    result: { content: [], details: { summary: "s", detailKind: "demo/v1", detail: {} } },
+  });
+  const { report } = await run({ FAKE_PI_EVENTS: file });
+  assert.equal(report.status, "error");
+  assert.equal(report.errors[0].phase, "validate");
+  assert.match(report.errors[0].message, /submitted result is invalid/);
+});
+
+test("pi fails at startup: error with pi's stderr", async () => {
+  const { report } = await run({ FAKE_PI_EXIT: "1", FAKE_PI_STDERR: "noise\nUnknown model: x/y\n" });
+  assert.equal(report.status, "error");
+  assert.deepEqual(report.errors, [{ phase: "setup", message: "pi exited with code 1: noise\nUnknown model: x/y" }]);
+  assert.equal(report.session, null);
+});
+
+test("pi exits 0 before the agent starts: error", async () => {
+  const { report } = await run({ FAKE_PI_EVENTS: await events(header) });
+  assert.equal(report.status, "error");
+  assert.match(report.errors[0].message, /pi exited before the agent started/);
+});
+
+test("pi cannot be started: error", async () => {
+  const { report } = await run({}, { piBin: "/nonexistent/pi" });
+  assert.equal(report.status, "error");
+  assert.match(report.errors[0].message, /cannot run \/nonexistent\/pi: .*ENOENT/);
+});
+
+test("abort stops pi and reports an error", async () => {
+  const controller = new AbortController();
+  const file = await events(header, { type: "agent_start" });
+  setTimeout(() => controller.abort(), 300);
+  const { report } = await run({ FAKE_PI_EVENTS: file, FAKE_PI_HANG: "1" }, { signal: controller.signal });
+  assert.equal(report.status, "error");
+  assert.deepEqual(report.errors, [{ phase: "run", message: "interrupted; pi was stopped" }]);
+});

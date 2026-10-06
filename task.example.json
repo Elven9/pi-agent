@@ -1,0 +1,7 @@
+{
+  "taskId": "example-001",
+  "scenario": "demo",
+  "prompt": "Run `ls` with bash to see what is in the current directory, then read package.json and submit a one-sentence summary of the project.",
+  "model": "cpa/claude-sonnet-5-5",
+  "thinkingLevel": "medium"
+}
