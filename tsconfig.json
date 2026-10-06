@@ -1,0 +1,18 @@
+{
+  // Type checking only. esbuild bundles (build.mjs) and Node runs the tests straight from
+  // the .ts sources (type stripping), so imports use .ts extensions.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src", "build.mjs"]
+}
