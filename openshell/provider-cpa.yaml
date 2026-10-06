@@ -1,0 +1,47 @@
+# OpenShell provider profile for the cpa model gateway (Anthropic Messages API behind
+# Cloudflare Access). The sandbox env gets placeholders for these variables; config/models.json
+# references them, and the proxy puts in the real values only on requests to the endpoint below.
+#
+#   openshell profile lint   -f openshell/provider-cpa.yaml
+#   openshell profile import -f openshell/provider-cpa.yaml
+#   CPA_API_KEY=... CPA_CF_ACCESS_CLIENT_ID=... CPA_CF_ACCESS_CLIENT_SECRET=... \
+#     openshell provider create --name cpa --type cpa --from-existing
+
+id: cpa
+display_name: CPA model gateway
+description: Anthropic-compatible inference via cpa.mysecretbase.win (Cloudflare Access)
+category: inference
+inference_capable: true
+
+credentials:
+  - name: api_key
+    description: Gateway API key (sent as x-api-key)
+    env_vars: [CPA_API_KEY]
+    required: true
+    auth_style: header
+    header_name: x-api-key
+  - name: cf_access_client_id
+    description: Cloudflare Access service token client ID
+    env_vars: [CPA_CF_ACCESS_CLIENT_ID]
+    required: true
+    auth_style: header
+    header_name: cf-access-client-id
+  - name: cf_access_client_secret
+    description: Cloudflare Access service token client secret
+    env_vars: [CPA_CF_ACCESS_CLIENT_SECRET]
+    required: true
+    auth_style: header
+    header_name: cf-access-client-secret
+
+discovery:
+  credentials: [api_key, cf_access_client_id, cf_access_client_secret]
+
+endpoints:
+  - host: cpa.mysecretbase.win
+    port: 443
+    protocol: rest
+    access: read-write
+    enforcement: enforce
+
+# pi and the wrapper both run on node from the official image.
+binaries: [/usr/local/bin/node]
