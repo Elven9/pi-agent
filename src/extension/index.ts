@@ -27,7 +27,11 @@ export default function piAgentRunner(pi: ExtensionAPI) {
     try {
       run = new RunState(getScenario(name));
     } catch (err) {
-      pi.appendEntry(ENTRY.error, { message: (err as Error).message });
+      // Startup entries are not streamed in --mode json, so also tell stderr (the wrapper
+      // keeps its tail).
+      const message = (err as Error).message;
+      console.error(`[pi-agent] ${message}`);
+      pi.appendEntry(ENTRY.error, { message });
       ctx.shutdown();
       return;
     }
