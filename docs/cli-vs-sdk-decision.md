@@ -84,3 +84,23 @@ agents per sandbox, profiles computed at runtime, or in-process state shared bet
   (OpenShell ignores image `ENV`), `PI_CODING_AGENT_DIR=/tmp/pi-agent`, provider placeholders
   for `$CPA_*` (`openshell/`).
 - Unit tests for metrics percentiles, tool log pairing by `toolCallId`, and resume checks.
+
+## Implementation notes (pi-agent, pi 1.0.4)
+
+- **Metrics are measured in the wrapper, not the extension.** The wrapper reads the
+  `--mode json` stream anyway, and its events are the SDK's `AgentSessionEvent`s (minus partial
+  snapshots), so the agents-core collectors moved over almost unchanged and are timed as records
+  arrive. That includes TTFT, model latency, tool durations, retries (`auto_retry_start`) and
+  compactions. Only the context-usage peak needs the extension (`ctx.getContextUsage()`), which
+  it appends once as a `pi-agent.metrics` custom entry from `agent_before_settle`.
+- **Tokens and cost come from the stream, too**: assistant `message_end` usage plus compaction
+  results. With `--fork` the stream holds only the new run's events, so no baseline is needed.
+- **The result comes from the stream**: `details` of the last successful `submit_result`
+  `tool_execution_end`. The session file is only located (`<timestamp>_<id>.jsonl` in
+  `--session-dir`) for the report.
+- **Flags are not available in the extension factory** (`pi.getFlag()` returns undefined there),
+  so `submit_result` is registered in `session_start`. Tools registered then are still
+  filtered by `--tools`.
+- **Entries appended during `session_start` are not streamed**, so the extension also writes
+  startup errors to stderr. The wrapper validates the scenario before starting pi anyway.
+- `submit_result` returns `terminate: true`, which skips the follow-up model request.
