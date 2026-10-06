@@ -22,4 +22,4 @@ if [ -f "$PI_AGENT_MODELS" ]; then
   cp "$PI_AGENT_MODELS" "$PI_CODING_AGENT_DIR/models.json" || exit 1
 fi
 
-exec node --enable-source-maps /usr/local/lib/pi-agent/dist/pi-agent.js "$@"
+exec node /usr/local/lib/pi-agent/dist/pi-agent.js "$@"

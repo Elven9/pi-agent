@@ -12,7 +12,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY tsconfig.json build.mjs ./
 COPY src ./src
-RUN npm run build
+# No source maps in the image: they embed the full TypeScript sources.
+RUN PI_AGENT_SOURCEMAP=0 npm run build
 
 # ---- runtime: node + stock pi CLI + two bundled files ----
 FROM node:${NODE_VERSION}-bookworm-slim

@@ -4,6 +4,9 @@
 //   a `pi` executable at runtime.
 // - dist/extension.js: loaded by pi (-e). pi provides typebox and its own packages to
 //   extensions, so those stay external (bundling a copy would bypass pi's module mapping).
+//
+// Source maps (linked, with embedded sources) are on by default for local debugging. Set
+// PI_AGENT_SOURCEMAP=0 to omit them (the Docker image does, so no sources ship in it).
 import { build } from "esbuild";
 import { chmod, rm } from "node:fs/promises";
 
@@ -14,7 +17,7 @@ const common = {
   platform: "node",
   format: "esm",
   target: "node26",
-  sourcemap: "linked",
+  sourcemap: process.env.PI_AGENT_SOURCEMAP === "0" ? false : "linked",
   legalComments: "none",
   logLevel: "info",
 };
