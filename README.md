@@ -11,6 +11,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `testdata/` | Recorded pi run + `fake-pi.mjs` for wrapper tests |
 | `Dockerfile`, `docker/`, `openshell/`, `config/` | Sandbox image and OpenShell setup |
 | `docs/cli-vs-sdk-decision.md` | Why the CLI and not the SDK (from agents-core) |
+| `docs/project-context-design.md` | Project context and prompt-cache placement (draft) |
 
 ## Personal pi
 
