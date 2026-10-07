@@ -9,7 +9,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/extension/` | pi extension: `submit_result`, one resubmit nudge, context-usage peak |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
-| `examples/project/` | Example project folder (`project.yaml`, a workflow, a doc) |
+| `examples/` | Example task file and project folder (`project/`: `project.yaml`, a workflow, a doc) |
 | `testdata/` | Recorded pi run + `fake-pi.mjs` for wrapper tests |
 | `Dockerfile`, `docker/`, `openshell/`, `config/` | Sandbox image and OpenShell setup |
 | `docs/cli-vs-sdk-decision.md` | Why the CLI and not the SDK (from agents-core) |

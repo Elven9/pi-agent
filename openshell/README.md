@@ -23,7 +23,7 @@ docker build -t pi-agent:local .
 openshell sandbox create --name t-123 --from pi-agent:local --provider cpa --detach -- sleep infinity
 openshell sandbox upload t-123 . /sandbox                  # .gitignore filtering applies
 openshell sandbox exec -n t-123 --no-login-shell --timeout 0 -- \
-  pi-agent run --task /sandbox/task.example.json --out /sandbox/.agent-out
+  pi-agent run --task /sandbox/examples/task.example.json --out /sandbox/.agent-out
 openshell sandbox download t-123 .agent-out ./openshell-out  # source must be inside /sandbox
 openshell sandbox delete t-123
 ```
