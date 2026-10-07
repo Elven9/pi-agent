@@ -1,0 +1,32 @@
+# Example project manifest for this repo (pi-agent). Mount this folder read-only at /project
+# in the sandbox (or pass --project examples/project) and the agent gets these sections at the
+# end of its system prompt. Format: docs/project-context-design.md and README "Project context".
+version: 1
+name: pi-agent
+description: |
+  Sandbox agent runner: a wrapper (`pi-agent run`) that starts the stock pi CLI in JSON mode
+  with two extensions and writes report.json. TypeScript on Node 26, no runtime dependencies
+  outside the bundles.
+
+# Short, always-on rules, in this order.
+rules:
+  - Do not change the pinned pi version (package.json, Dockerfile) unless the task says so.
+  - Keep report.json backward compatible; new fields are additive.
+  - Run `npm run check` before submitting a result that changes code.
+
+# One-line invocations only: exact command -> what it does. Multi-step procedures are workflows.
+commands:
+  npm ci: Install dependencies from the lockfile.
+  npm run check: Typecheck, run all tests and build dist/.
+  npm test: Run the unit tests only.
+  "node --test src/shared/project.test.ts": Run one test file (any *.test.ts works).
+
+# Strictly step-by-step instructions for one specific task each. Read on demand.
+workflows:
+  - path: workflows/add-scenario.md
+    when: Adding a new scenario or changing a scenario's result schema.
+
+# Reference material. Read on demand.
+docs:
+  - path: docs/report-format.md
+    when: Before changing anything that reads or writes report.json.

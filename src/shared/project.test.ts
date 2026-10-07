@@ -171,3 +171,9 @@ test("readAgentsMd reads only <cwd>/AGENTS.md and skips blank files", async () =
 test("normalizeText", () => {
   assert.equal(normalizeText("\n\na  \r\nb\t\rc\n\n"), "a\nb\nc");
 });
+
+test("examples/project is a valid manifest", async () => {
+  const dir = new URL("../../examples/project/", import.meta.url).pathname;
+  const project = await loadProject(dir);
+  assert.equal(project?.manifest.name, "pi-agent");
+});

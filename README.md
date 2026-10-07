@@ -9,6 +9,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/extension/` | pi extension: `submit_result`, one resubmit nudge, context-usage peak |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
+| `examples/project/` | Example project folder (`project.yaml`, a workflow, a doc) |
 | `testdata/` | Recorded pi run + `fake-pi.mjs` for wrapper tests |
 | `Dockerfile`, `docker/`, `openshell/`, `config/` | Sandbox image and OpenShell setup |
 | `docs/cli-vs-sdk-decision.md` | Why the CLI and not the SDK (from agents-core) |
@@ -162,7 +163,8 @@ docs:                        # reference material; read on demand
     when: Before changing module boundaries.
 ```
 
-Paths are relative to the manifest's folder. Unknown keys, multi-line commands, and missing,
+`examples/project/` is a complete example (for this repo), with a workflow and a doc. Paths
+are relative to the manifest's folder. Unknown keys, multi-line commands, and missing,
 duplicate or outside paths are errors. Sections in the prompt, in order: `<project>`,
 `<project_rules>`, `<agents_md>`, `<project_commands>`, `<project_workflows>`, `<project_docs>`;
 workflows and docs are listed as `path: when`, not included. The rendering is deterministic
