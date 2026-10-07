@@ -5,8 +5,9 @@ import { RunState } from "./run-state.ts";
 
 /**
  * pi-agent runner extension. Inert unless pi is started with `--scenario <name>`; then it
- * registers `submit_result` for that scenario, nudges the model once if it stops without a
- * result, and records metrics pi does not stream (context usage peak).
+ * registers `submit_result`, sends the scenario's result format after the task prompt, nudges
+ * the model once if it stops without a result, and records metrics pi does not stream (context
+ * usage peak).
  *
  * Everything the wrapper needs ends up in pi's JSON event stream and session file, so the
  * extension keeps no state outside the process.
@@ -36,6 +37,18 @@ export default function piAgentRunner(pi: ExtensionAPI) {
       return;
     }
     pi.registerTool(run.tool);
+  });
+
+  // The result format goes into the conversation (right after the task prompt), not into the
+  // tool schema, so `submit_result` stays identical across scenarios. A resumed (forked)
+  // session already has it.
+  pi.on("before_agent_start", (_event, ctx) => {
+    if (!run) return;
+    const sent = ctx.sessionManager
+      .getBranch()
+      .some((e) => e.type === "custom_message" && e.customType === ENTRY.resultFormat);
+    if (sent) return;
+    return { message: { customType: ENTRY.resultFormat, content: run.formatMessage, display: true } };
   });
 
   pi.on("message_end", (event, ctx) => {

@@ -15,6 +15,8 @@ export const RESUBMIT_PROMPT =
 
 /** Custom entry/message types written by the extension. */
 export const ENTRY = {
+  /** `custom_message` with the scenario's result format, sent once after the task prompt. */
+  resultFormat: "pi-agent.result-format",
   /** `custom_message` with RESUBMIT_PROMPT. */
   resubmit: "pi-agent.resubmit",
   /** `custom` entry with `RunMetricsEntry` data, appended when the agent settles. */

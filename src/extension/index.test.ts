@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import piAgentRunner from "./index.ts";
 import { ENTRY, RESUBMIT_PROMPT } from "../shared/protocol.ts";
+import { SUBMIT_PARAMETERS } from "../shared/result.ts";
 
 /** Minimal stand-in for the parts of ExtensionAPI the extension uses. */
-function fakePi(flags: Record<string, string | undefined>) {
+function fakePi(flags: Record<string, string | undefined>, branch: object[] = []) {
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const tools: ToolDefinition[] = [];
   const entries: Array<{ customType: string; data: unknown }> = [];
@@ -18,7 +19,11 @@ function fakePi(flags: Record<string, string | undefined>) {
     registerTool: (tool: ToolDefinition) => void tools.push(tool),
     appendEntry: (customType: string, data: unknown) => void entries.push({ customType, data }),
   } as unknown as ExtensionAPI;
-  const ctx = { getContextUsage: () => ({ tokens: 1, contextWindow: 100, percent }), shutdown: () => (shutdown = true) };
+  const ctx = {
+    getContextUsage: () => ({ tokens: 1, contextWindow: 100, percent }),
+    shutdown: () => (shutdown = true),
+    sessionManager: { getBranch: () => branch },
+  };
   piAgentRunner(pi);
   return {
     tools,
@@ -58,11 +63,31 @@ test("submit_result keeps the last valid call and rejects invalid ones", async (
 
   await call(tool, { summary: "first", detail: { projectName: "x", filesRead: [] } });
   const res = await call(tool, { summary: "second", detail: { projectName: "y", filesRead: ["package.json"] } });
-  await assert.rejects(call(tool, { summary: "bad", detail: { projectName: 1 } }), /Invalid result/);
+  await assert.rejects(call(tool, { summary: "bad", detail: { projectName: 1 } }), /Invalid result:\n\/detail/);
 
   const expected = { summary: "second", detailKind: "demo/v1", detail: { projectName: "y", filesRead: ["package.json"] } };
   assert.deepEqual(res.details, expected);
   assert.equal(res.terminate, true);
+});
+
+test("submit_result has the same parameters in every scenario", () => {
+  const pi = fakePi({ scenario: "demo" });
+  pi.emit("session_start");
+  assert.equal(pi.tools[0].parameters, SUBMIT_PARAMETERS);
+});
+
+test("sends the result format once, after the task prompt", () => {
+  const pi = fakePi({ scenario: "demo" });
+  assert.equal(pi.emit("before_agent_start"), undefined); // before session_start: inert
+  pi.emit("session_start");
+  const { message } = pi.emit("before_agent_start");
+  assert.equal(message.customType, ENTRY.resultFormat);
+  assert.match(message.content, /demo\/v1/);
+  assert.match(message.content, /"filesRead"/);
+
+  const resumed = fakePi({ scenario: "demo" }, [{ type: "custom_message", customType: ENTRY.resultFormat }]);
+  resumed.emit("session_start");
+  assert.equal(resumed.emit("before_agent_start"), undefined);
 });
 
 test("nudges once without a result, then records metrics", () => {

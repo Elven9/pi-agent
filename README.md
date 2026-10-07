@@ -104,9 +104,12 @@ are cut at 1000 chars and `output` at 2000, with `truncated: true`.
 
 ### Scenarios
 
-A scenario is a profile (system prompt, tools, skills) plus a TypeBox `detail` schema, in
-`src/shared/scenarios/`. The extension builds `submit_result` from `summary` + that schema, so pi
-validates the arguments; the wrapper checks the result again. Without a valid call the agent is
+A scenario is a profile (system prompt, tools, skills) plus a TypeBox `detail` object schema, in
+`src/shared/scenarios/`. `submit_result` has the same parameters in every scenario (`summary` +
+any `detail` object), because tool definitions start the cached prompt prefix. The extension
+sends the detail schema once as a message after the task prompt (`pi-agent.result-format`) and
+validates `detail` in the tool, so an invalid call fails and the model can retry; the wrapper
+checks the result again. Without a valid call the agent is
 nudged once, then the status is `no_result`. `submit_result` ends the run (`terminate: true`),
 which saves a model request.
 

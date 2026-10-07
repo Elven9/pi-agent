@@ -1,6 +1,11 @@
 import type { BoundaryResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { ENTRY, RESUBMIT_PROMPT, SUBMIT_RESULT, type RunMetricsEntry } from "../shared/protocol.ts";
-import { resultSchema, schemaErrors, type SubmittedResult } from "../shared/result.ts";
+import {
+  detailErrors,
+  resultFormatMessage,
+  SUBMIT_PARAMETERS,
+  type SubmittedResult,
+} from "../shared/result.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
 
 type Outcome = "completed" | "aborted" | "error";
@@ -11,22 +16,28 @@ type Outcome = "completed" | "aborted" | "error";
  */
 export class RunState {
   readonly tool: ToolDefinition;
+  /** Detail format for the model, sent once after the task prompt. */
+  readonly formatMessage: string;
   private last?: SubmittedResult;
   private nudged = false;
   private contextPeak: number | null = null;
 
   constructor(scenario: Scenario) {
-    const schema = resultSchema(scenario);
+    this.formatMessage = resultFormatMessage(scenario);
+    // Same definition in every scenario: tools are the start of the cached prompt prefix.
     this.tool = {
       name: SUBMIT_RESULT,
       label: "Submit Result",
       description:
         "Submit the final result of the task. Call it once when you are done; calling it again replaces the previous result.",
-      parameters: schema,
+      parameters: SUBMIT_PARAMETERS,
       execute: async (_toolCallId, params: { summary: string; detail: unknown }) => {
-        // Defensive re-check; pi has already validated the arguments against `schema`.
-        const errors = schemaErrors(schema, params);
-        if (errors.length) throw new Error(`Invalid result:\n${errors.join("\n")}`);
+        // pi has validated the envelope; the scenario's detail is checked here. Throwing makes
+        // this a failed tool result, so the model sees the errors and can call again.
+        const errors = detailErrors(scenario, params.detail);
+        if (errors.length) {
+          throw new Error(`Invalid result:\n${errors.join("\n")}\nFix detail to match the result format and call submit_result again.`);
+        }
         this.last = { summary: params.summary, detailKind: scenario.detailKind, detail: params.detail };
         return {
           content: [{ type: "text", text: "Result recorded." }],

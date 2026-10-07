@@ -1,13 +1,13 @@
-import type { TSchema } from "typebox";
+import type { TObject } from "typebox";
 
 /**
  * Scenario = profile (prompt + tools + skills) + detail schema.
  *
- * The wrapper turns the profile into pi CLI flags. The extension builds `submit_result` from
- * the shared envelope (`summary`) plus `detailSchema`, so pi validates the scenario-specific
- * part of the result.
+ * The wrapper turns the profile into pi CLI flags. `submit_result` has the same parameters in
+ * every scenario (keeps the cached prompt prefix shared); the extension sends `detailSchema` to
+ * the model as a message and validates `detail` against it in the tool.
  */
-export interface Scenario<TDetail extends TSchema = TSchema> {
+export interface Scenario<TDetail extends TObject = TObject> {
   /** Name referenced by `task.scenario`. */
   name: string;
   /** Versioned format tag copied into `report.result.detailKind`, e.g. "code-review/v1". */
@@ -21,11 +21,11 @@ export interface Scenario<TDetail extends TSchema = TSchema> {
    * never loaded implicitly.
    */
   skillPaths?: string[];
-  /** TypeBox schema for `result.detail`. */
+  /** TypeBox schema for `result.detail` (an object). Its JSON Schema is shown to the model. */
   detailSchema: TDetail;
 }
 
 /** Identity helper that keeps the detail schema's type. */
-export function defineScenario<TDetail extends TSchema>(scenario: Scenario<TDetail>): Scenario<TDetail> {
+export function defineScenario<TDetail extends TObject>(scenario: Scenario<TDetail>): Scenario<TDetail> {
   return scenario;
 }
