@@ -7,11 +7,12 @@ My pi resources and the sandbox agent runner, in one repo.
 | `skills/`, `prompts/` | Personal pi resources, loaded as a pi package (`package.json` → `pi`) |
 | `src/shared/` | Task, scenarios, result envelope, `report.json` contract, wrapper↔extension protocol |
 | `src/extension/` | pi extension: `submit_result`, one resubmit nudge, context-usage peak |
+| `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
 | `testdata/` | Recorded pi run + `fake-pi.mjs` for wrapper tests |
 | `Dockerfile`, `docker/`, `openshell/`, `config/` | Sandbox image and OpenShell setup |
 | `docs/cli-vs-sdk-decision.md` | Why the CLI and not the SDK (from agents-core) |
-| `docs/project-context-design.md` | Project context and prompt-cache placement (draft) |
+| `docs/project-context-design.md` | Project context and prompt-cache placement |
 
 ## Personal pi
 
@@ -28,7 +29,7 @@ The manifest exposes `skills/` and `prompts/*.md` only, not the runner extension
 ```sh
 npm install
 npm run check                      # typecheck + tests + build
-npm start -- run --task task.json [--workdir <dir>] [--out <dir>] [--resume <session.jsonl>]
+npm start -- run --task task.json [--workdir <dir>] [--out <dir>] [--resume <session.jsonl>] [--project <dir>]
 npm run dev -- run --task …        # same, from the .ts sources (no build)
 ```
 
@@ -49,12 +50,13 @@ quality.
 | `--workdir` | current folder | pi's cwd: where tools run and the agent's work products go |
 | `--out` | `<workdir>/.agent-out` | Report and session files (add to `.gitignore`) |
 | `--resume` | none | Previous session file to continue from (`pi --fork`) |
+| `--project` | `PI_AGENT_PROJECT` (image: `/project`) | Folder with `project.yaml` (see "Project context") |
 
 | Exit | Meaning |
 |---|---|
 | `0` | `report.json` written (even if `status` is `error` or `no_result`) |
 | `1` | Wrapper itself crashed; no reliable report |
-| `2` | Invalid input (bad args, unknown scenario, unreadable task or resume file) |
+| `2` | Invalid input (bad args, unknown scenario, unreadable task or resume file, invalid or missing `project.yaml`) |
 
 Progress goes to stderr, including the exact `pi` command line (re-run it to debug). stdout
 gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and still write a report.
@@ -62,14 +64,16 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 ### How a run works
 
 ```
-pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js --scenario <name> … -- <prompt>
-     ▲                    │  extension: submit_result, nudge once, pi-agent.metrics entry
+pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dist/project.js
+     ▲                    │    --scenario <name> [--project <dir>] … -- <prompt>
+     │                    │  extension: submit_result, nudge once, pi-agent.metrics entry
+     │                    │  project:   project sections in the system prompt, cache split
      └──── JSONL events ──┘  (stdout, read continuously; split on LF only)
 ```
 
 The wrapper loads nothing implicitly: no discovered extensions, skills, prompt templates,
 context files, MCP or project config (`-na`: the workdir is not trusted). The scenario decides
-the system prompt, tools and skills.
+the system prompt, tools and skills; the project extension adds the project context.
 
 Everything in the report comes from pi's event stream, timed by the wrapper as records arrive:
 the result (`details` of the last successful `submit_result`), the final model error, tokens and
@@ -77,8 +81,7 @@ cost (assistant messages + compactions), turns, model latency/TTFT, tool calls a
 retries and compactions, and `cacheMisses`: requests that read under 95% of what the previous
 request had cached (not checked for the first request or right after a compaction). The context
 peak comes from the extension's `pi-agent.metrics` entry, because pi does not stream context
-usage. The session file under `<out>/sessions/` is the full
-record.
+usage. The session file under `<out>/sessions/` is the full record.
 
 ### Task file
 
@@ -101,8 +104,8 @@ record.
 ```
 
 `report.json` has `status` (`ok | error | no_result`), `result` (`summary`, `detailKind`,
-scenario-specific `detail`), `metrics`, `toolCalls`, `session` (paths relative to `out`),
-`errors` and `warnings`. A stale `report.json` is removed when a run starts.
+scenario-specific `detail`), `metrics`, `projectContext`, `toolCalls`, `session` (paths
+relative to `out`), `errors` and `warnings`. A stale `report.json` is removed when a run starts.
 
 `status` is `error` when pi cannot start, exits nonzero, stops before the agent starts, the
 final model response failed and there is no result, or the result fails validation. Otherwise
@@ -127,6 +130,52 @@ To add one, create `src/shared/scenarios/<name>.ts` with `defineScenario({...})`
 in `src/shared/scenarios/index.ts`. Version `detailKind` (`<name>/v1`) and bump it when `detail`
 changes. Scenario skills go in `skills/<name>/` and are listed in `skillPaths` (relative to the
 repo root, which is also the app root in the image).
+
+`projectContext` is null without project context, otherwise the project folder and name (null
+with only `AGENTS.md`), the section names, size (`chars`, `approxTokens`) and the `sha256` of the
+rendered block. If the hash differs between two runs of the same project, so did the cached
+prompt prefix.
+
+### Project context
+
+The project extension (`dist/project.js`) adds a project's context to the end of the system
+prompt, after the scenario's prompt and skills, as "block B". Design and reasons:
+`docs/project-context-design.md`. It has two sources, both read once at session start:
+
+- `project.yaml` in the `--project` folder (in the image: `/project`, mounted read-only). Only
+  what the manifest lists is used; nothing is discovered by scanning folders.
+- `AGENTS.md` at the root of the workspace, if it exists (no parent folders, no subfolders).
+
+```yaml
+version: 1
+name: billing-service
+description: Payment and invoicing backend (Node 22, Postgres).
+rules:                       # short, always-on rules
+  - Never commit to main; work on the current branch.
+commands:                    # one-line invocations only: exact command → what it does
+  npm test: Run all unit tests.
+workflows:                   # step-by-step instructions for one task each; read on demand
+  - path: workflows/release.md
+    when: Cutting a release or bumping the version.
+docs:                        # reference material; read on demand
+  - path: docs/architecture.md
+    when: Before changing module boundaries.
+```
+
+Paths are relative to the manifest's folder. Unknown keys, multi-line commands, and missing,
+duplicate or outside paths are errors. Sections in the prompt, in order: `<project>`,
+`<project_rules>`, `<agents_md>`, `<project_commands>`, `<project_workflows>`, `<project_docs>`;
+workflows and docs are listed as `path: when`, not included. The rendering is deterministic
+(manifest order, normalized text), so the same files give the same bytes and the cached prefix
+carries over between runs. Keep the folder at the same path on every run: paths are part of the
+text.
+
+The extension also splits the system prompt into two cached blocks, A (prompt, skills, cwd) and
+B (project), so A's cache is shared across projects. On an OAuth account the `cpa` proxy
+rearranges the prompt and markers anyway (see the design doc).
+
+Locally, try it with `npm run dev -- run --task task.json --project <dir>`; in an interactive
+pi, `pi -e dist/project.js --project <dir> -nc` and `/project` shows the sections and sizes.
 
 ### Resuming in a fresh sandbox
 

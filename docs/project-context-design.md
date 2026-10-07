@@ -1,6 +1,7 @@
 # Design: project context and prompt-cache placement
 
-> Status: **agreed, not implemented**. Based on pi `@earendil-works/pi-coding-agent` 1.0.4
+> Status: **implemented** (see "Implementation notes").
+> Based on pi `@earendil-works/pi-coding-agent` 1.0.4
 > (`system-prompt.js`, `extensions.md`, the Anthropic provider) and the `cpa` provider in
 > `config/models.json`.
 
@@ -236,13 +237,14 @@ TypeBox schema, strict:
 - `src/shared/project.ts`: schema, loading and rendering, used by both the wrapper and the
   extension. YAML via the `yaml` package, bundled into both builds.
 
-## Mechanisms (`src/project/` extension)
+## Mechanisms (`src/project/` extension, `dist/project.js`)
 
 | What | How |
 |---|---|
 | Block B | `before_agent_start`: load the manifest and `<cwd>/AGENTS.md` once per session, render, and set them as `systemPromptOptions.sections`. Edit sections only; returning a full `systemPrompt` would replace the prompt. The same sections on every prompt, so pi sends no delta |
 | Split A / B | `before_provider_request`: split the system text before the first project section into two text blocks, each with a cache marker; remove the tools and OAuth markers to stay within 4 |
-| Inspection | `/project` command: show each tier with token counts |
+| Inspection | `/project` command: block B's sections with token estimates |
+| Report | The wrapper renders block B with the same code and inputs; `report.json` `projectContext` has the sections, size and `sha256` |
 
 ## Stability rules
 
@@ -264,6 +266,10 @@ TypeBox schema, strict:
 | `bf7b9f4` | `submit_result` takes `{ summary, detail: object }` in every scenario; the scenario's detail schema is sent once as a message after the task and checked in `execute()` |
 | `99f994f` | `config/settings.json`: the four 1M `cpa` models compact at ~200k tokens (`reserveTokens: 800000`) |
 | `4a2d623` | `report.json` `metrics.cacheMisses`: requests that read under 95% of what the previous request cached |
+| `657d66d` | `src/shared/project.ts`: manifest schema and loading, `AGENTS.md`, deterministic rendering |
+| `fa56d80` | Project extension: block B sections, `/project` |
+| `46ed6f2` | A/B split of the system prompt with cache markers |
+| `29c5a75` | Wrapper `--project` / `PI_AGENT_PROJECT`, `report.json` `projectContext`, image default `/project` |
 
 ## Decisions
 
@@ -284,11 +290,38 @@ would go into block B as a snapshot taken at session start (like the docs index)
 saved during a run would only show up in the next session. Whether the agent may write memory
 at all, and with what review, is part of that later design.
 
+## Implementation notes
+
+- **No reordering needed.** The wrapper already runs pi with `-na`/`-nc`, so pi's
+  `project_context` is empty, and pi places extension sections after `<cwd>`. `<cwd>` therefore
+  ends block A (it is `/sandbox` in every sandbox).
+- **Two extensions.** The runner (`dist/extension.js`) and the project extension
+  (`dist/project.js`) are separate; the wrapper always loads both, because `AGENTS.md` is used
+  even without a manifest.
+- **`--project` vs `PI_AGENT_PROJECT`.** The flag must point to a valid manifest (exit 2
+  otherwise). The env var is a default: no `project.yaml` there means no project context and a
+  warning; an invalid one is exit 2.
+- **Split robustness.** The split looks for the exact rendered block B (preceded by pi's
+  section separator) in the system text. If it isn't found (compaction summaries, a resumed
+  session whose `AGENTS.md` changed so pi sent a delta, other APIs) or caching is off, the
+  request is left as pi built it.
+- **Bundling.** `yaml`'s Node entry is CommonJS, so both bundles get a `createRequire` banner.
+
 ## Verification
 
-- Unit tests: manifest validation, rendering (golden output, byte-identical across calls),
-  section order, the A/B split and marker placement (the request payload in
-  `before_provider_request`).
-- Cache regression run: two projects × one scenario back to back. On the second run's first
-  request, `cacheRead` must be at least block A's size; `cacheMisses` must be empty outside
-  compactions.
+Done:
+
+- Unit tests: manifest validation and error messages, rendering (golden output, byte-identical
+  across loads), section order, the extension's sections and `/project`, the A/B split and marker
+  placement for API-key and OAuth payloads, wrapper arguments and `projectContext`.
+- Real pi 1.0.4: the request payload had two marked system blocks (A ending at `</cwd>`, B the
+  project sections), no tool marker, and the marker on the last message.
+- Real end-to-end run (demo scenario, Haiku): status `ok`; the `sha256` in `report.json` matched
+  block B in pi's session file; the agent followed a project rule.
+
+Not done yet:
+
+- Cache regression run: two projects × one scenario back to back, on an API-key upstream (the
+  current OAuth proxy rearranges the prompt). On the second run's first request, `cacheRead`
+  must be at least block A's size; `cacheMisses` must be empty outside compactions.
+- Building the Docker image and mounting `/project` in OpenShell.

@@ -33,9 +33,10 @@ Image layout and why:
 | Path | Purpose |
 |---|---|
 | `/sandbox` | Workspace (`WORKDIR`; OpenShell uses `/sandbox` on Podman/K8s/MicroVM anyway) |
+| `/project` | Project folder (`project.yaml`, workflows, docs), expected read-only. Default of `PI_AGENT_PROJECT`; without a `project.yaml` the run has no project context. How it gets mounted is not set up yet; the policy must allow reading it |
 | `/usr/local/lib/pi-agent` | `dist/pi-agent.js` (wrapper), `dist/extension.js`, scenario `skills/`, `config/models.json`, `config/settings.json`. Under `/usr` because the default filesystem policy only allows reads from `/usr`, `/lib`, `/etc`, ... |
 | `/usr/local/bin/pi` | Stock pi CLI (`npm install -g`, version pinned by the `PI_VERSION` build arg) |
-| `/usr/local/bin/pi-agent` | Wrapper (`docker/pi-agent.sh`). Sets env defaults (`PI_CODING_AGENT_DIR=/tmp/pi-agent`, `PI_AGENT_MODELS` and `PI_AGENT_SETTINGS` (copied to the agent dir), `PI_OFFLINE`, ...) because OpenShell starts processes with a clean env and ignores image `ENV` |
+| `/usr/local/bin/pi-agent` | Wrapper (`docker/pi-agent.sh`). Sets env defaults (`PI_CODING_AGENT_DIR=/tmp/pi-agent`, `PI_AGENT_MODELS` and `PI_AGENT_SETTINGS` (copied to the agent dir), `PI_AGENT_PROJECT=/project`, `PI_OFFLINE`, ...) because OpenShell starts processes with a clean env and ignores image `ENV` |
 | `/tmp/pi-agent` | pi agent dir: must be writable (auth lock, catalog cache); default policy allows `/tmp` |
 
 Debugging: `openshell policy get <name> --full` shows the effective policy, and
