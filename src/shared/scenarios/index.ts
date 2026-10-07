@@ -6,6 +6,11 @@ export { defineScenario } from "./types.ts";
 
 const registry = new Map<string, Scenario>([demo].map((s) => [s.name, s]));
 
+/** Registered scenario names (also the names of scenario skill folders, `skills/<scenario>/`). */
+export function scenarioNames(): string[] {
+  return [...registry.keys()];
+}
+
 export function getScenario(name: string): Scenario {
   const scenario = registry.get(name);
   if (!scenario) {
