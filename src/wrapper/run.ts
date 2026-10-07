@@ -40,7 +40,8 @@ export interface RunOptions {
   piBin: string;
   extensionPath: string;
   projectExtensionPath: string;
-  rootDir: string;
+  /** Skill directories to load (absolute), see resolveSkills. */
+  skillPaths: string[];
   /** Aborting stops pi; the report then has status "error". */
   signal?: AbortSignal;
   /** Diagnostics and progress (default: stderr). */
@@ -119,7 +120,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
     extensionPath: o.extensionPath,
     projectExtensionPath: o.projectExtensionPath,
     projectDir: o.project?.dir,
-    rootDir: o.rootDir,
+    skillPaths: o.skillPaths,
     sessionDir,
     resumeFrom: resume?.sessionPath,
   });

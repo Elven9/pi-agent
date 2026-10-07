@@ -9,7 +9,6 @@ const scenario = defineScenario({
   detailKind: "s/v1",
   systemPrompt: "Be brief.",
   tools: ["read", "bash"],
-  skillPaths: ["skills/foo"],
   detailSchema: Type.Object({}),
 });
 
@@ -20,7 +19,7 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     extensionPath: "/app/dist/extension.js",
     projectExtensionPath: "/app/dist/project.js",
     projectDir: "/project",
-    rootDir: "/app",
+    skillPaths: ["/app/skills/shared", "/app/skills/s/own"],
     sessionDir: "/out/sessions",
     resumeFrom: "/prev.jsonl",
   });
@@ -28,7 +27,7 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     "--mode", "json",
     "-ne", "-e", "/app/dist/extension.js", "-e", "/app/dist/project.js",
     "--no-mcp",
-    "-ns", "--skill", "/app/skills/foo",
+    "-ns", "--skill", "/app/skills/shared", "--skill", "/app/skills/s/own",
     "-np", "-nc", "--no-themes", "-na", "--offline",
     "--session-dir", "/out/sessions",
     "--fork", "/prev.jsonl",
@@ -45,10 +44,10 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
 test("piArgs omits optional flags", () => {
   const args = piArgs({
     task: { taskId: "t", scenario: "s", prompt: "p" },
-    scenario: { ...scenario, skillPaths: undefined },
+    scenario,
     extensionPath: "e.js",
     projectExtensionPath: "p.js",
-    rootDir: "/app",
+    skillPaths: [],
     sessionDir: "d",
   });
   for (const flag of ["--skill", "--fork", "--model", "--thinking", "--project"]) assert.ok(!args.includes(flag), flag);

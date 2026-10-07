@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { PROJECT_FLAG, SCENARIO_FLAG, SUBMIT_RESULT } from "../shared/protocol.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
 import type { Task } from "../shared/task.ts";
@@ -12,8 +11,8 @@ export interface PiCommandOptions {
   projectExtensionPath: string;
   /** Folder with a validated project.yaml. */
   projectDir?: string;
-  /** Repo/app root; scenario skill paths are relative to it. */
-  rootDir: string;
+  /** Skill directories to load (absolute; from resolveSkills: shared, then the scenario's). */
+  skillPaths: string[];
   sessionDir: string;
   /** Previous session file to fork from. */
   resumeFrom?: string;
@@ -22,7 +21,7 @@ export interface PiCommandOptions {
 /**
  * pi CLI arguments for one scenario run. Loads nothing implicitly: no discovered extensions,
  * skills, prompt templates, context files, themes, MCP or project config (the workdir is not
- * trusted). Only the runner and project extensions, the scenario's skills and tools. Context
+ * trusted). Only the runner and project extensions, the given skills and the scenario's tools. Context
  * files (AGENTS.md) come from the project extension, after skills, not from pi (`-nc`).
  */
 export function piArgs(o: PiCommandOptions): string[] {
@@ -31,7 +30,7 @@ export function piArgs(o: PiCommandOptions): string[] {
     "--mode", "json",
     "-ne", "-e", o.extensionPath, "-e", o.projectExtensionPath,
     "--no-mcp",
-    "-ns", ...(scenario.skillPaths ?? []).flatMap((p) => ["--skill", resolve(o.rootDir, p)]),
+    "-ns", ...o.skillPaths.flatMap((p) => ["--skill", p]),
     "-np",
     "-nc",
     "--no-themes",

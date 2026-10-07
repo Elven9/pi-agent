@@ -1,7 +1,8 @@
 import type { TObject } from "typebox";
 
 /**
- * Scenario = profile (prompt + tools + skills) + detail schema.
+ * Scenario = profile (prompt + tools) + detail schema. Its skills come from the folder layout:
+ * shared `skills/<skill>/` plus `skills/<scenario name>/<skill>/` (see src/wrapper/skills.ts).
  *
  * The wrapper turns the profile into pi CLI flags. `submit_result` has the same parameters in
  * every scenario (keeps the cached prompt prefix shared); the extension sends `detailSchema` to
@@ -19,11 +20,6 @@ export interface Scenario<TDetail extends TObject = TObject> {
   systemPrompt: string;
   /** Built-in pi tool names to enable. `submit_result` is always added. */
   tools: string[];
-  /**
-   * Skill files/dirs to load, relative to the repo root (e.g. "skills/foo"). Other skills are
-   * never loaded implicitly.
-   */
-  skillPaths?: string[];
   /** TypeBox schema for `result.detail` (an object). Its JSON Schema is shown to the model. */
   detailSchema: TDetail;
 }

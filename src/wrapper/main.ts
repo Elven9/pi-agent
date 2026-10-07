@@ -4,11 +4,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { loadProject, PROJECT_FILE } from "../shared/project.ts";
-import { getScenario } from "../shared/scenarios/index.ts";
+import { getScenario, scenarioNames } from "../shared/scenarios/index.ts";
 import { loadTask } from "../shared/task.ts";
 import { writeReport } from "./report-file.ts";
 import { loadPreviousSession } from "./resume.ts";
 import { runTask, type RunOptions } from "./run.ts";
+import { resolveSkills } from "./skills.ts";
 
 const EXIT_OK = 0; // report.json written (whatever its status)
 const EXIT_CRASH = 1; // wrapper crashed; no reliable report
@@ -18,7 +19,7 @@ const USAGE =
   "usage: pi-agent run --task task.json [--workdir dir] [--out dir] [--resume session.jsonl] [--project dir]";
 
 /**
- * Where the extensions and the app root are. Bundled: dist/pi-agent.js next to
+ * Where the extensions and the app root (with skills/) are. Bundled: dist/pi-agent.js next to
  * dist/extension.js and dist/project.js. From source (node src/wrapper/main.ts): pi loads the
  * .ts extensions.
  */
@@ -76,7 +77,13 @@ async function parseInput(argv: string[]): Promise<Omit<RunOptions, "signal" | "
   const scenario = getScenario(task.scenario);
   const resume = values.resume ? await loadPreviousSession(resolve(values.resume)) : undefined;
   const { project, warnings } = await resolveProject(values.project);
-  return { task, scenario, workdir, out, resume, project, warnings, piBin: process.env.PI_AGENT_PI_BIN || "pi", ...locate() };
+  const { rootDir, ...extensions } = locate();
+  const skillPaths = await resolveSkills(join(rootDir, "skills"), scenario.name, scenarioNames());
+  return {
+    task, scenario, workdir, out, resume, project, warnings, skillPaths,
+    piBin: process.env.PI_AGENT_PI_BIN || "pi",
+    ...extensions,
+  };
 }
 
 let input: Awaited<ReturnType<typeof parseInput>>;
