@@ -34,7 +34,7 @@ RUN npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSIO
 WORKDIR /usr/local/lib/pi-agent
 COPY --from=build /app/dist ./dist
 COPY config/models.json config/settings.json ./config/
-# Scenario skills (skillPaths are relative to this folder).
+# Skills: shared skills/<skill>/ and skills/<scenario>/<skill>/, resolved by the wrapper per run.
 COPY skills ./skills
 
 # OpenShell runs commands via exec, not the ENTRYPOINT, so put the wrapper on PATH.

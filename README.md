@@ -4,7 +4,8 @@ My pi resources and the sandbox agent runner, in one repo.
 
 | Path | What |
 |---|---|
-| `skills/`, `prompts/` | Personal pi resources, loaded as a pi package (`package.json` → `pi`) |
+| `skills/` | Shared (`skills/<skill>/`) and scenario (`skills/<scenario>/<skill>/`) skills for runs; also a pi package resource |
+| `prompts/` | Personal pi prompt templates, loaded as a pi package (`package.json` → `pi`) |
 | `src/shared/` | Task, scenarios, result envelope, `report.json` contract, wrapper↔extension protocol |
 | `src/extension/` | pi extension: `submit_result`, one resubmit nudge, context-usage peak |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
@@ -74,7 +75,8 @@ pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dis
 
 The wrapper loads nothing implicitly: no discovered extensions, skills, prompt templates,
 context files, MCP or project config (`-na`: the workdir is not trusted). The scenario decides
-the system prompt, tools and skills; the project extension adds the project context.
+the system prompt and tools, the `skills/` layout its skills (shared + the scenario's, one
+`--skill` each); the project extension adds the project context.
 
 Everything in the report comes from pi's event stream, timed by the wrapper as records arrive:
 the result (`details` of the last successful `submit_result`), the final model error, tokens and
@@ -132,8 +134,21 @@ To add one, write the system prompt in `src/shared/scenarios/prompts/<name>.md`,
 "./prompts/<name>.md"`) and register it in `src/shared/scenarios/index.ts`. esbuild inlines the
 Markdown into the bundles (`loader: { ".md": "text" }`), so `dist/` needs no `.md` files; tests and
 `npm run dev` load `.md` imports through `scripts/md-loader.mjs`. Version `detailKind` (`<name>/v1`) and bump it when `detail`
-changes. Scenario skills go in `skills/<name>/` and are listed in `skillPaths` (relative to the
-repo root, which is also the app root in the image).
+changes.
+
+Skills are picked by folder, not listed in the scenario:
+
+```
+skills/<skill>/SKILL.md              shared: loaded for every scenario
+skills/<scenario>/<skill>/SKILL.md   loaded only for that scenario
+```
+
+The wrapper resolves them at startup (`src/wrapper/skills.ts`): shared skills first, then the
+scenario's, each sorted by folder name, so the skills part of the cached prompt stays stable.
+A top-level folder that is neither a skill nor a registered scenario, a scenario subfolder
+without `SKILL.md`, or two skills with the same folder name stop the run as invalid input (exit
+2); a test checks the repo's layout. Paths are absolute, under the app root
+(`/usr/local/lib/pi-agent/skills` in the image), so nothing is written to the workdir.
 
 `projectContext` is null without project context, otherwise the project folder and name (null
 with only `AGENTS.md`), the section names, size (`chars`, `approxTokens`) and the `sha256` of the

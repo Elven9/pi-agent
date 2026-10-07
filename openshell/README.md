@@ -40,7 +40,7 @@ Image layout and why:
 |---|---|
 | `/sandbox` | Workspace (`WORKDIR`; OpenShell uses `/sandbox` on Podman/K8s/MicroVM anyway) |
 | `/project` | Project folder (`project.yaml`, workflows, docs), meant to be mounted read-only. Default of `PI_AGENT_PROJECT`; without a `project.yaml` the run has no project context (warning in the report). See "Project folder" |
-| `/usr/local/lib/pi-agent` | `dist/pi-agent.js` (wrapper), `dist/extension.js`, scenario `skills/`, `config/models.json`, `config/settings.json`. Under `/usr` because the default filesystem policy only allows reads from `/usr`, `/lib`, `/etc`, ... |
+| `/usr/local/lib/pi-agent` | `dist/pi-agent.js` (wrapper), `dist/extension.js`, `skills/` (shared and per scenario), `config/models.json`, `config/settings.json`. Under `/usr` because the default filesystem policy only allows reads from `/usr`, `/lib`, `/etc`, ... |
 | `/usr/local/bin/pi` | Stock pi CLI (`npm install -g`, version pinned by the `PI_VERSION` build arg) |
 | `/usr/local/bin/pi-agent` | Wrapper (`docker/pi-agent.sh`). Sets env defaults (`PI_CODING_AGENT_DIR=/tmp/pi-agent`, `PI_AGENT_MODELS` and `PI_AGENT_SETTINGS` (copied to the agent dir), `PI_AGENT_PROJECT=/project`, `PI_OFFLINE`, ...) because OpenShell starts processes with a clean env and ignores image `ENV` |
 | `/etc/openshell/policy.yaml` | Sandbox policy (`openshell/policy.yaml`), used when a sandbox is created without `--policy`. Read-only: `/usr`, `/bin`, `/lib`, `/etc`, `/proc`, `/dev/urandom`, `/project`; read-write: the workspace, `/tmp`, `/dev/null`; everything else (e.g. `/home`) is inaccessible. Landlock is required (`hard_requirement`). No network rules: the `cpa` provider adds the only one |
