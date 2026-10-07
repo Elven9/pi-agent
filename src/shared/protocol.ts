@@ -6,6 +6,9 @@
 /** Extension CLI flag selecting the scenario (`pi --scenario <name>`). */
 export const SCENARIO_FLAG = "scenario";
 
+/** Project extension CLI flag: folder with `project.yaml` (`pi --project <dir>`). */
+export const PROJECT_FLAG = "project";
+
 /** Tool the agent calls with its final result. Its `details` are a `SubmittedResult`. */
 export const SUBMIT_RESULT = "submit_result";
 
@@ -21,7 +24,7 @@ export const ENTRY = {
   resubmit: "pi-agent.resubmit",
   /** `custom` entry with `RunMetricsEntry` data, appended when the agent settles. */
   metrics: "pi-agent.metrics",
-  /** `custom` entry with `{ message }` when the extension cannot run the scenario. */
+  /** `custom` entry with `{ message }` when an extension cannot run (scenario or project). */
   error: "pi-agent.error",
 } as const;
 
