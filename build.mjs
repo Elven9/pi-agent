@@ -6,6 +6,9 @@
 //   provides typebox and its own packages to extensions, so those stay external (bundling a
 //   copy would bypass pi's module mapping). yaml is bundled.
 //
+// Markdown imports (`import prompt from "./prompts/x.md"`, scenario system prompts) are inlined
+// as strings, so dist/ needs no .md files at runtime.
+//
 // Source maps (linked, with embedded sources) are on by default for local debugging. Set
 // PI_AGENT_SOURCEMAP=0 to omit them (the Docker image does, so no sources ship in it).
 import { build } from "esbuild";
@@ -23,6 +26,7 @@ const common = {
   target: "node26",
   sourcemap: process.env.PI_AGENT_SOURCEMAP === "0" ? false : "linked",
   legalComments: "none",
+  loader: { ".md": "text" },
   logLevel: "info",
 };
 

@@ -12,7 +12,10 @@ export interface Scenario<TDetail extends TObject = TObject> {
   name: string;
   /** Versioned format tag copied into `report.result.detailKind`, e.g. "code-review/v1". */
   detailKind: string;
-  /** System prompt for the agent (replaces pi's default prompt). */
+  /**
+   * System prompt for the agent (replaces pi's default prompt). Usually imported from
+   * `prompts/<name>.md` in this folder; leading/trailing whitespace is trimmed.
+   */
   systemPrompt: string;
   /** Built-in pi tool names to enable. `submit_result` is always added. */
   tools: string[];
@@ -25,7 +28,7 @@ export interface Scenario<TDetail extends TObject = TObject> {
   detailSchema: TDetail;
 }
 
-/** Identity helper that keeps the detail schema's type. */
+/** Keeps the detail schema's type and trims the system prompt (Markdown files end with a newline). */
 export function defineScenario<TDetail extends TObject>(scenario: Scenario<TDetail>): Scenario<TDetail> {
-  return scenario;
+  return { ...scenario, systemPrompt: scenario.systemPrompt.trim() };
 }

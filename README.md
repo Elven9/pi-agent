@@ -127,8 +127,11 @@ checks the result again. Without a valid call the agent is
 nudged once, then the status is `no_result`. `submit_result` ends the run (`terminate: true`),
 which saves a model request.
 
-To add one, create `src/shared/scenarios/<name>.ts` with `defineScenario({...})` and register it
-in `src/shared/scenarios/index.ts`. Version `detailKind` (`<name>/v1`) and bump it when `detail`
+To add one, write the system prompt in `src/shared/scenarios/prompts/<name>.md`, create
+`src/shared/scenarios/<name>.ts` with `defineScenario({...})` (`import systemPrompt from
+"./prompts/<name>.md"`) and register it in `src/shared/scenarios/index.ts`. esbuild inlines the
+Markdown into the bundles (`loader: { ".md": "text" }`), so `dist/` needs no `.md` files; tests and
+`npm run dev` load `.md` imports through `scripts/md-loader.mjs`. Version `detailKind` (`<name>/v1`) and bump it when `detail`
 changes. Scenario skills go in `skills/<name>/` and are listed in `skillPaths` (relative to the
 repo root, which is also the app root in the image).
 

@@ -27,10 +27,10 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test 'src/**/*.test.ts'",
+    "test": "node --import ./scripts/md-loader.mjs --test 'src/**/*.test.ts'",
     "check": "npm run typecheck && npm test && npm run build",
     "start": "node dist/pi-agent.js",
-    "dev": "node src/wrapper/main.ts"
+    "dev": "node --import ./scripts/md-loader.mjs src/wrapper/main.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
