@@ -18,8 +18,8 @@ effective:
 
 Out of scope for now:
 
-- How the project folder gets mounted into the OpenShell sandbox. The design only assumes it is
-  there, read-only, at a fixed path (`/project` by default).
+- How the project folder gets mounted was left open here; it is now set up in OpenShell as a
+  read-only Docker volume mount (`openshell/README.md`, "Project folder").
 - **Memory.** No memory store and no tool for the agent to save anything. All project context
   is written by the user; the agent only reads it. Memory may be designed later (see "Future").
 
@@ -322,11 +322,12 @@ Done:
   workspace): status `ok`; the agent read a doc from the block B index on its own; no cache
   misses. Without a project folder, the image default `/project` gives the warning and no
   project context.
+- Read-only `/project` in OpenShell from a labeled Docker volume (`openshell/sync-project.sh`,
+  `--driver-config-json` mount, `/project` in the image policy): writes fail, a run without
+  `--project` uses it and the agent reads its docs, an unlabeled volume is refused.
 
 Not done yet:
 
 - Cache regression run: two projects × one scenario back to back, on an API-key upstream (the
   current OAuth proxy rearranges the prompt). On the second run's first request, `cacheRead`
   must be at least block A's size; `cacheMisses` must be empty outside compactions.
-- Mounting `/project` read-only in OpenShell: needs gateway driver config and a policy entry
-  (see `openshell/README.md`, "Project folder").

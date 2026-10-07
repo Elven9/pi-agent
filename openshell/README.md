@@ -18,13 +18,18 @@ CPA_API_KEY=... CPA_CF_ACCESS_CLIENT_ID=... CPA_CF_ACCESS_CLIENT_SECRET=... \
 # Build with the engine the gateway uses (push to a registry if the gateway is remote)
 docker build -t pi-agent:local .
 
+# Once per project change: copy the project folder into the pi-projects volume (see below)
+openshell/sync-project.sh examples/project pi-agent
+
 # Per task. `create --upload` can't be combined with a trailing command yet, so the sandbox
-# idles on `sleep infinity` and the run happens via exec.
-openshell sandbox create --name t-123 --from pi-agent:local --provider cpa --detach -- sleep infinity
+# idles on `sleep infinity` and the run happens via exec. The mount puts the project at
+# /project (read-only), the wrapper's default.
+openshell sandbox create --name t-123 --from pi-agent:local --provider cpa \
+  --driver-config-json '{"docker":{"mounts":[{"type":"volume","source":"pi-projects","subpath":"pi-agent","target":"/project","read_only":true}]}}' \
+  --detach -- sleep infinity
 openshell sandbox upload t-123 . /sandbox                  # .gitignore filtering applies
 openshell sandbox exec -n t-123 --no-login-shell --timeout 0 -- \
-  pi-agent run --task /sandbox/examples/task.example.json --out /sandbox/.agent-out \
-  --project /sandbox/examples/project                      # see "Project folder" below
+  pi-agent run --task /sandbox/examples/task.example.json --out /sandbox/.agent-out
 openshell sandbox download t-123 /sandbox/.agent-out ./openshell-out  # source must be inside /sandbox
 openshell sandbox delete t-123
 ```
@@ -34,7 +39,7 @@ Image layout and why:
 | Path | Purpose |
 |---|---|
 | `/sandbox` | Workspace (`WORKDIR`; OpenShell uses `/sandbox` on Podman/K8s/MicroVM anyway) |
-| `/project` | Project folder (`project.yaml`, workflows, docs), meant to be mounted read-only. Default of `PI_AGENT_PROJECT`; without a `project.yaml` the run has no project context (warning in the report). Not set up yet: see "Project folder" |
+| `/project` | Project folder (`project.yaml`, workflows, docs), meant to be mounted read-only. Default of `PI_AGENT_PROJECT`; without a `project.yaml` the run has no project context (warning in the report). See "Project folder" |
 | `/usr/local/lib/pi-agent` | `dist/pi-agent.js` (wrapper), `dist/extension.js`, scenario `skills/`, `config/models.json`, `config/settings.json`. Under `/usr` because the default filesystem policy only allows reads from `/usr`, `/lib`, `/etc`, ... |
 | `/usr/local/bin/pi` | Stock pi CLI (`npm install -g`, version pinned by the `PI_VERSION` build arg) |
 | `/usr/local/bin/pi-agent` | Wrapper (`docker/pi-agent.sh`). Sets env defaults (`PI_CODING_AGENT_DIR=/tmp/pi-agent`, `PI_AGENT_MODELS` and `PI_AGENT_SETTINGS` (copied to the agent dir), `PI_AGENT_PROJECT=/project`, `PI_OFFLINE`, ...) because OpenShell starts processes with a clean env and ignores image `ENV` |
@@ -46,19 +51,37 @@ Debugging: `openshell policy get <name> --full` shows the effective policy, and
 
 ## Project folder
 
-The design (`docs/project-context-design.md`) mounts the project folder read-only at `/project`.
-That is not set up yet, because OpenShell can't do it with defaults:
+The project folder (`project.yaml`, workflows, docs; see `docs/project-context-design.md`) is
+mounted read-only at `/project` from a Docker volume. Each project is a subfolder of the
+`pi-projects` volume, and a sandbox mounts only its own (`subpath`).
 
-- The filesystem policy only takes effect at sandbox start, and paths it doesn't list are
-  inaccessible. The image's policy (`openshell/policy.yaml`) already lists `/project`
-  read-only; without a mount the path is simply skipped.
-- `sandbox upload` runs as the sandbox user under that policy, so it can't create `/project`
-  or write into a read-only path.
-- Real mounts go through `--driver-config-json` (Docker: `{"docker":{"mounts":[…]}}`), which
-  the gateway disables by default. It needs `allow_driver_config = true` in the Docker driver
-  config and a Docker volume labeled `openshell.ai/sandbox-attachable=true` (bind mounts also
-  need `enable_bind_mounts` and admission turned off).
+Setup, once per gateway:
 
-Until then, upload the project folder with the workspace and pass it explicitly
-(`--project /sandbox/examples/project` above). That works, but the folder is writable by the
-agent and its paths in the prompt differ from `/project`.
+1. Allow driver config in the gateway TOML (Homebrew: `/opt/homebrew/var/openshell/gateway.toml`),
+   then `brew services restart openshell`:
+
+   ```toml
+   [openshell.drivers.docker]
+   allow_driver_config = true
+   ```
+
+   Resource admission stays on: only volumes with OpenShell's approval labels can be mounted,
+   and host bind mounts (including bind-backed volumes) stay disabled.
+2. `openshell/sync-project.sh <project-dir> <name>` creates the `pi-projects` volume with the
+   labels (`openshell.ai/sandbox-attachable=true`,
+   `openshell.ai/sandbox-attachable-workspace=default`) and copies the folder into `<name>/`,
+   root-owned and world-readable. Run it again after changing the project, between runs.
+
+Per sandbox, add the mount shown at the top (`subpath` = the project name). Inside, `/project`
+is read-only twice: the Docker mount is `ro`, and the image policy (`openshell/policy.yaml`)
+lists it under `read_only`. The policy only takes effect at sandbox start, which is why
+`sandbox upload` can't fill `/project` instead.
+
+Checked: the sandbox user can list and read `/project` but not create, change, delete or chmod
+anything (`Read-only file system`); a run without `--project` uses it (`projectContext.dir:
+"/project"`, no warning) and the agent reads `/project/docs/...` from the index; a volume
+without the labels is refused (`external resource not admitted by required labels`).
+
+Without the mount, a run still works: it warns and has no project context. To use a project
+anyway, upload it with the workspace and pass `--project /sandbox/<path>` (writable by the
+agent, and its paths in the prompt differ from `/project`).
