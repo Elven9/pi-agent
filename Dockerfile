@@ -33,7 +33,7 @@ RUN npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSIO
 # from /usr, /lib, /etc, ... (not /app). No node_modules: both bundles are self-contained.
 WORKDIR /usr/local/lib/pi-agent
 COPY --from=build /app/dist ./dist
-COPY config/models.json ./config/models.json
+COPY config/models.json config/settings.json ./config/
 # Scenario skills (skillPaths are relative to this folder).
 COPY skills ./skills
 

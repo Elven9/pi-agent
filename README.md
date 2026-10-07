@@ -32,8 +32,15 @@ npm run dev -- run --task …        # same, from the .ts sources (no build)
 ```
 
 `npm start`/`npm run dev` use the pinned pi from `node_modules/.bin`; elsewhere `pi` must be on
-`PATH` (or set `PI_AGENT_PI_BIN`). Models and credentials come from the pi agent dir
-(`~/.pi/agent`, or `PI_CODING_AGENT_DIR`).
+`PATH` (or set `PI_AGENT_PI_BIN`). Models, credentials and settings come from the pi agent dir
+(`~/.pi/agent`, or `PI_CODING_AGENT_DIR`). The image copies `config/models.json` and
+`config/settings.json` there; locally, merge `config/settings.json` into your own
+`settings.json` to get the same behavior.
+
+`config/settings.json` makes the 1M-context models compact at about 200k tokens
+(`reserveTokens: 800000`) instead of near the window limit. Every turn re-reads the whole context
+from the prompt cache, so a smaller context is cheaper per turn, and long contexts also hurt
+quality.
 
 | Arg | Default | Purpose |
 |---|---|---|

@@ -1,0 +1,10 @@
+{
+  "compaction": {
+    "modelOverrides": {
+      "cpa/claude-opus-5-5": { "reserveTokens": 800000 },
+      "cpa/claude-sonnet-5-5": { "reserveTokens": 800000 },
+      "cpa/claude-opus-5": { "reserveTokens": 800000 },
+      "cpa/claude-sonnet-5": { "reserveTokens": 800000 }
+    }
+  }
+}
