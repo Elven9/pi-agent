@@ -318,10 +318,15 @@ Done:
   project sections), no tool marker, and the marker on the last message.
 - Real end-to-end run (demo scenario, Haiku): status `ok`; the `sha256` in `report.json` matched
   block B in pi's session file; the agent followed a project rule.
+- Docker image in OpenShell (Sonnet 5.5, `--project /sandbox/examples/project` uploaded with the
+  workspace): status `ok`; the agent read a doc from the block B index on its own; no cache
+  misses. Without a project folder, the image default `/project` gives the warning and no
+  project context.
 
 Not done yet:
 
 - Cache regression run: two projects × one scenario back to back, on an API-key upstream (the
   current OAuth proxy rearranges the prompt). On the second run's first request, `cacheRead`
   must be at least block A's size; `cacheMisses` must be empty outside compactions.
-- Building the Docker image and mounting `/project` in OpenShell.
+- Mounting `/project` read-only in OpenShell: needs gateway driver config and a policy entry
+  (see `openshell/README.md`, "Project folder").

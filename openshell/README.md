@@ -23,8 +23,9 @@ docker build -t pi-agent:local .
 openshell sandbox create --name t-123 --from pi-agent:local --provider cpa --detach -- sleep infinity
 openshell sandbox upload t-123 . /sandbox                  # .gitignore filtering applies
 openshell sandbox exec -n t-123 --no-login-shell --timeout 0 -- \
-  pi-agent run --task /sandbox/examples/task.example.json --out /sandbox/.agent-out
-openshell sandbox download t-123 .agent-out ./openshell-out  # source must be inside /sandbox
+  pi-agent run --task /sandbox/examples/task.example.json --out /sandbox/.agent-out \
+  --project /sandbox/examples/project                      # see "Project folder" below
+openshell sandbox download t-123 /sandbox/.agent-out ./openshell-out  # source must be inside /sandbox
 openshell sandbox delete t-123
 ```
 
@@ -33,7 +34,7 @@ Image layout and why:
 | Path | Purpose |
 |---|---|
 | `/sandbox` | Workspace (`WORKDIR`; OpenShell uses `/sandbox` on Podman/K8s/MicroVM anyway) |
-| `/project` | Project folder (`project.yaml`, workflows, docs), expected read-only. Default of `PI_AGENT_PROJECT`; without a `project.yaml` the run has no project context. How it gets mounted is not set up yet; the policy must allow reading it |
+| `/project` | Project folder (`project.yaml`, workflows, docs), meant to be mounted read-only. Default of `PI_AGENT_PROJECT`; without a `project.yaml` the run has no project context (warning in the report). Not set up yet: see "Project folder" |
 | `/usr/local/lib/pi-agent` | `dist/pi-agent.js` (wrapper), `dist/extension.js`, scenario `skills/`, `config/models.json`, `config/settings.json`. Under `/usr` because the default filesystem policy only allows reads from `/usr`, `/lib`, `/etc`, ... |
 | `/usr/local/bin/pi` | Stock pi CLI (`npm install -g`, version pinned by the `PI_VERSION` build arg) |
 | `/usr/local/bin/pi-agent` | Wrapper (`docker/pi-agent.sh`). Sets env defaults (`PI_CODING_AGENT_DIR=/tmp/pi-agent`, `PI_AGENT_MODELS` and `PI_AGENT_SETTINGS` (copied to the agent dir), `PI_AGENT_PROJECT=/project`, `PI_OFFLINE`, ...) because OpenShell starts processes with a clean env and ignores image `ENV` |
@@ -41,3 +42,23 @@ Image layout and why:
 
 Debugging: `openshell policy get <name> --full` shows the effective policy, and
 `openshell logs <name>` shows allowed and denied network requests.
+
+## Project folder
+
+The design (`docs/project-context-design.md`) mounts the project folder read-only at `/project`.
+That is not set up yet, because OpenShell can't do it with defaults:
+
+- The filesystem policy only takes effect at sandbox start, and paths it doesn't list are
+  inaccessible. The default policy lists `/usr`, `/lib`, `/etc`, … and the workdir, not
+  `/project`.
+- `sandbox upload` runs as the sandbox user under that policy, so it can't create `/project`
+  or write into a read-only path.
+- Real mounts go through `--driver-config-json` (Docker: `{"docker":{"mounts":[…]}}`), which
+  the gateway disables by default. It needs `allow_driver_config = true` in the Docker driver
+  config and a Docker volume labeled `openshell.ai/sandbox-attachable=true` (bind mounts also
+  need `enable_bind_mounts` and admission turned off). The sandbox policy then needs
+  `/project` under `filesystem_policy.read_only`.
+
+Until then, upload the project folder with the workspace and pass it explicitly
+(`--project /sandbox/examples/project` above). That works, but the folder is writable by the
+agent and its paths in the prompt differ from `/project`.
