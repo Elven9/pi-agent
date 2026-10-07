@@ -4,9 +4,10 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadProject } from "../shared/project.ts";
 import { getScenario } from "../shared/scenarios/index.ts";
 import type { Task } from "../shared/task.ts";
-import { runTask } from "./run.ts";
+import { runTask, type RunOptions } from "./run.ts";
 
 // Wrapper end to end against testdata/fake-pi.mjs, which replays a recorded pi 1.0.4 run
 // (testdata/demo-run.*: the demo scenario calling bash, read and submit_result).
@@ -16,8 +17,16 @@ const testdata = fileURLToPath(new URL("../../testdata/", import.meta.url));
 const fakePi = join(testdata, "fake-pi.mjs");
 const task: Task = { taskId: "t-1", scenario: "demo", prompt: "go" };
 
-async function run(env: Record<string, string>, opts: { signal?: AbortSignal; piBin?: string } = {}) {
+type RunExtras = Partial<Pick<RunOptions, "project" | "warnings">> & {
+  signal?: AbortSignal;
+  piBin?: string;
+  /** Files written into the workdir before the run. */
+  files?: Record<string, string>;
+};
+
+async function run(env: Record<string, string>, opts: RunExtras = {}) {
   const dir = await mkdtemp(join(tmpdir(), "pi-agent-run-"));
+  for (const [name, content] of Object.entries(opts.files ?? {})) await writeFile(join(dir, name), content);
   const argsFile = join(dir, "args.json");
   for (const k of ["FAKE_PI_EVENTS", "FAKE_PI_SESSION", "FAKE_PI_STDERR", "FAKE_PI_EXIT", "FAKE_PI_HANG"]) delete process.env[k];
   Object.assign(process.env, { FAKE_PI_ARGS: argsFile }, env);
@@ -28,7 +37,10 @@ async function run(env: Record<string, string>, opts: { signal?: AbortSignal; pi
     out: join(dir, "out"),
     piBin: opts.piBin ?? fakePi,
     extensionPath: "/app/dist/extension.js",
+    projectExtensionPath: "/app/dist/project.js",
     rootDir: "/app",
+    project: opts.project,
+    warnings: opts.warnings,
     signal: opts.signal,
     log: () => {},
   });
@@ -70,11 +82,43 @@ test("recorded demo run: ok with result, tool calls, usage and session file", as
   assert.equal(m.model.calls, 3);
   assert.equal(m.contextPeakPercent, 1);
   assert.deepEqual(m.cacheMisses, []); // prompt below Haiku's minimum cacheable length
+  assert.equal(report.projectContext, null);
+  assert.ok(!args.includes("--project"));
   assert.deepEqual(Object.keys(m.tools).sort(), ["bash", "read", "submit_result"]);
   assert.deepEqual(report.session, {
     id: "01a10f4a-289c-70d3-a6eb-7a130b22c090",
     file: "sessions/2026-01-01T00-00-00-000Z_01a10f4a-289c-70d3-a6eb-7a130b22c090.jsonl",
   });
+});
+
+test("project context: passed to pi and described in the report", async () => {
+  const projectDir = await mkdtemp(join(tmpdir(), "pi-agent-proj-"));
+  await writeFile(join(projectDir, "project.yaml"), "version: 1\nname: billing\nrules: [Be careful.]\n");
+  const project = await loadProject(projectDir);
+  const file = await events(header, { type: "agent_start" });
+  const { report, args } = await run(
+    { FAKE_PI_EVENTS: file },
+    { project, warnings: ["from input"], files: { "AGENTS.md": "Use pnpm.\n" } },
+  );
+  assert.equal(args[args.indexOf("--project") + 1], projectDir);
+  assert.deepEqual(args.slice(args.indexOf("-ne"), args.indexOf("-ne") + 5), [
+    "-ne", "-e", "/app/dist/extension.js", "-e", "/app/dist/project.js",
+  ]);
+  const ctx = report.projectContext!;
+  assert.equal(ctx.dir, projectDir);
+  assert.equal(ctx.name, "billing");
+  assert.deepEqual(ctx.sections, ["project", "project_rules", "agents_md"]);
+  assert.match(ctx.sha256, /^[0-9a-f]{64}$/);
+  assert.deepEqual(report.warnings, ["from input"]);
+});
+
+test("AGENTS.md alone is project context; a large block B is a warning", async () => {
+  const file = await events(header, { type: "agent_start" });
+  const { report } = await run({ FAKE_PI_EVENTS: file }, { files: { "AGENTS.md": "x".repeat(40_000) } });
+  assert.equal(report.projectContext?.dir, null);
+  assert.equal(report.projectContext?.name, null);
+  assert.deepEqual(report.projectContext?.sections, ["agents_md"]);
+  assert.match(report.warnings[0], /^project context is ~\d+ tokens \(over 8000\)/);
 });
 
 test("no submit_result: no_result", async () => {

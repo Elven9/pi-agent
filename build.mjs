@@ -13,6 +13,9 @@ import { chmod, rm } from "node:fs/promises";
 
 await rm("dist", { recursive: true, force: true });
 
+// yaml's Node entry is CommonJS and calls require("process"); ESM bundles have no `require`.
+const requireShim = 'import { createRequire as __piAgentCreateRequire } from "node:module";\nconst require = __piAgentCreateRequire(import.meta.url);';
+
 const common = {
   bundle: true,
   platform: "node",
@@ -27,7 +30,7 @@ await build({
   ...common,
   entryPoints: { "pi-agent": "src/wrapper/main.ts" },
   outdir: "dist",
-  banner: { js: "#!/usr/bin/env node" },
+  banner: { js: `#!/usr/bin/env node\n${requireShim}` },
 });
 await chmod("dist/pi-agent.js", 0o755);
 
@@ -36,4 +39,5 @@ await build({
   entryPoints: { extension: "src/extension/index.ts", project: "src/project/index.ts" },
   outdir: "dist",
   external: ["typebox", "typebox/*", "@earendil-works/*"],
+  banner: { js: requireShim },
 });

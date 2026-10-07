@@ -1,13 +1,17 @@
 import { resolve } from "node:path";
-import { SCENARIO_FLAG, SUBMIT_RESULT } from "../shared/protocol.ts";
+import { PROJECT_FLAG, SCENARIO_FLAG, SUBMIT_RESULT } from "../shared/protocol.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
 import type { Task } from "../shared/task.ts";
 
 export interface PiCommandOptions {
   task: Task;
   scenario: Scenario;
-  /** Bundled extension file (dist/extension.js). */
+  /** Bundled runner extension (dist/extension.js). */
   extensionPath: string;
+  /** Bundled project context extension (dist/project.js). Always loaded: it also adds AGENTS.md. */
+  projectExtensionPath: string;
+  /** Folder with a validated project.yaml. */
+  projectDir?: string;
   /** Repo/app root; scenario skill paths are relative to it. */
   rootDir: string;
   sessionDir: string;
@@ -18,13 +22,14 @@ export interface PiCommandOptions {
 /**
  * pi CLI arguments for one scenario run. Loads nothing implicitly: no discovered extensions,
  * skills, prompt templates, context files, themes, MCP or project config (the workdir is not
- * trusted). Only the runner extension, the scenario's skills and tools.
+ * trusted). Only the runner and project extensions, the scenario's skills and tools. Context
+ * files (AGENTS.md) come from the project extension, after skills, not from pi (`-nc`).
  */
 export function piArgs(o: PiCommandOptions): string[] {
   const { task, scenario } = o;
   return [
     "--mode", "json",
-    "-ne", "-e", o.extensionPath,
+    "-ne", "-e", o.extensionPath, "-e", o.projectExtensionPath,
     "--no-mcp",
     "-ns", ...(scenario.skillPaths ?? []).flatMap((p) => ["--skill", resolve(o.rootDir, p)]),
     "-np",
@@ -39,6 +44,7 @@ export function piArgs(o: PiCommandOptions): string[] {
     ...(task.thinkingLevel ? ["--thinking", task.thinkingLevel] : []),
     "--system-prompt", scenario.systemPrompt,
     `--${SCENARIO_FLAG}`, scenario.name,
+    ...(o.projectDir ? [`--${PROJECT_FLAG}`, o.projectDir] : []),
     "--", task.prompt,
   ];
 }

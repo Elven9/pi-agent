@@ -3,6 +3,7 @@ import { realpath } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { loadProject, PROJECT_FILE } from "../shared/project.ts";
 import { getScenario } from "../shared/scenarios/index.ts";
 import { loadTask } from "../shared/task.ts";
 import { writeReport } from "./report-file.ts";
@@ -13,17 +14,38 @@ const EXIT_OK = 0; // report.json written (whatever its status)
 const EXIT_CRASH = 1; // wrapper crashed; no reliable report
 const EXIT_INPUT = 2; // invalid input
 
-const USAGE = "usage: pi-agent run --task task.json [--workdir dir] [--out dir] [--resume session.jsonl]";
+const USAGE =
+  "usage: pi-agent run --task task.json [--workdir dir] [--out dir] [--resume session.jsonl] [--project dir]";
 
 /**
- * Where the extension and the app root are. Bundled: dist/pi-agent.js next to
- * dist/extension.js. From source (node src/wrapper/main.ts): pi loads the .ts extension.
+ * Where the extensions and the app root are. Bundled: dist/pi-agent.js next to
+ * dist/extension.js and dist/project.js. From source (node src/wrapper/main.ts): pi loads the
+ * .ts extensions.
  */
-function locate(): { extensionPath: string; rootDir: string } {
+function locate(): { extensionPath: string; projectExtensionPath: string; rootDir: string } {
   const here = dirname(fileURLToPath(import.meta.url));
   const bundled = join(here, "extension.js");
-  if (existsSync(bundled)) return { extensionPath: bundled, rootDir: dirname(here) };
-  return { extensionPath: join(here, "../extension/index.ts"), rootDir: resolve(here, "../..") };
+  if (existsSync(bundled)) {
+    return { extensionPath: bundled, projectExtensionPath: join(here, "project.js"), rootDir: dirname(here) };
+  }
+  return {
+    extensionPath: join(here, "../extension/index.ts"),
+    projectExtensionPath: join(here, "../project/index.ts"),
+    rootDir: resolve(here, "../.."),
+  };
+}
+
+/**
+ * `--project` must point to a valid manifest. `PI_AGENT_PROJECT` is a default (the image sets
+ * /project): without a project.yaml there the run continues without project context and
+ * warns. An invalid manifest is an error either way.
+ */
+async function resolveProject(flag: string | undefined) {
+  const dir = flag ?? (process.env.PI_AGENT_PROJECT || undefined);
+  if (!dir) return { project: undefined, warnings: [] };
+  const project = await loadProject(resolve(dir), { optional: flag === undefined });
+  const warnings = project ? [] : [`no ${PROJECT_FILE} in ${resolve(dir)} (PI_AGENT_PROJECT); running without project context`];
+  return { project, warnings };
 }
 
 async function parseInput(argv: string[]): Promise<Omit<RunOptions, "signal" | "log">> {
@@ -34,6 +56,7 @@ async function parseInput(argv: string[]): Promise<Omit<RunOptions, "signal" | "
       workdir: { type: "string" },
       out: { type: "string" },
       resume: { type: "string" },
+      project: { type: "string" },
     },
     allowPositionals: true,
     strict: true, // unknown flags are an error
@@ -52,7 +75,8 @@ async function parseInput(argv: string[]): Promise<Omit<RunOptions, "signal" | "
   const task = await loadTask(values.task);
   const scenario = getScenario(task.scenario);
   const resume = values.resume ? await loadPreviousSession(resolve(values.resume)) : undefined;
-  return { task, scenario, workdir, out, resume, piBin: process.env.PI_AGENT_PI_BIN || "pi", ...locate() };
+  const { project, warnings } = await resolveProject(values.project);
+  return { task, scenario, workdir, out, resume, project, warnings, piBin: process.env.PI_AGENT_PI_BIN || "pi", ...locate() };
 }
 
 let input: Awaited<ReturnType<typeof parseInput>>;

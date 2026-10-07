@@ -18,13 +18,15 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     task: { taskId: "t", scenario: "s", prompt: "-starts with a dash", model: "cpa/m", thinkingLevel: "low" },
     scenario,
     extensionPath: "/app/dist/extension.js",
+    projectExtensionPath: "/app/dist/project.js",
+    projectDir: "/project",
     rootDir: "/app",
     sessionDir: "/out/sessions",
     resumeFrom: "/prev.jsonl",
   });
   assert.deepEqual(args, [
     "--mode", "json",
-    "-ne", "-e", "/app/dist/extension.js",
+    "-ne", "-e", "/app/dist/extension.js", "-e", "/app/dist/project.js",
     "--no-mcp",
     "-ns", "--skill", "/app/skills/foo",
     "-np", "-nc", "--no-themes", "-na", "--offline",
@@ -35,6 +37,7 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     "--thinking", "low",
     "--system-prompt", "Be brief.",
     "--scenario", "s",
+    "--project", "/project",
     "--", "-starts with a dash",
   ]);
 });
@@ -44,10 +47,11 @@ test("piArgs omits optional flags", () => {
     task: { taskId: "t", scenario: "s", prompt: "p" },
     scenario: { ...scenario, skillPaths: undefined },
     extensionPath: "e.js",
+    projectExtensionPath: "p.js",
     rootDir: "/app",
     sessionDir: "d",
   });
-  for (const flag of ["--skill", "--fork", "--model", "--thinking"]) assert.ok(!args.includes(flag), flag);
+  for (const flag of ["--skill", "--fork", "--model", "--thinking", "--project"]) assert.ok(!args.includes(flag), flag);
 });
 
 test("shellQuote quotes only when needed", () => {

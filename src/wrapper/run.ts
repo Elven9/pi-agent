@@ -1,6 +1,19 @@
 import { mkdir, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { REPORT_VERSION, type Report, type RunnerError, type RunStatus } from "../shared/report.ts";
+import {
+  describeBlock,
+  PROJECT_TOKEN_WARNING,
+  readAgentsMd,
+  renderProjectSections,
+  type Project,
+} from "../shared/project.ts";
+import {
+  REPORT_VERSION,
+  type ProjectContextInfo,
+  type Report,
+  type RunnerError,
+  type RunStatus,
+} from "../shared/report.ts";
 import { validateResult, type SubmittedResult } from "../shared/result.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
 import type { Task } from "../shared/task.ts";
@@ -19,9 +32,14 @@ export interface RunOptions {
   workdir: string;
   out: string;
   resume?: PreviousSession;
+  /** Validated project manifest (`--project`). */
+  project?: Project;
+  /** Warnings found while reading the input (e.g. no project.yaml at the default path). */
+  warnings?: string[];
   /** pi executable. */
   piBin: string;
   extensionPath: string;
+  projectExtensionPath: string;
   rootDir: string;
   /** Aborting stops pi; the report then has status "error". */
   signal?: AbortSignal;
@@ -43,6 +61,16 @@ function tail(text: string, lines = 10): string {
 async function findSessionFile(dir: string, id: string): Promise<string | null> {
   const name = (await readdir(dir).catch(() => [])).find((f) => f.endsWith(`_${id}.jsonl`));
   return name ? join(dir, name) : null;
+}
+
+/**
+ * Block B as the project extension will render it (same shared code and inputs), for the
+ * report: its hash shows whether the cached project prefix changed between runs.
+ */
+async function projectContext(project: Project | undefined, workdir: string): Promise<ProjectContextInfo | null> {
+  const sections = renderProjectSections({ cwd: workdir, project, agentsMd: await readAgentsMd(workdir) });
+  if (Object.keys(sections).length === 0) return null;
+  return { dir: project?.dir ?? null, name: project?.manifest.name ?? null, ...describeBlock(sections) };
 }
 
 /** Streams assistant text and tool names, for humans. */
@@ -67,7 +95,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
   const log = o.log ?? ((text: string) => void process.stderr.write(text));
   const startedAt = new Date();
   const errors: RunnerError[] = [];
-  const warnings: string[] = [];
+  const warnings: string[] = [...(o.warnings ?? [])];
   const metrics = new MetricsCollector();
   const toolLog = new ToolLog();
   const outcome = new RunOutcome();
@@ -75,6 +103,12 @@ export async function runTask(o: RunOptions): Promise<Report> {
 
   await clearReport(out);
   if (resume) warnings.push(...checkResume(resume, workdir));
+  const context = await projectContext(o.project, workdir);
+  if (context && context.approxTokens > PROJECT_TOKEN_WARNING) {
+    warnings.push(
+      `project context is ~${context.approxTokens} tokens (over ${PROJECT_TOKEN_WARNING}); it is re-read on every turn`,
+    );
+  }
   for (const w of warnings) log(`[pi-agent] warning: ${w}\n`);
 
   const sessionDir = join(out, "sessions");
@@ -83,11 +117,14 @@ export async function runTask(o: RunOptions): Promise<Report> {
     task,
     scenario,
     extensionPath: o.extensionPath,
+    projectExtensionPath: o.projectExtensionPath,
+    projectDir: o.project?.dir,
     rootDir: o.rootDir,
     sessionDir,
     resumeFrom: resume?.sessionPath,
   });
-  log(`[pi-agent] task=${task.taskId} scenario=${scenario.name}\n[pi-agent] ${shellQuote([o.piBin, ...args])}\n`);
+  const projectNote = context ? ` project=${context.name ?? "(AGENTS.md only)"} block=${context.sha256.slice(0, 12)}` : "";
+  log(`[pi-agent] task=${task.taskId} scenario=${scenario.name}${projectNote}\n[pi-agent] ${shellQuote([o.piBin, ...args])}\n`);
 
   const sinks: RecordSink[] = [outcome, metrics, toolLog, progress(log)];
   const exit = await runPi({
@@ -144,6 +181,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
     endedAt: new Date().toISOString(),
     result: (outcome.result as SubmittedResult | undefined) ?? null,
     metrics: metrics.snapshot(),
+    projectContext: context,
     toolCalls: toolLog.entries(),
     session: header
       ? {

@@ -1,3 +1,4 @@
+import type { ProjectBlockInfo } from "./project.ts";
 import type { SubmittedResult } from "./result.ts";
 
 /** `report.json` contract (carried over from agents-core). */
@@ -70,6 +71,14 @@ export interface ToolCallLog {
   truncated: boolean;
 }
 
+/** Project context in the system prompt (block B), as the wrapper rendered it. */
+export interface ProjectContextInfo extends ProjectBlockInfo {
+  /** Folder with `project.yaml`; null when only the workspace `AGENTS.md` is used. */
+  dir: string | null;
+  /** `name` from `project.yaml`; null without a manifest. */
+  name: string | null;
+}
+
 export interface Report {
   reportVersion: typeof REPORT_VERSION;
   taskId: string;
@@ -79,6 +88,8 @@ export interface Report {
   endedAt: string;
   result: SubmittedResult | null;
   metrics: Metrics;
+  /** null when the prompt has no project context (no manifest and no AGENTS.md). */
+  projectContext: ProjectContextInfo | null;
   /** Every tool call of this run, in start order (strings truncated; see the session file). */
   toolCalls: ToolCallLog[];
   session: {

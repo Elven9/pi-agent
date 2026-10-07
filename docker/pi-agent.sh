@@ -9,15 +9,19 @@
 #   are placeholders the proxy swaps for the real secrets. The pi CLI only reads models.json
 #   from the agent dir, so it is copied there.
 # - PI_AGENT_SETTINGS: settings.json for runs (compaction thresholds), copied the same way.
+# - PI_AGENT_PROJECT: default project folder (project.yaml + workflows/docs), mounted read-only.
+#   Without a project.yaml there the run continues without project context (with a warning);
+#   `pi-agent run --project <dir>` overrides it.
 # - PI_OFFLINE etc.: the sandbox blocks pi.dev anyway; don't try.
 : "${NODE_ENV:=production}"
 : "${PI_CODING_AGENT_DIR:=/tmp/pi-agent}"
 : "${PI_AGENT_MODELS:=/usr/local/lib/pi-agent/config/models.json}"
 : "${PI_AGENT_SETTINGS:=/usr/local/lib/pi-agent/config/settings.json}"
+: "${PI_AGENT_PROJECT:=/project}"
 : "${PI_OFFLINE:=1}"
 : "${PI_SKIP_VERSION_CHECK:=1}"
 : "${PI_TELEMETRY:=0}"
-export NODE_ENV PI_CODING_AGENT_DIR PI_OFFLINE PI_SKIP_VERSION_CHECK PI_TELEMETRY
+export NODE_ENV PI_CODING_AGENT_DIR PI_AGENT_PROJECT PI_OFFLINE PI_SKIP_VERSION_CHECK PI_TELEMETRY
 
 mkdir -p "$PI_CODING_AGENT_DIR" || exit 1
 if [ -f "$PI_AGENT_MODELS" ]; then
