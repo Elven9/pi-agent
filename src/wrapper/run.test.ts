@@ -69,6 +69,7 @@ test("recorded demo run: ok with result, tool calls, usage and session file", as
   assert.equal(m.turns, 3);
   assert.equal(m.model.calls, 3);
   assert.equal(m.contextPeakPercent, 1);
+  assert.deepEqual(m.cacheMisses, []); // prompt below Haiku's minimum cacheable length
   assert.deepEqual(Object.keys(m.tools).sort(), ["bash", "read", "submit_result"]);
   assert.deepEqual(report.session, {
     id: "01a10f4a-289c-70d3-a6eb-7a130b22c090",

@@ -67,3 +67,26 @@ test("collects phases, model latency, parallel tools, usage and the context peak
   assert.equal(s.compactions, 1);
   assert.equal(s.contextPeakPercent, 61);
 });
+
+test("reports requests that read less than the previous request cached", () => {
+  const m = new MetricsCollector(() => 0);
+  const request = (input: number, cacheRead: number, cacheWrite: number) => {
+    m.onRecord({ type: "turn_start" } as StreamRecord);
+    m.onRecord({ type: "message_end", message: { role: "assistant", usage: { input, output: 1, cacheRead, cacheWrite } } } as StreamRecord);
+  };
+
+  request(2, 0, 1000); // turn 1: first request, nothing expected
+  request(2, 1000, 500); // turn 2: full hit
+  request(2, 1450, 100); // turn 3: 1450 >= 95% of 1500, still a hit
+  request(0, 0, 0); // turn 4: failed request without usage, skipped
+  request(2, 0, 1700); // turn 5: miss, expected 1550 (turn 3)
+  request(2, 1700, 50); // turn 6: hit against turn 5
+  m.onRecord({ type: "compaction_end", aborted: false, result: {} } as StreamRecord);
+  request(2, 0, 400); // turn 7: new prefix after compaction, not a miss
+  request(2, 100, 400); // turn 8: miss, expected 400
+
+  assert.deepEqual(m.snapshot().cacheMisses, [
+    { turn: 5, expected: 1550, cacheRead: 0 },
+    { turn: 8, expected: 400, cacheRead: 100 },
+  ]);
+});

@@ -21,6 +21,20 @@ export interface ToolMetrics {
   msMax: number;
 }
 
+/**
+ * A model request that read less from the prompt cache than the previous request had cached.
+ * The previous request's cached prompt (`cacheRead + cacheWrite`) is a prefix of this one, so
+ * a request normally reads all of it back.
+ */
+export interface CacheMiss {
+  /** 1-based turn of the request. */
+  turn: number;
+  /** Tokens the previous request had in the cache (its `cacheRead + cacheWrite`). */
+  expected: number;
+  /** Tokens this request actually read from the cache. */
+  cacheRead: number;
+}
+
 export interface Metrics {
   wallMs: number;
   phases: Partial<Record<`${Phase}Ms`, number>>;
@@ -32,6 +46,11 @@ export interface Metrics {
   retries: number;
   compactions: number;
   contextPeakPercent: number | null;
+  /**
+   * Requests that read under 95% of the expected cached prefix. Not checked for the first
+   * request and the first one after a compaction (the prefix changes there by design).
+   */
+  cacheMisses: CacheMiss[];
 }
 
 export interface ToolCallLog {

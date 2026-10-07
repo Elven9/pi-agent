@@ -73,8 +73,10 @@ the system prompt, tools and skills.
 Everything in the report comes from pi's event stream, timed by the wrapper as records arrive:
 the result (`details` of the last successful `submit_result`), the final model error, tokens and
 cost (assistant messages + compactions), turns, model latency/TTFT, tool calls and durations,
-retries and compactions. The context peak comes from the extension's `pi-agent.metrics` entry,
-because pi does not stream context usage. The session file under `<out>/sessions/` is the full
+retries and compactions, and `cacheMisses`: requests that read under 95% of what the previous
+request had cached (not checked for the first request or right after a compaction). The context
+peak comes from the extension's `pi-agent.metrics` entry, because pi does not stream context
+usage. The session file under `<out>/sessions/` is the full
 record.
 
 ### Task file

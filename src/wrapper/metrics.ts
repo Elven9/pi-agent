@@ -1,5 +1,5 @@
 import { ENTRY, type RunMetricsEntry } from "../shared/protocol.ts";
-import type { Metrics, Phase, ToolMetrics } from "../shared/report.ts";
+import type { CacheMiss, Metrics, Phase, ToolMetrics } from "../shared/report.ts";
 import type { RecordSink, StreamRecord } from "./events.ts";
 
 /** Nearest-rank percentile; null for no samples. */
@@ -11,6 +11,9 @@ export function percentile(values: number[], p: number): number | null {
 }
 
 const round = (n: number) => Math.round(n);
+
+/** A request reading less than this share of the expected cached prefix is a cache miss. */
+export const CACHE_MISS_RATIO = 0.95;
 
 interface Usage {
   input: number;
@@ -41,6 +44,13 @@ export class MetricsCollector implements RecordSink {
   private retries = 0;
   private compactions = 0;
   private contextPeak: number | null = null;
+
+  /**
+   * Tokens the last successful request left in the prompt cache (`cacheRead + cacheWrite`);
+   * undefined before the first request and after a compaction, when there is nothing to expect.
+   */
+  private cachedPrefix?: number;
+  private readonly cacheMisses: CacheMiss[] = [];
 
   /**
    * Time the current model request was sent. pi emits `message_start` only once the response
@@ -86,6 +96,22 @@ export class MetricsCollector implements RecordSink {
     this.cost += usage.cost?.total ?? 0;
   }
 
+  /**
+   * Compares a request's cache read with what the previous request cached. Requests that
+   * failed before the provider reported usage (all zeros) are skipped and don't move the
+   * baseline. A prefix too short to cache leaves the baseline at 0, so it is never a miss.
+   */
+  private checkCache(usage: Usage | undefined): void {
+    const read = usage?.cacheRead ?? 0;
+    const cached = read + (usage?.cacheWrite ?? 0);
+    if (!usage || cached + (usage.input ?? 0) === 0) return;
+    const expected = this.cachedPrefix;
+    if (expected !== undefined && expected > 0 && read < expected * CACHE_MISS_RATIO) {
+      this.cacheMisses.push({ turn: this.turns, expected, cacheRead: read });
+    }
+    this.cachedPrefix = cached;
+  }
+
   onRecord(record: StreamRecord, t: number = this.now()): void {
     switch (record.type) {
       case "turn_start":
@@ -109,7 +135,9 @@ export class MetricsCollector implements RecordSink {
       }
       case "message_end":
         if (record.message.role === "assistant") {
-          this.addUsage((record.message as { usage?: Usage }).usage);
+          const usage = (record.message as { usage?: Usage }).usage;
+          this.addUsage(usage);
+          this.checkCache(usage);
           if (this.message) {
             this.latency.push(t - this.message.start);
             if (this.message.firstToken !== undefined) this.ttft.push(this.message.firstToken - this.message.start);
@@ -138,6 +166,8 @@ export class MetricsCollector implements RecordSink {
         if (!record.aborted && record.result) {
           this.compactions++;
           this.addUsage(record.result.usage as Usage | undefined);
+          // The summary replaces the history: the next request starts a new prefix.
+          this.cachedPrefix = undefined;
         }
         break;
       case "entry_appended": {
@@ -176,6 +206,7 @@ export class MetricsCollector implements RecordSink {
       retries: this.retries,
       compactions: this.compactions,
       contextPeakPercent: this.contextPeak,
+      cacheMisses: [...this.cacheMisses],
     };
   }
 }
