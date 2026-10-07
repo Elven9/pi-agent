@@ -38,6 +38,7 @@ Image layout and why:
 | `/usr/local/lib/pi-agent` | `dist/pi-agent.js` (wrapper), `dist/extension.js`, scenario `skills/`, `config/models.json`, `config/settings.json`. Under `/usr` because the default filesystem policy only allows reads from `/usr`, `/lib`, `/etc`, ... |
 | `/usr/local/bin/pi` | Stock pi CLI (`npm install -g`, version pinned by the `PI_VERSION` build arg) |
 | `/usr/local/bin/pi-agent` | Wrapper (`docker/pi-agent.sh`). Sets env defaults (`PI_CODING_AGENT_DIR=/tmp/pi-agent`, `PI_AGENT_MODELS` and `PI_AGENT_SETTINGS` (copied to the agent dir), `PI_AGENT_PROJECT=/project`, `PI_OFFLINE`, ...) because OpenShell starts processes with a clean env and ignores image `ENV` |
+| `/etc/openshell/policy.yaml` | Sandbox policy (`openshell/policy.yaml`), used when a sandbox is created without `--policy`. Read-only: `/usr`, `/bin`, `/lib`, `/etc`, `/proc`, `/dev/urandom`, `/project`; read-write: the workspace, `/tmp`, `/dev/null`; everything else (e.g. `/home`) is inaccessible. Landlock is required (`hard_requirement`). No network rules: the `cpa` provider adds the only one |
 | `/tmp/pi-agent` | pi agent dir: must be writable (auth lock, catalog cache); default policy allows `/tmp` |
 
 Debugging: `openshell policy get <name> --full` shows the effective policy, and
@@ -49,15 +50,14 @@ The design (`docs/project-context-design.md`) mounts the project folder read-onl
 That is not set up yet, because OpenShell can't do it with defaults:
 
 - The filesystem policy only takes effect at sandbox start, and paths it doesn't list are
-  inaccessible. The default policy lists `/usr`, `/lib`, `/etc`, … and the workdir, not
-  `/project`.
+  inaccessible. The image's policy (`openshell/policy.yaml`) already lists `/project`
+  read-only; without a mount the path is simply skipped.
 - `sandbox upload` runs as the sandbox user under that policy, so it can't create `/project`
   or write into a read-only path.
 - Real mounts go through `--driver-config-json` (Docker: `{"docker":{"mounts":[…]}}`), which
   the gateway disables by default. It needs `allow_driver_config = true` in the Docker driver
   config and a Docker volume labeled `openshell.ai/sandbox-attachable=true` (bind mounts also
-  need `enable_bind_mounts` and admission turned off). The sandbox policy then needs
-  `/project` under `filesystem_policy.read_only`.
+  need `enable_bind_mounts` and admission turned off).
 
 Until then, upload the project folder with the workspace and pass it explicitly
 (`--project /sandbox/examples/project` above). That works, but the folder is writable by the

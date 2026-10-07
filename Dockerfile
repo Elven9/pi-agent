@@ -42,6 +42,10 @@ COPY skills ./skills
 # a clean environment and ignores image ENV.
 COPY --chmod=755 docker/pi-agent.sh /usr/local/bin/pi-agent
 
+# OpenShell sandbox policy (filesystem access, Landlock). Used when a sandbox is created
+# without --policy; see openshell/policy.yaml.
+COPY openshell/policy.yaml /etc/openshell/policy.yaml
+
 # /sandbox is the workspace on every OpenShell runtime (Podman/K8s/MicroVM always use it).
 # uid 1000 (node) is OpenShell's default sandbox identity.
 RUN mkdir -p /sandbox && chown node:node /sandbox

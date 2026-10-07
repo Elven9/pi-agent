@@ -1,0 +1,32 @@
+# OpenShell sandbox policy for pi-agent (schema: OpenShell docs, how-it-works/policies/schema).
+#
+# Baked into the image at /etc/openshell/policy.yaml, which OpenShell uses when a sandbox is
+# created without --policy (and no global policy is active). Filesystem and Landlock settings
+# take effect at sandbox start only.
+#
+# Not to be confused with provider-cpa.yaml (a provider profile: credentials and the endpoint
+# they go to). That provider also adds the only network rule: node may reach
+# cpa.mysecretbase.win. Everything else is denied, so this file has no network_policies.
+version: 1
+
+filesystem_policy:
+  # /sandbox, the workspace: the agent's tools read and write the code here.
+  include_workdir: true
+  read_only:
+    - /usr          # node, pi (/usr/local/lib/node_modules), the app (/usr/local/lib/pi-agent), bash, git, rg, fd
+    - /bin          # /bin/sh and friends (a symlink into /usr on Debian bookworm)
+    - /lib          # shared libraries
+    - /etc          # CA certificates, DNS resolver config, passwd
+    - /proc         # node and child processes read /proc/self
+    - /dev/urandom
+    - /project      # project folder (project.yaml, workflows, docs), mounted read-only; skipped when absent
+  read_write:
+    - /tmp          # PI_CODING_AGENT_DIR=/tmp/pi-agent (auth lock, catalog cache, models/settings copies)
+    - /dev/null
+  # Because the provider adds a network rule, OpenShell also adds its baseline paths that are
+  # not listed here (/var/log and /app read-only). Listed paths keep the access given here.
+
+landlock:
+  # Refuse to start rather than run without filesystem rules. Missing paths (like /project
+  # without a mount) are still skipped individually.
+  compatibility: hard_requirement
