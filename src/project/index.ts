@@ -10,6 +10,7 @@ import {
   type Project,
   type ProjectSections,
 } from "../shared/project.ts";
+import { splitSystemPrompt } from "./cache-split.ts";
 
 /**
  * Project context extension (docs/project-context-design.md). Adds "block B" to the system
@@ -28,12 +29,14 @@ export default function projectContext(pi: ExtensionAPI) {
 
   let project: Project | undefined;
   let sections: ProjectSections = {};
+  let block = "";
 
   pi.on("session_start", async (_event, ctx) => {
     const dir = pi.getFlag(PROJECT_FLAG);
     try {
       project = typeof dir === "string" && dir !== "" ? await loadProject(resolve(ctx.cwd, dir)) : undefined;
       sections = renderProjectSections({ cwd: ctx.cwd, project, agentsMd: await readAgentsMd(ctx.cwd) });
+      block = renderBlock(sections);
     } catch (err) {
       // Startup entries are not streamed in --mode json, so also tell stderr.
       const message = (err as Error).message;
@@ -48,6 +51,9 @@ export default function projectContext(pi: ExtensionAPI) {
     Object.assign(event.systemPromptOptions.sections, sections);
   });
 
+  // Separate cache markers for A (shared by all projects) and B (this project).
+  pi.on("before_provider_request", (event) => splitSystemPrompt(event.payload, block));
+
   pi.registerCommand("project", {
     description: "Show the project context in the system prompt (block B) and its size",
     handler: async (_args, ctx) => {
@@ -59,7 +65,7 @@ export default function projectContext(pi: ExtensionAPI) {
       const lines = [
         project ? `Project: ${project.manifest.name} (${project.dir})` : "Project: none (AGENTS.md only)",
         ...names.map((name) => `  <${name}>  ~${estimateTokens(sections[name])} tokens`),
-        `Block B total: ~${estimateTokens(renderBlock(sections))} tokens`,
+        `Block B total: ~${estimateTokens(block)} tokens`,
       ];
       ctx.ui.notify(lines.join("\n"), "info");
     },
