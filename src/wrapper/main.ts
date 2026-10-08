@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { loadProject, PROJECT_FILE } from "../shared/project.ts";
 import { getScenario, scenarioNames } from "../shared/scenarios/index.ts";
@@ -21,13 +21,18 @@ const USAGE =
 /**
  * Where the extensions and the app root (with skills/) are. Bundled: dist/pi-agent.js next to
  * dist/extension.js and dist/project.js. From source (node src/wrapper/main.ts): pi loads the
- * .ts extensions.
+ * .ts extensions, which import .md files, so pi needs the same loader hook as `npm run dev`.
  */
 function locate(): { extensionPath: string; projectExtensionPath: string; rootDir: string } {
   const here = dirname(fileURLToPath(import.meta.url));
   const bundled = join(here, "extension.js");
   if (existsSync(bundled)) {
     return { extensionPath: bundled, projectExtensionPath: join(here, "project.js"), rootDir: dirname(here) };
+  }
+  // Inherited by pi (and so by the commands its bash tool runs; source runs only).
+  const hook = `--import=${pathToFileURL(resolve(here, "../../scripts/md-loader.mjs")).href}`;
+  if (!process.env.NODE_OPTIONS?.includes(hook)) {
+    process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, hook].filter(Boolean).join(" ");
   }
   return {
     extensionPath: join(here, "../extension/index.ts"),
