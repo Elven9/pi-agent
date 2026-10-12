@@ -192,13 +192,13 @@ export function renderProjectSections(o: { cwd: string; project?: Project; agent
     }
     if (m.workflows?.length) {
       sections[SECTION.workflows] = [
-        "Before doing one of these tasks, read its file and follow the steps in order:",
+        "Before doing one of these tasks, read its file and follow the steps in order. If several apply, follow them one after another, finishing each before starting the next:",
         ...m.workflows.map((w) => `- ${at(w.path)}: ${w.when.trim()}`),
       ].join("\n");
     }
     if (m.docs?.length) {
       sections[SECTION.docs] = [
-        "Read a doc when its condition applies:",
+        "Read every doc whose condition applies; a task can need several docs on different topics:",
         ...m.docs.map((d) => `- ${at(d.path)}: ${d.when.trim()}`),
       ].join("\n");
     }

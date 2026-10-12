@@ -197,13 +197,13 @@ Run from /sandbox:
 </project_commands>
 
 <project_workflows>
-Before doing one of these tasks, read its file and follow the steps in order:
+Before doing one of these tasks, read its file and follow the steps in order. If several apply, follow them one after another, finishing each before starting the next:
 - /project/workflows/release.md: Cutting a release or bumping the version.
 - /project/workflows/payments-change.md: Changing anything under src/payments/.
 </project_workflows>
 
 <project_docs>
-Read a doc with the read tool when its condition applies:
+Read every doc whose condition applies; a task can need several docs on different topics:
 - /project/docs/architecture.md: Before changing module boundaries or adding a service.
 </project_docs>
 ```
