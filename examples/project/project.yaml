@@ -25,6 +25,8 @@ commands:
 workflows:
   - path: workflows/add-scenario.md
     when: Adding a new scenario or changing a scenario's result schema.
+  - path: workflows/extract-bug-report.md
+    when: Extracting a request categorized as bug_report.
 
 # Reference material. Read on demand.
 docs:

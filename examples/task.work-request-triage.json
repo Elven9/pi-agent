@@ -1,0 +1,7 @@
+{
+  "taskId": "triage-example-001",
+  "scenario": "work-request-triage",
+  "prompt": "hey, the haiku run of the demo scenario ended with report status no_result again, it never called submit_result. can you look? also would be nice if report.json showed the model name somewhere. not urgent",
+  "model": "cpa/claude-haiku-4-5-20251001",
+  "thinkingLevel": "low"
+}
