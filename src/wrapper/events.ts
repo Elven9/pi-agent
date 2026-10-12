@@ -1,12 +1,4 @@
-import type { JsonAgentSessionEvent, SessionHeader } from "@earendil-works/pi-coding-agent";
-
-/** One record of `pi --mode json` stdout: the session header first, then session events. */
-export type StreamRecord = SessionHeader | JsonAgentSessionEvent;
-
-/** Anything that consumes the stream. `t` is the wrapper's clock when the record arrived. */
-export interface RecordSink {
-  onRecord(record: StreamRecord, t: number): void;
-}
+export type { RecordSink, StreamRecord } from "../shared/stream.ts";
 
 /**
  * Splits pi's JSONL stdout into records. Splits on LF only (strips an optional CR), as

@@ -1,6 +1,6 @@
 import { ENTRY, type RunMetricsEntry } from "../shared/protocol.ts";
 import type { CacheMiss, Metrics, Phase, ToolMetrics } from "../shared/report.ts";
-import type { RecordSink, StreamRecord } from "./events.ts";
+import type { RecordSink, StreamRecord } from "./stream.ts";
 
 /** Nearest-rank percentile; null for no samples. */
 export function percentile(values: number[], p: number): number | null {

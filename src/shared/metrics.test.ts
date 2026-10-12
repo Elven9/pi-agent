@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ENTRY } from "../shared/protocol.ts";
-import type { StreamRecord } from "./events.ts";
+import type { StreamRecord } from "./stream.ts";
 import { MetricsCollector, percentile } from "./metrics.ts";
 
 const usage = (n: number, cost: number) => ({ input: n, output: n, cacheRead: n, cacheWrite: n, cost: { total: cost } });

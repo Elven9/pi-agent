@@ -18,7 +18,7 @@ import { validateResult, type SubmittedResult } from "../shared/result.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
 import type { Task } from "../shared/task.ts";
 import type { RecordSink, StreamRecord } from "./events.ts";
-import { MetricsCollector } from "./metrics.ts";
+import { MetricsCollector } from "../shared/metrics.ts";
 import { RunOutcome } from "./outcome.ts";
 import { piArgs, shellQuote } from "./pi-command.ts";
 import { clearReport } from "./report-file.ts";
