@@ -25,5 +25,5 @@ test("detailErrors reports paths under /detail", () => {
 });
 
 test("getScenario rejects unknown names", () => {
-  assert.throws(() => getScenario("nope"), /Unknown scenario "nope" \(known: demo\)/);
+  assert.throws(() => getScenario("nope"), /Unknown scenario "nope" \(known: demo, work-request-triage\)/);
 });
