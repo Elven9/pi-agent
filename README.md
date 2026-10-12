@@ -9,6 +9,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/shared/` | Task, scenarios, result envelope, `report.json` contract, wrapper↔extension protocol |
 | `src/extension/` | pi extension: `submit_result`, one resubmit nudge |
 | `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
+| `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
 | `examples/` | Example task file and project folder (`project/`: `project.yaml`, a workflow, a doc) |
@@ -23,9 +24,9 @@ My pi resources and the sandbox agent runner, in one repo.
 pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /reload
 ```
 
-The manifest exposes `skills/`, `prompts/*.md`, the project context extension
-(`src/project/index.ts`) and the metrics extension (`src/metrics/index.ts`), loaded from source
-(no build needed), not the runner extension.
+The manifest exposes `skills/`, `prompts/*.md` and three extensions, loaded from source (no
+build needed): project context (`src/project/`), session metrics (`src/metrics/`) and session
+upload (`src/session-upload/`). Not the runner extension.
 
 ```sh
 pi --project ~/path/to/project-folder   # project.yaml + workspace AGENTS.md; pi's context files off
@@ -36,6 +37,28 @@ With `--project`, the extension drops pi's context files (AGENTS.md/CLAUDE.md fr
 dir, cwd and parents) from every prompt, as `-nc` would, and adds only the workspace AGENTS.md
 in its own section. Startup still lists them under `[Context]`; `/project` shows what is
 actually sent. Without `--project` it adds nothing while pi loads context files itself.
+
+### Session upload
+
+Off unless `~/.pi/agent/extensions/session-upload.json` exists (global only, so a repo can't
+redirect uploads):
+
+```json
+{
+  "machineId": "macbook-retro9",
+  "endpoint": "https://sessions.example.com",
+  "headers": { "CF-Access-Client-Id": "$CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret": "${CF_ACCESS_CLIENT_SECRET}" }
+}
+```
+
+It sends the raw session file as `PUT <endpoint>/sessions/<machineId>/<sessionId>`
+(`Content-Type: application/x-ndjson`); the server replaces what it has. `headers` are optional;
+a value of `$NAME`/`${NAME}` comes from that environment variable. When: `/upload` (with a
+notification), and on `/quit`, `/new`, `/resume` and `/fork` for the session being left
+(failures go to stderr; `/reload` does not upload). Before each upload the metrics extension
+appends its latest totals, so the file ends with them. A session with no file yet is skipped;
+the timeout is 15 s, no retry. A crashed session is not uploaded; its file stays on disk.
+Sandbox runs never load it (`-ne`): the orchestrator uploads the session and report.
 
 Never put
 `~/.pi/agent` itself under git: it mixes secrets (`auth.json`, `models.json` keys), state

@@ -16,7 +16,8 @@
   "pi": {
     "extensions": [
       "./src/project/index.ts",
-      "./src/metrics/index.ts"
+      "./src/metrics/index.ts",
+      "./src/session-upload/index.ts"
     ],
     "skills": [
       "./skills",
