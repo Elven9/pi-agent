@@ -7,7 +7,8 @@ My pi resources and the sandbox agent runner, in one repo.
 | `skills/` | Shared (`skills/<skill>/`, grouped `skills/<group>/<skill>/`) and scenario (`skills/<scenario>/<skill>/`) skills for runs; also a pi package resource |
 | `prompts/` | Personal pi prompt templates, loaded as a pi package (`package.json` → `pi`) |
 | `src/shared/` | Task, scenarios, result envelope, `report.json` contract, wrapper↔extension protocol |
-| `src/extension/` | pi extension: `submit_result`, one resubmit nudge, context-usage peak |
+| `src/extension/` | pi extension: `submit_result`, one resubmit nudge |
+| `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
 | `examples/` | Example task file and project folder (`project/`: `project.yaml`, a workflow, a doc) |
@@ -22,8 +23,9 @@ My pi resources and the sandbox agent runner, in one repo.
 pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /reload
 ```
 
-The manifest exposes `skills/`, `prompts/*.md` and the project context extension
-(`src/project/index.ts`, loaded from source, no build needed), not the runner extension.
+The manifest exposes `skills/`, `prompts/*.md`, the project context extension
+(`src/project/index.ts`) and the metrics extension (`src/metrics/index.ts`), loaded from source
+(no build needed), not the runner extension.
 
 ```sh
 pi --project ~/path/to/project-folder   # project.yaml + workspace AGENTS.md; pi's context files off
@@ -79,10 +81,11 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 ### How a run works
 
 ```
-pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dist/project.js
+pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dist/project.js -e dist/metrics.js
      ▲                    │    --scenario <name> [--project <dir>] … -- <prompt>
-     │                    │  extension: submit_result, nudge once, pi-agent.metrics entry
+     │                    │  extension: submit_result, nudge once
      │                    │  project:   project sections in the system prompt, cache split
+     │                    │  metrics:   pi-agent.metrics entry at every settle
      └──── JSONL events ──┘  (stdout, read continuously; split on LF only)
 ```
 
@@ -96,8 +99,24 @@ the result (`details` of the last successful `submit_result`), the final model e
 cost (assistant messages + compactions), turns, model latency/TTFT, tool calls and durations,
 retries and compactions, and `cacheMisses`: requests that read under 95% of what the previous
 request had cached (not checked for the first request or right after a compaction). The context
-peak comes from the extension's `pi-agent.metrics` entry, because pi does not stream context
-usage. The session file under `<out>/sessions/` is the full record.
+peak comes from the metrics extension's `pi-agent.metrics` entry, because pi does not stream
+context usage. The session file under `<out>/sessions/` is the full record.
+
+### Session metrics (`pi-agent.metrics` entries)
+
+The metrics extension (`src/metrics/`) runs the same `MetricsCollector` inside pi, in sandbox
+runs and in personal pi, and writes its totals into the session file as `custom` entries (not
+model context): at every settle (once per prompt), on session shutdown (`/quit`, `/new`,
+`/resume`, `/fork`, `/reload`) if anything changed, and when another extension asks for it
+(`pi.events` channel `pi-agent.metrics.flush`, e.g. before an upload). Data: the report's
+`metrics` without `wallMs`, `phases` and `retries` (wrapper-only), plus `version: 1` and
+`samples`, the raw TTFT, latency and tool durations since the previous entry.
+
+The metrics are cumulative for the session branch: on start the extension continues from the
+branch's earlier entries, so the newest entry is the total across resumes (and, for a runner
+`--resume`, includes the earlier run; report.json covers only the current run except for
+`contextPeakPercent`). Percentiles are recomputed from all `samples`; the cache-miss check
+starts over after a resume.
 
 ### Task file
 

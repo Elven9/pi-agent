@@ -90,37 +90,28 @@ test("sends the result format once, after the task prompt", () => {
   assert.equal(resumed.emit("before_agent_start"), undefined);
 });
 
-test("nudges once without a result, then records metrics", () => {
+test("nudges once without a result, keeping entries other extensions proposed", () => {
   const pi = fakePi({ scenario: "demo" });
   pi.emit("session_start");
 
-  pi.setPercent(12.4);
-  pi.emit("message_end", { message: { role: "assistant" } });
-  pi.setPercent(50); // user messages are not sampled
-  pi.emit("message_end", { message: { role: "user" } });
-  pi.setPercent(30.6);
-  pi.emit("session_compact");
-
-  const first = pi.emit("agent_before_settle", { outcome: "completed" });
+  const metrics = { type: "custom", customType: ENTRY.metrics, data: {} };
+  const first = pi.emit("agent_before_settle", { outcome: "completed", entries: [metrics] });
   assert.equal(first.continue, true);
   assert.deepEqual(first.entries, [
+    metrics,
     { type: "custom_message", customType: ENTRY.resubmit, content: RESUBMIT_PROMPT, display: true },
   ]);
 
-  const second = pi.emit("agent_before_settle", { outcome: "completed" });
-  assert.equal(second.continue, undefined);
-  assert.deepEqual(second.entries, [{ type: "custom", customType: ENTRY.metrics, data: { contextPeakPercent: 31 } }]);
+  assert.equal(pi.emit("agent_before_settle", { outcome: "completed", entries: [] }), undefined);
 });
 
 test("does not nudge after a valid result or a failed run", async () => {
   const withResult = fakePi({ scenario: "demo" });
   withResult.emit("session_start");
   await call(withResult.tools[0], { summary: "s", detail: { projectName: "x", filesRead: [] } });
-  assert.equal(withResult.emit("agent_before_settle", { outcome: "completed" }).continue, undefined);
+  assert.equal(withResult.emit("agent_before_settle", { outcome: "completed" }), undefined);
 
   const failed = fakePi({ scenario: "demo" });
   failed.emit("session_start");
-  const r = failed.emit("agent_before_settle", { outcome: "error" });
-  assert.equal(r.continue, undefined);
-  assert.deepEqual(r.entries[0].data, { contextPeakPercent: null });
+  assert.equal(failed.emit("agent_before_settle", { outcome: "error" }), undefined);
 });

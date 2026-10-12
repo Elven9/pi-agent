@@ -91,8 +91,10 @@ agents per sandbox, profiles computed at runtime, or in-process state shared bet
   `--mode json` stream anyway, and its events are the SDK's `AgentSessionEvent`s (minus partial
   snapshots), so the agents-core collectors moved over almost unchanged and are timed as records
   arrive. That includes TTFT, model latency, tool durations, retries (`auto_retry_start`) and
-  compactions. Only the context-usage peak needs the extension (`ctx.getContextUsage()`), which
-  it appends once as a `pi-agent.metrics` custom entry from `agent_before_settle`.
+  compactions. Only the context-usage peak needs an extension (`ctx.getContextUsage()`): the
+  metrics extension (`src/metrics/`) appends a `pi-agent.metrics` custom entry from
+  `agent_before_settle`. It runs the same collector inside pi, so the session file carries
+  the metrics too (see README "Session metrics").
 - **Tokens and cost come from the stream, too**: assistant `message_end` usage plus compaction
   results. With `--fork` the stream holds only the new run's events, so no baseline is needed.
 - **The result comes from the stream**: `details` of the last successful `submit_result`

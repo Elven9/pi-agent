@@ -2,7 +2,8 @@
 //
 // - dist/pi-agent.js: the wrapper. Everything it imports is bundled in; it only needs node and
 //   a `pi` executable at runtime.
-// - dist/extension.js (runner) and dist/project.js (project context): loaded by pi (-e). pi
+// - dist/extension.js (runner), dist/project.js (project context) and dist/metrics.js (session
+//   metrics): loaded by pi (-e). pi
 //   provides typebox and its own packages to extensions, so those stay external (bundling a
 //   copy would bypass pi's module mapping). yaml is bundled.
 //
@@ -40,7 +41,7 @@ await chmod("dist/pi-agent.js", 0o755);
 
 await build({
   ...common,
-  entryPoints: { extension: "src/extension/index.ts", project: "src/project/index.ts" },
+  entryPoints: { extension: "src/extension/index.ts", project: "src/project/index.ts", metrics: "src/metrics/index.ts" },
   outdir: "dist",
   external: ["typebox", "typebox/*", "@earendil-works/*"],
   banner: { js: requireShim },

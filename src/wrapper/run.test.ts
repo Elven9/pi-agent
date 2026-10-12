@@ -38,6 +38,7 @@ async function run(env: Record<string, string>, opts: RunExtras = {}) {
     piBin: opts.piBin ?? fakePi,
     extensionPath: "/app/dist/extension.js",
     projectExtensionPath: "/app/dist/project.js",
+    metricsExtensionPath: "/app/dist/metrics.js",
     skillPaths: [],
     project: opts.project,
     warnings: opts.warnings,

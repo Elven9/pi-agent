@@ -90,3 +90,66 @@ test("reports requests that read less than the previous request cached", () => {
     { turn: 8, expected: 400, cacheRead: 100 },
   ]);
 });
+
+/** One model request (timed 10 ms, first token after 4 ms) and one tool call of `toolMs`. */
+function work(m: MetricsCollector, clock: { t: number }, toolMs: number, id: string) {
+  const emit = (r: object) => m.onRecord(r as StreamRecord, clock.t);
+  emit({ type: "turn_start" });
+  emit({ type: "message_start", message: { role: "assistant" } });
+  clock.t += 4;
+  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta" } });
+  clock.t += 6;
+  emit({ type: "message_end", message: { role: "assistant", usage: usage(10, 0.1) } });
+  emit({ type: "tool_execution_start", toolCallId: id, toolName: "read" });
+  clock.t += toolMs;
+  emit({ type: "tool_execution_end", toolCallId: id, toolName: "read", isError: false });
+}
+
+test("entry: cumulative metrics, only new samples, nothing when unchanged", () => {
+  const clock = { t: 0 };
+  const m = new MetricsCollector(() => clock.t);
+  work(m, clock, 7, "a");
+  m.sampleContext(12.6);
+
+  const first = m.entry()!;
+  assert.equal(first.version, 1);
+  assert.equal("wallMs" in first || "phases" in first || "retries" in first, false);
+  assert.equal(first.turns, 1);
+  assert.equal(first.contextPeakPercent, 13);
+  assert.deepEqual(first.samples, { ttftMs: [4], latencyMs: [10], toolMs: { read: [7] } });
+  assert.equal(m.entry(), undefined);
+
+  work(m, clock, 3, "b");
+  m.compaction(usage(1, 0.5));
+  const second = m.entry()!;
+  assert.equal(second.turns, 2);
+  assert.equal(second.compactions, 1);
+  assert.equal(second.costUsd, 0.7);
+  assert.deepEqual(second.tools, { read: { calls: 2, errors: 0, msP50: 3, msMax: 7 } });
+  assert.deepEqual(second.samples, { ttftMs: [4], latencyMs: [10], toolMs: { read: [3] } });
+});
+
+test("restore continues from earlier entries: totals and percentiles as if never stopped", () => {
+  const clock = { t: 0 };
+  const whole = new MetricsCollector(() => clock.t);
+  const first = new MetricsCollector(() => clock.t);
+  for (const [i, ms] of [5, 9, 1].entries()) {
+    work(whole, clock, ms, `w${i}`);
+    work(first, clock, ms, `f${i}`);
+  }
+  const entries: unknown[] = [{ contextPeakPercent: 3 }, first.entry()]; // old-format entry: ignored
+
+  const resumed = new MetricsCollector(() => clock.t);
+  resumed.restore(entries);
+  assert.equal(resumed.entry(), undefined); // nothing new yet
+  work(whole, clock, 20, "w3");
+  work(resumed, clock, 20, "r3");
+
+  const a = whole.entry()!;
+  const b = resumed.entry()!;
+  // Same, except that the cache check starts over: the first request after a resume is not checked.
+  assert.deepEqual({ ...b, samples: undefined, cacheMisses: [] }, { ...a, samples: undefined, cacheMisses: [] });
+  assert.deepEqual(b.cacheMisses, a.cacheMisses.filter((miss) => miss.turn !== 4));
+  assert.deepEqual(b.samples, { ttftMs: [4], latencyMs: [10], toolMs: { read: [20] } });
+  assert.deepEqual(b.tools, { read: { calls: 4, errors: 0, msP50: 5, msMax: 20 } });
+});

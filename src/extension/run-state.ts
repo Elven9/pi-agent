@@ -1,5 +1,5 @@
 import type { BoundaryResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { ENTRY, RESUBMIT_PROMPT, SUBMIT_RESULT, type RunMetricsEntry } from "../shared/protocol.ts";
+import { ENTRY, RESUBMIT_PROMPT, SUBMIT_RESULT } from "../shared/protocol.ts";
 import {
   detailErrors,
   resultFormatMessage,
@@ -11,8 +11,8 @@ import type { Scenario } from "../shared/scenarios/index.ts";
 type Outcome = "completed" | "aborted" | "error";
 
 /**
- * Per-session state of a scenario run: the `submit_result` tool, the one-time resubmit nudge,
- * and the context-usage peak.
+ * Per-session state of a scenario run: the `submit_result` tool and the one-time resubmit
+ * nudge. Metrics come from the metrics extension.
  */
 export class RunState {
   readonly tool: ToolDefinition;
@@ -20,7 +20,6 @@ export class RunState {
   readonly formatMessage: string;
   private last?: SubmittedResult;
   private nudged = false;
-  private contextPeak: number | null = null;
 
   constructor(scenario: Scenario) {
     this.formatMessage = resultFormatMessage(scenario);
@@ -55,25 +54,20 @@ export class RunState {
     return this.last;
   }
 
-  sampleContext(percent: number | null | undefined): void {
-    if (percent != null) this.contextPeak = Math.max(this.contextPeak ?? 0, percent);
-  }
-
   /**
    * `agent_before_settle`: without a valid result, ask the model once more (one extra model
-   * request). Otherwise record the run's metrics; pi will not continue after this.
+   * request). `proposed` are the entries earlier handlers proposed; returned entries replace
+   * them, so they are kept.
    */
-  beforeSettle(outcome: Outcome): BoundaryResult {
-    if (!this.last && !this.nudged && outcome === "completed") {
-      this.nudged = true;
-      return {
-        entries: [{ type: "custom_message", customType: ENTRY.resubmit, content: RESUBMIT_PROMPT, display: true }],
-        continue: true,
-      };
-    }
-    const data: RunMetricsEntry = {
-      contextPeakPercent: this.contextPeak === null ? null : Math.round(this.contextPeak),
+  beforeSettle(outcome: Outcome, proposed: BoundaryResult["entries"] = []): BoundaryResult | undefined {
+    if (this.last || this.nudged || outcome !== "completed") return undefined;
+    this.nudged = true;
+    return {
+      entries: [
+        ...(proposed ?? []),
+        { type: "custom_message", customType: ENTRY.resubmit, content: RESUBMIT_PROMPT, display: true },
+      ],
+      continue: true,
     };
-    return { entries: [{ type: "custom", customType: ENTRY.metrics, data }] };
   }
 }

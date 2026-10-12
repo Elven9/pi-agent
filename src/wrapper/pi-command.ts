@@ -9,6 +9,8 @@ export interface PiCommandOptions {
   extensionPath: string;
   /** Bundled project context extension (dist/project.js). Always loaded: it also adds AGENTS.md. */
   projectExtensionPath: string;
+  /** Bundled metrics extension (dist/metrics.js): writes pi-agent.metrics entries. */
+  metricsExtensionPath: string;
   /** Folder with a validated project.yaml. */
   projectDir?: string;
   /** Skill directories to load (absolute; from resolveSkills: shared, then the scenario's). */
@@ -21,14 +23,14 @@ export interface PiCommandOptions {
 /**
  * pi CLI arguments for one scenario run. Loads nothing implicitly: no discovered extensions,
  * skills, prompt templates, context files, themes, MCP or project config (the workdir is not
- * trusted). Only the runner and project extensions, the given skills and the scenario's tools. Context
+ * trusted). Only the runner, project and metrics extensions, the given skills and the scenario's tools. Context
  * files (AGENTS.md) come from the project extension, after skills, not from pi (`-nc`).
  */
 export function piArgs(o: PiCommandOptions): string[] {
   const { task, scenario } = o;
   return [
     "--mode", "json",
-    "-ne", "-e", o.extensionPath, "-e", o.projectExtensionPath,
+    "-ne", "-e", o.extensionPath, "-e", o.projectExtensionPath, "-e", o.metricsExtensionPath,
     "--no-mcp",
     "-ns", ...o.skillPaths.flatMap((p) => ["--skill", p]),
     "-np",

@@ -18,6 +18,7 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     scenario,
     extensionPath: "/app/dist/extension.js",
     projectExtensionPath: "/app/dist/project.js",
+    metricsExtensionPath: "/app/dist/metrics.js",
     projectDir: "/project",
     skillPaths: ["/app/skills/shared", "/app/skills/s/own"],
     sessionDir: "/out/sessions",
@@ -25,7 +26,7 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
   });
   assert.deepEqual(args, [
     "--mode", "json",
-    "-ne", "-e", "/app/dist/extension.js", "-e", "/app/dist/project.js",
+    "-ne", "-e", "/app/dist/extension.js", "-e", "/app/dist/project.js", "-e", "/app/dist/metrics.js",
     "--no-mcp",
     "-ns", "--skill", "/app/skills/shared", "--skill", "/app/skills/s/own",
     "-np", "-nc", "--no-themes", "-na", "--offline",
@@ -47,6 +48,7 @@ test("piArgs omits optional flags", () => {
     scenario,
     extensionPath: "e.js",
     projectExtensionPath: "p.js",
+    metricsExtensionPath: "m.js",
     skillPaths: [],
     sessionDir: "d",
   });

@@ -1,5 +1,10 @@
-import { ENTRY, type RunMetricsEntry } from "../shared/protocol.ts";
-import type { CacheMiss, Metrics, Phase, ToolMetrics } from "../shared/report.ts";
+import {
+  ENTRY,
+  METRICS_ENTRY_VERSION,
+  type MetricsSamples,
+  type SessionMetricsEntry,
+} from "./protocol.ts";
+import type { CacheMiss, Metrics, Phase, ToolMetrics } from "./report.ts";
 import type { RecordSink, StreamRecord } from "./stream.ts";
 
 /** Nearest-rank percentile; null for no samples. */
@@ -24,13 +29,17 @@ interface Usage {
 }
 
 /**
- * Run metrics from pi's JSON event stream, timed with the wrapper's clock as records arrive.
+ * Run metrics from pi's session events, timed with the consumer's clock as records arrive.
  * Keeps summaries, not every event; the session file is the detailed record.
  *
- * The stream only carries this run's events (a forked session's earlier entries are not
- * replayed), so tokens and cost need no baseline. They are summed from assistant messages and
- * compaction results. The context peak comes from the extension's metrics entry, because pi
- * does not stream context usage.
+ * Two consumers:
+ * - The wrapper feeds it pi's JSON event stream. The stream only carries this run's events (a
+ *   forked session's earlier entries are not replayed), so tokens and cost need no baseline.
+ *   The context peak comes from the metrics extension's entry, because pi does not stream
+ *   context usage.
+ * - The metrics extension feeds it the same events from inside pi (plus `compaction()` and
+ *   `sampleContext()`), restores it from the branch's earlier entries (`restore()`), and
+ *   appends `entry()` to the session.
  */
 export class MetricsCollector implements RecordSink {
   private readonly now: () => number;
@@ -66,6 +75,11 @@ export class MetricsCollector implements RecordSink {
   private readonly toolStarts = new Map<string, { name: string; start: number }>();
   private readonly toolDurations = new Map<string, { calls: number; errors: number; ms: number[] }>();
 
+  /** Samples already written to an entry: counts per list, so entries carry only new ones. */
+  private written = { ttft: 0, latency: 0, tools: new Map<string, number>() };
+  /** The last entry's cumulative part, to skip writing an unchanged one. */
+  private lastEntryKey?: string;
+
   constructor(now: () => number = () => performance.now()) {
     this.now = now;
     this.t0 = now();
@@ -85,6 +99,19 @@ export class MetricsCollector implements RecordSink {
     if (!this.current) return;
     this.phases[`${this.current.name}Ms`] = round(this.now() - this.current.start);
     this.current = undefined;
+  }
+
+  /** A successful compaction, with the usage of its summary request. */
+  compaction(usage: unknown): void {
+    this.compactions++;
+    this.addUsage(usage as Usage | undefined);
+    // The summary replaces the history: the next request starts a new prefix.
+    this.cachedPrefix = undefined;
+  }
+
+  /** Context usage in percent (0-100), as pi reports it; keeps the highest. */
+  sampleContext(percent: number | null | undefined): void {
+    if (percent != null) this.contextPeak = Math.max(this.contextPeak ?? 0, percent);
   }
 
   private addUsage(usage: Usage | undefined): void {
@@ -163,17 +190,12 @@ export class MetricsCollector implements RecordSink {
         this.retries++;
         break;
       case "compaction_end":
-        if (!record.aborted && record.result) {
-          this.compactions++;
-          this.addUsage(record.result.usage as Usage | undefined);
-          // The summary replaces the history: the next request starts a new prefix.
-          this.cachedPrefix = undefined;
-        }
+        if (!record.aborted && record.result) this.compaction(record.result.usage);
         break;
       case "entry_appended": {
         const entry = record.entry;
         if (entry.type === "custom" && entry.customType === ENTRY.metrics) {
-          this.contextPeak = (entry.data as RunMetricsEntry | undefined)?.contextPeakPercent ?? this.contextPeak;
+          this.contextPeak = (entry.data as Partial<SessionMetricsEntry> | undefined)?.contextPeakPercent ?? this.contextPeak;
         }
         break;
       }
@@ -205,8 +227,72 @@ export class MetricsCollector implements RecordSink {
       tools,
       retries: this.retries,
       compactions: this.compactions,
-      contextPeakPercent: this.contextPeak,
+      contextPeakPercent: this.contextPeak === null ? null : Math.round(this.contextPeak),
       cacheMisses: [...this.cacheMisses],
     };
+  }
+
+  /**
+   * Data for a `pi-agent.metrics` session entry: the cumulative metrics plus the samples since
+   * the previous entry. Undefined when nothing changed since the previous one. Marks the
+   * samples as written.
+   */
+  entry(): SessionMetricsEntry | undefined {
+    const metrics = this.entryMetrics();
+    const samples: MetricsSamples = {
+      ttftMs: this.ttft.slice(this.written.ttft).map(round),
+      latencyMs: this.latency.slice(this.written.latency).map(round),
+      toolMs: {},
+    };
+    for (const [name, { ms }] of this.toolDurations) {
+      const fresh = ms.slice(this.written.tools.get(name) ?? 0);
+      if (fresh.length) samples.toolMs[name] = fresh.map(round);
+    }
+    const key = JSON.stringify(metrics);
+    if (key === this.lastEntryKey) return undefined;
+    this.lastEntryKey = key;
+    this.written = {
+      ttft: this.ttft.length,
+      latency: this.latency.length,
+      tools: new Map([...this.toolDurations].map(([name, { ms }]) => [name, ms.length])),
+    };
+    return { version: METRICS_ENTRY_VERSION, ...metrics, samples };
+  }
+
+  /**
+   * Continues from a branch's earlier `pi-agent.metrics` entries (oldest first): counters from
+   * the newest, samples from all of them. Entries of another version are ignored. The cache
+   * check starts over (the first request after a resume is not checked).
+   */
+  restore(entries: readonly unknown[]): void {
+    const valid = entries.filter(
+      (e): e is SessionMetricsEntry => (e as SessionMetricsEntry | undefined)?.version === METRICS_ENTRY_VERSION,
+    );
+    const last = valid.at(-1);
+    if (!last) return;
+    Object.assign(this.tokens, last.tokens);
+    this.cost = last.costUsd;
+    this.turns = last.turns;
+    this.compactions = last.compactions;
+    this.contextPeak = last.contextPeakPercent;
+    this.cacheMisses.splice(0, this.cacheMisses.length, ...last.cacheMisses);
+    this.ttft.splice(0, this.ttft.length, ...valid.flatMap((e) => e.samples.ttftMs));
+    this.latency.splice(0, this.latency.length, ...valid.flatMap((e) => e.samples.latencyMs));
+    this.toolDurations.clear();
+    for (const [name, { calls, errors }] of Object.entries(last.tools)) {
+      this.toolDurations.set(name, { calls, errors, ms: valid.flatMap((e) => e.samples.toolMs[name] ?? []) });
+    }
+    this.written = {
+      ttft: this.ttft.length,
+      latency: this.latency.length,
+      tools: new Map([...this.toolDurations].map(([name, { ms }]) => [name, ms.length])),
+    };
+    this.lastEntryKey = JSON.stringify(this.entryMetrics());
+  }
+
+  /** The snapshot without what only the wrapper measures. */
+  private entryMetrics(): Omit<SessionMetricsEntry, "version" | "samples"> {
+    const { wallMs: _w, phases: _p, retries: _r, ...metrics } = this.snapshot();
+    return metrics;
   }
 }
