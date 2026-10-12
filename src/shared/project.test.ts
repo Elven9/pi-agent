@@ -33,6 +33,9 @@ commands:
   npm test: Run all unit tests.
   npm ci: Install dependencies from the lockfile.
   "npm test -- --grep <pattern>": Run only the tests matching a pattern.
+cli_tools:
+  synotool: Synology internal tooling (chat, deploy).
+  gh: GitHub pull requests and issues.
 workflows:
   - path: workflows/release.md
     when: Cutting a release or bumping the version.
@@ -80,6 +83,12 @@ Run from /sandbox:
 - \`npm test -- --grep <pattern>\`: Run only the tests matching a pattern.
 </project_commands>
 
+<project_cli_tools>
+General-purpose CLI tools. Before using one, learn it from its own help: run \`<tool> docs\`, \`<tool> skill\` or \`<tool> -h\` (whichever it supports; subcommands may have their own) and follow it:
+- \`synotool\`: Synology internal tooling (chat, deploy).
+- \`gh\`: GitHub pull requests and issues.
+</project_cli_tools>
+
 <project_workflows>
 Before doing one of these tasks, read its file and follow the steps in order. If several apply, follow them one after another, finishing each before starting the next:
 - /project/workflows/release.md: Cutting a release or bumping the version.
@@ -97,7 +106,14 @@ test("rendering is byte-identical across loads; the hash tracks content", async 
   const render = async () => renderProjectSections({ cwd: "/w", project: await loadProject(dir) });
   const a = describeBlock(await render());
   assert.deepEqual(describeBlock(await render()), a);
-  assert.deepEqual(a.sections, ["project", "project_rules", "project_commands", "project_workflows", "project_docs"]);
+  assert.deepEqual(a.sections, [
+    "project",
+    "project_rules",
+    "project_commands",
+    "project_cli_tools",
+    "project_workflows",
+    "project_docs",
+  ]);
   assert.match(a.sha256, /^[0-9a-f]{64}$/);
   assert.equal(a.approxTokens, Math.ceil(a.chars / 4));
   const other = describeBlock(renderProjectSections({ cwd: "/other", project: await loadProject(dir) }));
@@ -138,6 +154,8 @@ test("loadProject reports every problem", async () => {
   assert.match(await invalid("version: 1\nname: x\ninstruction: [a]\n"), /\/instruction is not a known key$/);
   assert.match(await invalid("version: 1\nname: x\ncommands:\n  a: \"two\\nlines\"\n"), /\/commands\/a/);
   assert.match(await invalid("version: 1\nname: x\ncommands:\n  \"a\\nb\": x\n"), /must be a single non-empty line/);
+  assert.match(await invalid("version: 1\nname: x\ncli_tools:\n  synotool docs: x\n"), /\/cli_tools: tool "synotool docs" must be an executable name/);
+  assert.match(await invalid("version: 1\nname: x\ncli_tools:\n  t: \"two\\nlines\"\n"), /\/cli_tools\/t/);
   assert.match(await invalid("version: 1\nname: x\nname: y\n"), /Invalid .*project\.yaml/); // duplicate key
 
   const paths = await invalid(

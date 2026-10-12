@@ -187,6 +187,8 @@ rules:                       # short, always-on rules
   - Never commit to main; work on the current branch.
 commands:                    # one-line invocations only: exact command → what it does
   npm test: Run all unit tests.
+cli_tools:                   # general-purpose tools: executable → what it is for
+  synotool: Synology internal tooling (chat, deploy).
 workflows:                   # step-by-step instructions for one task each; read on demand
   - path: workflows/release.md
     when: Cutting a release or bumping the version.
@@ -196,10 +198,13 @@ docs:                        # reference material; read on demand
 ```
 
 `examples/project/` is a complete example (for this repo), with a workflow and a doc. Paths
-are relative to the manifest's folder. Unknown keys, multi-line commands, and missing,
-duplicate or outside paths are errors. Sections in the prompt, in order: `<project>`,
-`<project_rules>`, `<agents_md>`, `<project_commands>`, `<project_workflows>`, `<project_docs>`;
-workflows and docs are listed as `path: when`, not included. The rendering is deterministic
+are relative to the manifest's folder. Unknown keys, multi-line commands, tool names with
+spaces, and missing, duplicate or outside paths are errors. Sections in the prompt, in order:
+`<project>`, `<project_rules>`, `<agents_md>`, `<project_commands>`, `<project_cli_tools>`,
+`<project_workflows>`, `<project_docs>`; workflows and docs are listed as `path: when`, not
+included. `<project_cli_tools>` tells the agent to learn each tool from its own help (`<tool>
+docs`, `<tool> skill` or `<tool> -h`) before using it; the tools must be installed where the
+agent runs (for sandbox runs: in the image). The rendering is deterministic
 (manifest order, normalized text), so the same files give the same bytes and the cached prefix
 carries over between runs. Keep the folder at the same path on every run: paths are part of the
 text.

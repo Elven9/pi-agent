@@ -31,7 +31,7 @@ import { splitSystemPrompt } from "./cache-split.ts";
 export default function projectContext(pi: ExtensionAPI) {
   pi.registerFlag(PROJECT_FLAG, {
     type: "string",
-    description: "Folder with project.yaml: adds its rules, commands, workflows and docs to the system prompt",
+    description: "Folder with project.yaml: adds its rules, commands, CLI tools, workflows and docs to the system prompt",
   });
 
   let project: Project | undefined;

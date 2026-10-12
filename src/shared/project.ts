@@ -40,6 +40,8 @@ export const ProjectManifestSchema = Type.Object(
     rules: Type.Optional(Type.Array(Text)),
     /** One-line invocations: exact command → what it does. */
     commands: Type.Optional(Type.Record(Type.String(), Line)),
+    /** General-purpose CLI tools: executable name → what it is for. Learned from its own help. */
+    cli_tools: Type.Optional(Type.Record(Type.String(), Line)),
     /** Step-by-step instructions for one specific task each. Index only. */
     workflows: Type.Optional(Type.Array(IndexEntry)),
     /** Reference material. Index only. */
@@ -70,6 +72,7 @@ export const SECTION = {
   rules: "project_rules",
   agentsMd: "agents_md",
   commands: "project_commands",
+  cliTools: "project_cli_tools",
   workflows: "project_workflows",
   docs: "project_docs",
 } as const;
@@ -84,6 +87,11 @@ async function manifestProblems(dir: string, m: ProjectManifest): Promise<string
   for (const command of Object.keys(m.commands ?? {})) {
     if (command.trim() === "" || /[\r\n]/.test(command)) {
       problems.push(`/commands: command ${JSON.stringify(command)} must be a single non-empty line`);
+    }
+  }
+  for (const tool of Object.keys(m.cli_tools ?? {})) {
+    if (!/^\S+$/.test(tool)) {
+      problems.push(`/cli_tools: tool ${JSON.stringify(tool)} must be an executable name (one word, no spaces)`);
     }
   }
   const seen = new Map<string, string>();
@@ -188,6 +196,13 @@ export function renderProjectSections(o: { cwd: string; project?: Project; agent
       sections[SECTION.commands] = [
         `Run from ${o.cwd}:`,
         ...commands.map(([command, what]) => `- ${code(command.trim())}: ${what.trim()}`),
+      ].join("\n");
+    }
+    const tools = Object.entries(m.cli_tools ?? {});
+    if (tools.length) {
+      sections[SECTION.cliTools] = [
+        "General-purpose CLI tools. Before using one, learn it from its own help: run `<tool> docs`, `<tool> skill` or `<tool> -h` (whichever it supports; subcommands may have their own) and follow it:",
+        ...tools.map(([tool, what]) => `- ${code(tool)}: ${what.trim()}`),
       ].join("\n");
     }
     if (m.workflows?.length) {

@@ -66,7 +66,7 @@ come after `<cwd>`, which is exactly where block B belongs.
 └──────────────────────────────────────────────────────────── ◆ marker ┘
 ┌ Block B: per project, fixed for the session ──────────────────────────┐
 │ <project> <project_rules> <agents_md> <project_commands>               │
-│ <project_workflows> <project_docs>  (see "Rendering")                  │
+│ <project_cli_tools> <project_workflows> <project_docs>  ("Rendering")  │
 └──────────────────────────────────────────────────────────── ◆ marker ┘
 ┌ Messages: append only ────────────────────────────────────────────────┐
 │ task prompt                                                           │
@@ -137,6 +137,11 @@ commands:
   npm test: Run all unit tests.
   npm test -- --grep <pattern>: Run only the tests matching a pattern.
 
+# General-purpose CLI tools the agent may use. Key = executable name, value = what it is for.
+# The agent learns each one from its own help (`<tool> docs`, `<tool> skill`, `<tool> -h`).
+cli_tools:
+  synotool: Synology internal tooling (chat, deploy).
+
 # Strictly step-by-step instructions for one specific task. Index only; read on demand.
 # Guidance for one area of the code is a workflow too.
 workflows:
@@ -196,6 +201,11 @@ Run from /sandbox:
 - `npm test -- --grep <pattern>`: Run only the tests matching a pattern.
 </project_commands>
 
+<project_cli_tools>
+General-purpose CLI tools. Before using one, learn it from its own help: run `<tool> docs`, `<tool> skill` or `<tool> -h` (whichever it supports; subcommands may have their own) and follow it:
+- `synotool`: Synology internal tooling (chat, deploy).
+</project_cli_tools>
+
 <project_workflows>
 Before doing one of these tasks, read its file and follow the steps in order. If several apply, follow them one after another, finishing each before starting the next:
 - /project/workflows/release.md: Cutting a release or bumping the version.
@@ -222,10 +232,10 @@ Rules for byte-identical output:
 
 TypeBox schema, strict:
 
-- `version: 1`; `name` required; `description`, `rules`, `commands`, `workflows`, `docs`
-  optional.
+- `version: 1`; `name` required; `description`, `rules`, `commands`, `cli_tools`, `workflows`,
+  `docs` optional.
 - Unknown keys are errors (a typo must not silently do nothing).
-- Command keys and descriptions are single lines.
+- Command keys and descriptions are single lines; `cli_tools` keys are one word (an executable).
 - Every `workflows`/`docs` path must exist inside the project folder; no file listed twice.
 - Warning (not error) when block B is over about 8k tokens: it is paid on every turn.
 
