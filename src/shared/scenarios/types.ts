@@ -2,7 +2,7 @@ import type { TObject } from "typebox";
 
 /**
  * Scenario = profile (prompt + tools) + detail schema. Its skills come from the folder layout:
- * shared `skills/<skill>/` plus `skills/<scenario name>/<skill>/` (see src/wrapper/skills.ts).
+ * shared `skills/<skill>/` (and grouped `skills/<group>/<skill>/`) plus `skills/<scenario name>/<skill>/` (see src/wrapper/skills.ts).
  *
  * The wrapper turns the profile into pi CLI flags. `submit_result` has the same parameters in
  * every scenario (keeps the cached prompt prefix shared); the extension sends `detailSchema` to

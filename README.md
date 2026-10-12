@@ -4,7 +4,7 @@ My pi resources and the sandbox agent runner, in one repo.
 
 | Path | What |
 |---|---|
-| `skills/` | Shared (`skills/<skill>/`) and scenario (`skills/<scenario>/<skill>/`) skills for runs; also a pi package resource |
+| `skills/` | Shared (`skills/<skill>/`, grouped `skills/<group>/<skill>/`) and scenario (`skills/<scenario>/<skill>/`) skills for runs; also a pi package resource |
 | `prompts/` | Personal pi prompt templates, loaded as a pi package (`package.json` → `pi`) |
 | `src/shared/` | Task, scenarios, result envelope, `report.json` contract, wrapper↔extension protocol |
 | `src/extension/` | pi extension: `submit_result`, one resubmit nudge, context-usage peak |
@@ -140,13 +140,14 @@ Skills are picked by folder, not listed in the scenario:
 
 ```
 skills/<skill>/SKILL.md              shared: loaded for every scenario
+skills/<group>/<skill>/SKILL.md      shared too; <group> is listed in SKILL_GROUPS (e.g. synology)
 skills/<scenario>/<skill>/SKILL.md   loaded only for that scenario
 ```
 
 The wrapper resolves them at startup (`src/wrapper/skills.ts`): shared skills first, then the
 scenario's, each sorted by folder name, so the skills part of the cached prompt stays stable.
-A top-level folder that is neither a skill nor a registered scenario, a scenario subfolder
-without `SKILL.md`, or two skills with the same folder name stop the run as invalid input (exit
+A top-level folder that is neither a skill, a group nor a registered scenario, a group or
+scenario subfolder without `SKILL.md`, or two skills with the same folder name stop the run as invalid input (exit
 2); a test checks the repo's layout. Paths are absolute, under the app root
 (`/usr/local/lib/pi-agent/skills` in the image), so nothing is written to the workdir.
 
