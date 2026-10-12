@@ -163,6 +163,11 @@ in the next session. It is included with or without a project manifest.
 pi's own context-file loading stays off (`-na`), because it would place the file before skills
 and also pick up parent folders.
 
+In personal pi (the extension is in the package manifest) pi's context files may be on. With
+`--project`, `before_agent_start` empties `systemPromptOptions.contextFiles` on every prompt, the
+same effect as `-nc`. Without `--project`, if pi loaded any context files, the extension adds no
+sections and skips the cache split, leaving pi's behavior unchanged.
+
 ### Rendering
 
 Block B is a set of extension sections after `<cwd>`, in this order; pi wraps each in a tag of

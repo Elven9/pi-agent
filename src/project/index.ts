@@ -18,8 +18,15 @@ import { splitSystemPrompt } from "./cache-split.ts";
  * workspace root. Both are read once per session, so block B stays byte-identical for the
  * whole session (and across sessions while the files don't change).
  *
- * pi places extension sections after skills and `<cwd>`, which is where block B belongs. pi's
- * own context-file loading must be off (`-nc`/`-na`), or AGENTS.md would also appear earlier.
+ * pi places extension sections after skills and `<cwd>`, which is where block B belongs.
+ *
+ * Context files (pi's AGENTS.md/CLAUDE.md discovery, see `-nc`):
+ * - With `--project`, pi's context files are dropped from every prompt (as if `-nc`): the
+ *   project decides the context, and the workspace AGENTS.md is in block B instead.
+ * - Without `--project`, if pi loaded context files, the extension adds nothing and leaves them
+ *   to pi (plain `pi` with this package installed behaves as without it).
+ * - Without `--project` and with no context files from pi (`-nc`, as the wrapper runs), the
+ *   workspace AGENTS.md alone is block B.
  */
 export default function projectContext(pi: ExtensionAPI) {
   pi.registerFlag(PROJECT_FLAG, {
@@ -30,6 +37,11 @@ export default function projectContext(pi: ExtensionAPI) {
   let project: Project | undefined;
   let sections: ProjectSections = {};
   let block = "";
+  /** Whether the last prompt got block B (false: no --project, pi loads its own context files). */
+  let applied = false;
+
+  /** Block B goes into the prompt unless there is no --project and pi loaded context files. */
+  const usesBlock = (piContextFiles: number) => project !== undefined || piContextFiles === 0;
 
   pi.on("session_start", async (_event, ctx) => {
     const dir = pi.getFlag(PROJECT_FLAG);
@@ -46,24 +58,38 @@ export default function projectContext(pi: ExtensionAPI) {
     }
   });
 
-  // Set on every prompt; the content never changes within a session, so pi sees no delta.
+  // Set on every prompt (pi rebuilds the options from its base each time); the content never
+  // changes within a session, so pi sees no delta.
   pi.on("before_agent_start", (event) => {
-    Object.assign(event.systemPromptOptions.sections, sections);
+    const options = event.systemPromptOptions;
+    applied = usesBlock(options.contextFiles?.length ?? 0);
+    if (!applied) return;
+    if (project) options.contextFiles = [];
+    Object.assign(options.sections, sections);
   });
 
   // Separate cache markers for A (shared by all projects) and B (this project).
-  pi.on("before_provider_request", (event) => splitSystemPrompt(event.payload, block));
+  pi.on("before_provider_request", (event) =>
+    applied ? splitSystemPrompt(event.payload, block) : undefined,
+  );
 
   pi.registerCommand("project", {
     description: "Show the project context in the system prompt (block B) and its size",
     handler: async (_args, ctx) => {
+      const piContextFiles = ctx.getSystemPromptOptions().contextFiles?.length ?? 0;
+      if (!usesBlock(piContextFiles)) {
+        ctx.ui.notify(`No project context: no --project, pi loads its own context files (${piContextFiles}).`, "info");
+        return;
+      }
       const names = Object.keys(sections);
       if (names.length === 0) {
         ctx.ui.notify("No project context: no --project and no AGENTS.md in the workspace.", "info");
         return;
       }
       const lines = [
-        project ? `Project: ${project.manifest.name} (${project.dir})` : "Project: none (AGENTS.md only)",
+        project
+          ? `Project: ${project.manifest.name} (${project.dir}); pi's context files are off`
+          : "Project: none (AGENTS.md only)",
         ...names.map((name) => `  <${name}>  ~${estimateTokens(sections[name])} tokens`),
         `Block B total: ~${estimateTokens(block)} tokens`,
       ];
