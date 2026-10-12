@@ -2,3 +2,4 @@ node_modules/
 dist/
 .agent-out/
 .DS_Store
+tmp
