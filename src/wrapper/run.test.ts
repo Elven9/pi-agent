@@ -69,7 +69,7 @@ test("recorded demo run: ok with result, tool calls, usage and session file", as
   assert.deepEqual(report.errors, []);
   assert.deepEqual(report.result, {
     summary:
-      "pi-agent is a Node.js project that provides pi resources including skills and prompts, along with a sandbox runner that extends the pi CLI and generates a report.json output.",
+      "pi-agent is a Node.js CLI tool that provides pi resources (skills and prompts) along with a sandbox runner that includes extensions and generates report.json files.",
     detailKind: "demo/v1",
     detail: { projectName: "pi-agent", filesRead: ["package.json"] },
   });
@@ -78,8 +78,8 @@ test("recorded demo run: ok with result, tool calls, usage and session file", as
     [["bash", 1, false], ["read", 2, false], ["submit_result", 3, false]],
   );
   const m = report.metrics;
-  assert.deepEqual(m.tokens, { input: 4284, output: 304, cacheRead: 0, cacheWrite: 0 });
-  assert.equal(m.costUsd, 0.005804);
+  assert.deepEqual(m.tokens, { input: 5661, output: 592, cacheRead: 0, cacheWrite: 0 });
+  assert.equal(m.costUsd, 0.008621);
   assert.equal(m.turns, 3);
   assert.equal(m.model.calls, 3);
   assert.equal(m.contextPeakPercent, 1);
@@ -88,8 +88,8 @@ test("recorded demo run: ok with result, tool calls, usage and session file", as
   assert.ok(!args.includes("--project"));
   assert.deepEqual(Object.keys(m.tools).sort(), ["bash", "read", "submit_result"]);
   assert.deepEqual(report.session, {
-    id: "01a10f4a-289c-70d3-a6eb-7a130b22c090",
-    file: "sessions/2026-01-01T00-00-00-000Z_01a10f4a-289c-70d3-a6eb-7a130b22c090.jsonl",
+    id: "01a1392b-dd01-76b3-b92f-edf25d808dbd",
+    file: "sessions/2026-01-01T00-00-00-000Z_01a1392b-dd01-76b3-b92f-edf25d808dbd.jsonl",
   });
 });
 
