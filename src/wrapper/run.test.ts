@@ -37,6 +37,7 @@ async function run(env: Record<string, string>, opts: RunExtras = {}) {
     out: join(dir, "out"),
     piBin: opts.piBin ?? fakePi,
     extensionPath: "/app/dist/extension.js",
+    scenarioProfileExtensionPath: "/app/dist/scenario-profile.js",
     projectExtensionPath: "/app/dist/project.js",
     metricsExtensionPath: "/app/dist/metrics.js",
     skillPaths: [],
@@ -102,8 +103,8 @@ test("project context: passed to pi and described in the report", async () => {
     { project, warnings: ["from input"], files: { "AGENTS.md": "Use pnpm.\n" } },
   );
   assert.equal(args[args.indexOf("--project") + 1], projectDir);
-  assert.deepEqual(args.slice(args.indexOf("-ne"), args.indexOf("-ne") + 5), [
-    "-ne", "-e", "/app/dist/extension.js", "-e", "/app/dist/project.js",
+  assert.deepEqual(args.slice(args.indexOf("-ne"), args.indexOf("-ne") + 7), [
+    "-ne", "-e", "/app/dist/extension.js", "-e", "/app/dist/scenario-profile.js", "-e", "/app/dist/project.js",
   ]);
   const ctx = report.projectContext!;
   assert.equal(ctx.dir, projectDir);

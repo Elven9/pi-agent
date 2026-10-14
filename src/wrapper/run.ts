@@ -39,6 +39,8 @@ export interface RunOptions {
   /** pi executable. */
   piBin: string;
   extensionPath: string;
+  /** Bundled scenario profile extension (dist/scenario-profile.js). */
+  scenarioProfileExtensionPath: string;
   projectExtensionPath: string;
   /** Bundled metrics extension (dist/metrics.js). */
   metricsExtensionPath: string;
@@ -120,6 +122,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
     task,
     scenario,
     extensionPath: o.extensionPath,
+    scenarioProfileExtensionPath: o.scenarioProfileExtensionPath,
     projectExtensionPath: o.projectExtensionPath,
     metricsExtensionPath: o.metricsExtensionPath,
     projectDir: o.project?.dir,

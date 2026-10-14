@@ -7,7 +7,8 @@ My pi resources and the sandbox agent runner, in one repo.
 | `skills/` | Shared (`skills/<skill>/`, grouped `skills/<group>/<skill>/`) and scenario (`skills/<scenario>/<skill>/`) skills for runs; also a pi package resource |
 | `prompts/` | Personal pi prompt templates, loaded as a pi package (`package.json` → `pi`) |
 | `src/shared/` | Task, scenarios, result envelope, `report.json` contract, wrapper↔extension protocol |
-| `src/extension/` | pi extension: `submit_result`, one resubmit nudge |
+| `src/extension/` | pi extension (runner only): `submit_result`, one resubmit nudge |
+| `src/scenario-profile/` | pi extension: `--scenario <name>` applies the scenario's system prompt, tools and skills (runner and personal pi) |
 | `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
@@ -24,9 +25,22 @@ My pi resources and the sandbox agent runner, in one repo.
 pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /reload
 ```
 
-The manifest exposes `skills/`, `prompts/*.md` and three extensions, loaded from source (no
-build needed): project context (`src/project/`), session metrics (`src/metrics/`) and session
-upload (`src/session-upload/`). Not the runner extension.
+The manifest exposes `skills/`, `prompts/*.md` and four extensions: project context
+(`src/project/`), session metrics (`src/metrics/`) and session upload (`src/session-upload/`),
+loaded from source, and the scenario profile, loaded from `dist/scenario-profile.js` because
+scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`
+after cloning and after changing a scenario. Not the runner extension.
+
+```sh
+pi --scenario work-request-triage   # that scenario's system prompt, tools and skills
+```
+
+The scenario's prompt replaces pi's default preamble (appended prompts, context files, skills
+and project context still follow). Built-in tools are exactly the scenario's; tools from other
+extensions (MCP, personal) stay. Skills of other scenarios (`skills/<other>/`) are left out of
+the prompt; shared, grouped and skills from outside this package stay. There is no
+`submit_result`: the scenario prompt still asks for it, so just ignore that. Without
+`--scenario` the extension does nothing.
 
 ```sh
 pi --project ~/path/to/project-folder   # project.yaml + workspace AGENTS.md; pi's context files off
@@ -104,8 +118,9 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 ### How a run works
 
 ```
-pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dist/project.js -e dist/metrics.js
+pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js
      ▲                    │    --scenario <name> [--project <dir>] … -- <prompt>
+     │                    │  scenario-profile: owns --scenario; system prompt, tools, skills
      │                    │  extension: submit_result, nudge once
      │                    │  project:   project sections in the system prompt, cache split
      │                    │  metrics:   pi-agent.metrics entry at every settle
@@ -115,7 +130,11 @@ pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dis
 The wrapper loads nothing implicitly: no discovered extensions, skills, prompt templates,
 context files, MCP or project config (`-na`: the workdir is not trusted). The scenario decides
 the system prompt and tools, the `skills/` layout its skills (shared + the scenario's, one
-`--skill` each); the project extension adds the project context.
+`--skill` each); the project extension adds the project context. The scenario profile
+extension sets the system prompt and applies the tools and skills in-process, as in personal
+pi; `--tools` and `--skill` stay as the hard limits. It announces the scenario on the
+`pi-agent.scenario` `pi.events` channel, and the runner extension registers `submit_result`
+then (pi rejects a flag registered by two extensions).
 
 Everything in the report comes from pi's event stream, timed by the wrapper as records arrive:
 the result (`details` of the last successful `submit_result`), the final model error, tokens and

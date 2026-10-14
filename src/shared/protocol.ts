@@ -5,8 +5,22 @@ import type { Metrics } from "./report.ts";
  * reads these entries back from pi's JSON event stream (`entry_appended`) and session file.
  */
 
-/** Extension CLI flag selecting the scenario (`pi --scenario <name>`). */
+/**
+ * Extension CLI flag selecting the scenario (`pi --scenario <name>`). Registered by the scenario
+ * profile extension only (pi rejects a flag registered by two extensions); it announces the
+ * scenario on SCENARIO_CHANNEL.
+ */
 export const SCENARIO_FLAG = "scenario";
+
+/**
+ * `pi.events` channel: the scenario profile extension emits `ScenarioSelected` at every session
+ * start with a valid `--scenario`. The runner extension registers `submit_result` for it.
+ */
+export const SCENARIO_CHANNEL = "pi-agent.scenario";
+
+export interface ScenarioSelected {
+  name: string;
+}
 
 /** Project extension CLI flag: folder with `project.yaml` (`pi --project <dir>`). */
 export const PROJECT_FLAG = "project";

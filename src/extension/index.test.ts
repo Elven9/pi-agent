@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import piAgentRunner from "./index.ts";
-import { ENTRY, RESUBMIT_PROMPT } from "../shared/protocol.ts";
+import { ENTRY, RESUBMIT_PROMPT, SCENARIO_CHANNEL } from "../shared/protocol.ts";
 import { SUBMIT_PARAMETERS } from "../shared/result.ts";
 
 /** Minimal stand-in for the parts of ExtensionAPI the extension uses. */
@@ -12,9 +12,13 @@ function fakePi(flags: Record<string, string | undefined>, branch: object[] = []
   const entries: Array<{ customType: string; data: unknown }> = [];
   let percent: number | null = null;
   let shutdown = false;
+  const channels = new Map<string, (data: unknown) => void>();
+  const events = {
+    on: (channel: string, handler: (data: unknown) => void) => void channels.set(channel, handler),
+    emit: (channel: string, data: unknown) => channels.get(channel)?.(data),
+  };
   const pi = {
-    registerFlag() {},
-    getFlag: (name: string) => flags[name],
+    events,
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.set(event, handler),
     registerTool: (tool: ToolDefinition) => void tools.push(tool),
     appendEntry: (customType: string, data: unknown) => void entries.push({ customType, data }),
@@ -32,25 +36,28 @@ function fakePi(flags: Record<string, string | undefined>, branch: object[] = []
       return shutdown;
     },
     setPercent: (p: number | null) => (percent = p),
-    emit: (name: string, event: object = {}) => handlers.get(name)?.({ type: name, ...event }, ctx),
+    emit: (name: string, event: object = {}) => {
+      // Stands in for the scenario profile extension, which owns --scenario.
+      if (name === "session_start" && flags.scenario) events.emit(SCENARIO_CHANNEL, { name: flags.scenario });
+      return handlers.get(name)?.({ type: name, ...event }, ctx);
+    },
   };
 }
 
 const call = (tool: ToolDefinition, params: unknown) =>
   tool.execute("id", params as never, undefined, undefined, undefined as never);
 
-test("is inert without --scenario", () => {
+test("is inert until a scenario is announced (no --scenario)", () => {
   const pi = fakePi({});
   pi.emit("session_start");
   assert.equal(pi.tools.length, 0);
   assert.equal(pi.emit("agent_before_settle", { outcome: "completed" }), undefined);
 });
 
-test("unknown scenario: records an error entry and shuts down", () => {
+test("unknown scenario: records an error entry, no tool (the profile extension shuts down)", () => {
   const pi = fakePi({ scenario: "nope" });
   pi.emit("session_start");
   assert.equal(pi.tools.length, 0);
-  assert.equal(pi.shutdown, true);
   assert.equal(pi.entries[0].customType, ENTRY.error);
   assert.match((pi.entries[0].data as { message: string }).message, /Unknown scenario/);
 });

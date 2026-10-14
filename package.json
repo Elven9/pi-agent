@@ -15,6 +15,7 @@
   ],
   "pi": {
     "extensions": [
+      "./dist/scenario-profile.js",
       "./src/project/index.ts",
       "./src/metrics/index.ts",
       "./src/session-upload/index.ts"

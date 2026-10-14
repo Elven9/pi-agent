@@ -20,15 +20,22 @@ const USAGE =
 
 /**
  * Where the extensions and the app root (with skills/) are. Bundled: dist/pi-agent.js next to
- * dist/extension.js, dist/project.js and dist/metrics.js. From source (node src/wrapper/main.ts): pi loads the
- * .ts extensions, which import .md files, so pi needs the same loader hook as `npm run dev`.
+ * dist/extension.js, dist/scenario-profile.js, dist/project.js and dist/metrics.js. From source
+ * (node src/wrapper/main.ts): pi loads the .ts extensions, which import .md files, so pi needs the same loader hook as `npm run dev`.
  */
-function locate(): { extensionPath: string; projectExtensionPath: string; metricsExtensionPath: string; rootDir: string } {
+function locate(): {
+  extensionPath: string;
+  scenarioProfileExtensionPath: string;
+  projectExtensionPath: string;
+  metricsExtensionPath: string;
+  rootDir: string;
+} {
   const here = dirname(fileURLToPath(import.meta.url));
   const bundled = join(here, "extension.js");
   if (existsSync(bundled)) {
     return {
       extensionPath: bundled,
+      scenarioProfileExtensionPath: join(here, "scenario-profile.js"),
       projectExtensionPath: join(here, "project.js"),
       metricsExtensionPath: join(here, "metrics.js"),
       rootDir: dirname(here),
@@ -41,6 +48,7 @@ function locate(): { extensionPath: string; projectExtensionPath: string; metric
   }
   return {
     extensionPath: join(here, "../extension/index.ts"),
+    scenarioProfileExtensionPath: join(here, "../scenario-profile/index.ts"),
     projectExtensionPath: join(here, "../project/index.ts"),
     metricsExtensionPath: join(here, "../metrics/index.ts"),
     rootDir: resolve(here, "../.."),

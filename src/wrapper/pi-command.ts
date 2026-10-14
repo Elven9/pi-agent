@@ -7,6 +7,8 @@ export interface PiCommandOptions {
   scenario: Scenario;
   /** Bundled runner extension (dist/extension.js). */
   extensionPath: string;
+  /** Bundled scenario profile extension (dist/scenario-profile.js): system prompt, tools, skills. */
+  scenarioProfileExtensionPath: string;
   /** Bundled project context extension (dist/project.js). Always loaded: it also adds AGENTS.md. */
   projectExtensionPath: string;
   /** Bundled metrics extension (dist/metrics.js): writes pi-agent.metrics entries. */
@@ -23,14 +25,18 @@ export interface PiCommandOptions {
 /**
  * pi CLI arguments for one scenario run. Loads nothing implicitly: no discovered extensions,
  * skills, prompt templates, context files, themes, MCP or project config (the workdir is not
- * trusted). Only the runner, project and metrics extensions, the given skills and the scenario's tools. Context
- * files (AGENTS.md) come from the project extension, after skills, not from pi (`-nc`).
+ * trusted). Only the runner, scenario profile, project and metrics extensions, the given skills
+ * and the scenario's tools. The system prompt comes from the scenario profile extension (`--scenario`),
+ * which also applies the tools and skills in-process; `--tools` and `--skill` stay as the hard
+ * limits. Context files (AGENTS.md) come from the project extension, after skills, not from pi (`-nc`).
  */
 export function piArgs(o: PiCommandOptions): string[] {
   const { task, scenario } = o;
   return [
     "--mode", "json",
-    "-ne", "-e", o.extensionPath, "-e", o.projectExtensionPath, "-e", o.metricsExtensionPath,
+    "-ne",
+    "-e", o.extensionPath, "-e", o.scenarioProfileExtensionPath,
+    "-e", o.projectExtensionPath, "-e", o.metricsExtensionPath,
     "--no-mcp",
     "-ns", ...o.skillPaths.flatMap((p) => ["--skill", p]),
     "-np",
@@ -43,7 +49,6 @@ export function piArgs(o: PiCommandOptions): string[] {
     "--tools", [...scenario.tools, SUBMIT_RESULT].join(","),
     ...(task.model ? ["--model", task.model] : []),
     ...(task.thinkingLevel ? ["--thinking", task.thinkingLevel] : []),
-    "--system-prompt", scenario.systemPrompt,
     `--${SCENARIO_FLAG}`, scenario.name,
     ...(o.projectDir ? [`--${PROJECT_FLAG}`, o.projectDir] : []),
     "--", task.prompt,
