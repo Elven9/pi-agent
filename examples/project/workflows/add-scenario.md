@@ -1,6 +1,7 @@
 # Add a scenario
 
-1. Write the system prompt in `src/shared/scenarios/prompts/<name>.md`.
+1. Write the system prompt in `src/shared/scenarios/prompts/<name>.md`. Don't tell the model to
+   call `submit_result`: the runner adds that line to every scenario's prompt.
 2. Create `src/shared/scenarios/<name>.ts` with `defineScenario({ ... })`: `name`, `detailKind`
    (`<name>/v1`), `systemPrompt` (`import systemPrompt from "./prompts/<name>.md"`), `tools`, and
    a TypeBox object `detailSchema`. Register it in `src/shared/scenarios/index.ts` (add it to

@@ -39,7 +39,7 @@ The scenario's prompt replaces pi's default preamble (appended prompts, context 
 and project context still follow). Built-in tools are exactly the scenario's; tools from other
 extensions (MCP, personal) stay. Skills of other scenarios (`skills/<other>/`) are left out of
 the prompt; shared, grouped and skills from outside this package stay. There is no
-`submit_result`: the scenario prompt still asks for it, so just ignore that. Without
+`submit_result` and no instruction to call it: both come from the runner extension. Without
 `--scenario` the extension does nothing.
 
 ```sh
@@ -121,7 +121,7 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js
      ▲                    │    --scenario <name> [--project <dir>] … -- <prompt>
      │                    │  scenario-profile: owns --scenario; system prompt, tools, skills
-     │                    │  extension: submit_result, nudge once
+     │                    │  extension: submit_result + instruction, nudge once
      │                    │  project:   project sections in the system prompt, cache split
      │                    │  metrics:   pi-agent.metrics entry at every settle
      └──── JSONL events ──┘  (stdout, read continuously; split on LF only)
@@ -199,11 +199,15 @@ A scenario is a profile (system prompt, tools, skills) plus a TypeBox `detail` o
 any `detail` object), because tool definitions start the cached prompt prefix. The extension
 sends the detail schema once as a message after the task prompt (`pi-agent.result-format`) and
 validates `detail` in the tool, so an invalid call fails and the model can retry; the wrapper
-checks the result again. Without a valid call the agent is
+checks the result again. It also adds one line to every scenario's system prompt, as pi's
+append prompt (the `<addendum>` right after the scenario prompt): "When you are done, call the
+submit_result tool exactly once with your final result." (`SUBMIT_INSTRUCTION`), so scenario
+prompts don't mention `submit_result`. Without a valid call the agent is
 nudged once, then the status is `no_result`. `submit_result` ends the run (`terminate: true`),
 which saves a model request.
 
-To add one, write the system prompt in `src/shared/scenarios/prompts/<name>.md`, create
+To add one, write the system prompt in `src/shared/scenarios/prompts/<name>.md` (without the
+submit instruction), create
 `src/shared/scenarios/<name>.ts` with `defineScenario({...})` (`import systemPrompt from
 "./prompts/<name>.md"`) and register it in `src/shared/scenarios/index.ts`. esbuild inlines the
 Markdown into the bundles (`loader: { ".md": "text" }`), so `dist/` needs no `.md` files; tests and

@@ -1,13 +1,13 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ENTRY, SCENARIO_CHANNEL, type ScenarioSelected } from "../shared/protocol.ts";
+import { ENTRY, SCENARIO_CHANNEL, SUBMIT_INSTRUCTION, type ScenarioSelected } from "../shared/protocol.ts";
 import { getScenario } from "../shared/scenarios/index.ts";
 import { RunState } from "./run-state.ts";
 
 /**
  * pi-agent runner extension. Inert until the scenario profile extension (src/scenario-profile/,
  * which owns `--scenario`) announces a scenario on SCENARIO_CHANNEL; then it registers
- * `submit_result`, sends the scenario's result format after the task prompt, and nudges the
- * model once if it stops without a result. The system prompt, tools and skills: the scenario
+ * `submit_result`, adds SUBMIT_INSTRUCTION to the system prompt, sends the scenario's result
+ * format after the task prompt, and nudges the model once if it stops without a result. The system prompt, tools and skills: the scenario
  * profile extension. Metrics: the metrics extension.
  *
  * Everything the wrapper needs ends up in pi's JSON event stream and session file, so the
@@ -37,8 +37,14 @@ export default function piAgentRunner(pi: ExtensionAPI) {
   // The result format goes into the conversation (right after the task prompt), not into the
   // tool schema, so `submit_result` stays identical across scenarios. A resumed (forked)
   // session already has it.
-  pi.on("before_agent_start", (_event, ctx) => {
+  //
+  // SUBMIT_INSTRUCTION goes into the system prompt on every prompt (pi rebuilds the options from
+  // its base each time), after anything appended by configuration. The same for every scenario,
+  // so it stays in the shared cached part of the prompt (block A).
+  pi.on("before_agent_start", (event, ctx) => {
     if (!run) return;
+    const options = event.systemPromptOptions;
+    options.appendSystemPrompt = [options.appendSystemPrompt, SUBMIT_INSTRUCTION].filter(Boolean).join("\n\n");
     const sent = ctx.sessionManager
       .getBranch()
       .some((e) => e.type === "custom_message" && e.customType === ENTRY.resultFormat);

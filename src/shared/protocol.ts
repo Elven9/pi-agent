@@ -28,6 +28,13 @@ export const PROJECT_FLAG = "project";
 /** Tool the agent calls with its final result. Its `details` are a `SubmittedResult`. */
 export const SUBMIT_RESULT = "submit_result";
 
+/**
+ * Added by the runner extension to every scenario's system prompt (pi's `appendSystemPrompt`,
+ * the `<addendum>` right after the scenario prompt), so scenario prompts don't repeat it.
+ */
+export const SUBMIT_INSTRUCTION =
+  "When you are done, call the submit_result tool exactly once with your final result.";
+
 /** Sent once (as a custom message) when the agent stops without a valid `submit_result`. */
 export const RESUBMIT_PROMPT =
   "You have not submitted a valid result yet. Call the submit_result tool now with your final result.";
