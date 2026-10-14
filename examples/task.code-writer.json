@@ -1,0 +1,7 @@
+{
+  "taskId": "code-writer-example-001",
+  "scenario": "code-writer",
+  "prompt": "Create a small Go HTTP service in this directory: GET /healthz returns 200 with {\"status\":\"ok\"}. Read the port from config (default 8080). Add a test for the handler.",
+  "model": "cpa/claude-haiku-4-5-20251001",
+  "thinkingLevel": "low"
+}
