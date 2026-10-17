@@ -3,7 +3,7 @@
 # Keep these in sync with .nvmrc and the pi devDependency in package.json (the extension, the
 # session parser and the test fixtures are tied to that pi version).
 ARG NODE_VERSION=26.10.0
-ARG PI_VERSION=1.2.0
+ARG PI_VERSION=1.3.0
 
 # ---- build: bundle the wrapper and the extension ----
 FROM node:${NODE_VERSION}-bookworm-slim AS build

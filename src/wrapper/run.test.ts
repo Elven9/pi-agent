@@ -9,7 +9,7 @@ import { getScenario } from "../shared/scenarios/index.ts";
 import type { Task } from "../shared/task.ts";
 import { runTask, type RunOptions } from "./run.ts";
 
-// Wrapper end to end against testdata/fake-pi.mjs, which replays a recorded pi 1.0.4 run
+// Wrapper end to end against testdata/fake-pi.mjs, which replays a recorded pi 1.3.0 run
 // (testdata/demo-run.*: the demo scenario calling bash, read and submit_result).
 // Re-record the fixtures when updating pi (see README).
 
@@ -69,7 +69,7 @@ test("recorded demo run: ok with result, tool calls, usage and session file", as
   assert.deepEqual(report.errors, []);
   assert.deepEqual(report.result, {
     summary:
-      "pi-agent is a Node.js CLI tool that provides pi resources (skills and prompts) along with a sandbox runner that includes extensions and generates report.json files.",
+      "pi-agent is a pi package that provides resources (skills, prompts) and a sandbox runner combining the stock pi CLI with extensions and a wrapper that generates report.json.",
     detailKind: "demo/v1",
     detail: { projectName: "pi-agent", filesRead: ["package.json"] },
   });
@@ -78,8 +78,8 @@ test("recorded demo run: ok with result, tool calls, usage and session file", as
     [["bash", 1, false], ["read", 2, false], ["submit_result", 3, false]],
   );
   const m = report.metrics;
-  assert.deepEqual(m.tokens, { input: 5661, output: 592, cacheRead: 0, cacheWrite: 0 });
-  assert.equal(m.costUsd, 0.008621);
+  assert.deepEqual(m.tokens, { input: 5612, output: 602, cacheRead: 0, cacheWrite: 0 });
+  assert.equal(m.costUsd, 0.008622);
   assert.equal(m.turns, 3);
   assert.equal(m.model.calls, 3);
   assert.equal(m.contextPeakPercent, 1);
@@ -88,8 +88,8 @@ test("recorded demo run: ok with result, tool calls, usage and session file", as
   assert.ok(!args.includes("--project"));
   assert.deepEqual(Object.keys(m.tools).sort(), ["bash", "read", "submit_result"]);
   assert.deepEqual(report.session, {
-    id: "01a1392b-dd01-76b3-b92f-edf25d808dbd",
-    file: "sessions/2026-01-01T00-00-00-000Z_01a1392b-dd01-76b3-b92f-edf25d808dbd.jsonl",
+    id: "01a14a10-aef5-74b5-bb5f-ee5f99124061",
+    file: "sessions/2026-01-01T00-00-00-000Z_01a14a10-aef5-74b5-bb5f-ee5f99124061.jsonl",
   });
 });
 
