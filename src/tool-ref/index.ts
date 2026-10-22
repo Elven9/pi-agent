@@ -4,6 +4,7 @@ import { ENTRY, TOOL_RESULT_REWRITER_CHANNEL, type ToolResultRewriterAnnounced }
 import { parseHandle, trailerText } from "../shared/tool-ref.ts";
 import { HandleCounter } from "./counter.ts";
 import { DEFAULT_MAX_CHARS, formatGetMany, formatGrep, grepRefs, MAX_REFS, type GetOptions, type GrepOptions } from "./format.ts";
+import { hideTrailer } from "./render.ts";
 import { indexBranch, loadSettings, TOOL_REF_GET, TOOL_REF_GREP, type ToolRefSettings } from "./resolver.ts";
 
 /**
@@ -94,6 +95,9 @@ export default function toolRef(pi: ExtensionAPI) {
     const n = counter.take(ctx.sessionManager);
     return { message: { ...message, content: [...message.content, { type: "text", text: trailerText(n) }] } };
   });
+
+  // Display only: the trailer is hidden in the interactive UI, kept in the session and the context.
+  pi.registerToolRenderer(hideTrailer);
 
   const index = (ctx: ExtensionContext) =>
     indexBranch(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId(), settings.exclude);

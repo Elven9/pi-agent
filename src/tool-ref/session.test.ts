@@ -230,3 +230,12 @@ test("numbering continues after a reload and in a resumed session (max of the fi
   assert.deepEqual(savedHandles(resumed.sessionManager).map(([, n]) => n), [1, 2, 3, 4]);
   resumed.session.dispose();
 });
+
+test("the renderer resolver is registered with pi's runner", async () => {
+  const { session } = await makeSession();
+  let seen: unknown;
+  const set = session.extensionRunner.resolveToolRenderers("bash", () => ({ renderResult: (r: unknown) => ((seen = r), {} as never) }));
+  set!.renderResult!({ content: [{ type: "text", text: "x" }, { type: "text", text: "[tool-ref #1]" }], details: {} }, { expanded: false, isPartial: false }, {} as never, {} as never);
+  assert.deepEqual(seen, { content: [{ type: "text", text: "x" }], details: {} });
+  session.dispose();
+});
