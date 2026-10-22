@@ -7,7 +7,7 @@ import {
   DEFAULT_MAX_CHARS,
   formatGetMany,
   formatGrep,
-  formatRefView,
+  refViewSections,
   grepRefs,
   MAX_REFS,
   parseRefArgs,
@@ -16,6 +16,7 @@ import {
 } from "./format.ts";
 import { hideTrailer } from "./render.ts";
 import { indexBranch, loadSettings, TOOL_REF_GET, TOOL_REF_GREP, type ToolRefSettings } from "./resolver.ts";
+import { Summarizer } from "./summary.ts";
 import { RefViewer, VIEWER_OVERLAY } from "./viewer.ts";
 
 /**
@@ -114,6 +115,25 @@ export default function toolRef(pi: ExtensionAPI) {
   const index = (ctx: ExtensionContext) =>
     indexBranch(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId(), settings.exclude);
 
+  /** Quick summaries for the `/ref` panel, only with `toolRef.summaryModel` (`provider/modelId`). */
+  const makeSummarizer = (ctx: ExtensionContext): Summarizer | undefined => {
+    const label = settings.summaryModel;
+    if (!label) return undefined;
+    const slash = label.indexOf("/");
+    const model = slash > 0 ? ctx.modelRegistry.find(label.slice(0, slash), label.slice(slash + 1)) : undefined;
+    if (!model) {
+      ctx.ui.notify(`toolRef.summaryModel: no model "${label}" (use provider/modelId); summaries are off`, "warning");
+      return undefined;
+    }
+    if (!ctx.modelRegistry.hasConfiguredAuth(model)) {
+      ctx.ui.notify(`toolRef.summaryModel: no credentials for ${label}; summaries are off`, "warning");
+      return undefined;
+    }
+    return new Summarizer(label, ctx.sessionManager.getSessionId(), (context, signal) =>
+      ctx.modelRegistry.streamSimple(model, context, { signal, cacheRetention: "none" }),
+    );
+  };
+
   // For the user: the original input and output of calls by handle, excluded ones included.
   pi.registerCommand("ref", {
     description: "Show the original input and output of tool calls by handle: /ref 12 [14 ...]",
@@ -125,14 +145,16 @@ export default function toolRef(pi: ExtensionAPI) {
         ctx.ui.notify((err as Error).message, "error");
         return;
       }
-      const body = formatRefView(index(ctx), refs);
+      const sections = refViewSections(index(ctx), refs);
       // Only the interactive UI can float a panel; other modes keep the notification.
       if (ctx.mode !== "tui") {
-        ctx.ui.notify(body, "info");
+        ctx.ui.notify(sections.map((s) => s.text).join("\n\n"), "info");
         return;
       }
+      const summarizer = makeSummarizer(ctx);
       await ctx.ui.custom<void>(
-        (tui, theme, _keybindings, done) => new RefViewer(tui, theme, `/ref ${refs.join(" ")}`, body, () => done()),
+        (tui, theme, _keybindings, done) =>
+          new RefViewer(tui, theme, `/ref ${refs.join(" ")}`, sections, summarizer, () => done()),
         { overlay: true, overlayOptions: VIEWER_OVERLAY },
       );
     },

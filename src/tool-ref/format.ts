@@ -217,11 +217,27 @@ export function parseRefArgs(args: string): number[] {
  * shown too, marked; other problems (unknown, other branch, ambiguous) inline as in `get`.
  */
 export function formatRefView(index: ToolRefIndex, refs: number[]): string {
-  const texts: string[] = [];
+  return refViewSections(index, refs)
+    .map((s) => s.text)
+    .join("\n\n");
+}
+
+/** One `/ref` section: a resolved call (`ref`, `header`) or an error line (`text` only). */
+export interface RefSection {
+  handle: number;
+  ref?: ToolRef & { handle: number };
+  /** `#N tool ok|ERR`, for resolved calls. */
+  header?: string;
+  text: string;
+}
+
+/** `/ref` text per handle (duplicates dropped), in the given order. */
+export function refViewSections(index: ToolRefIndex, refs: number[]): RefSection[] {
+  const sections: RefSection[] = [];
   for (const n of new Set(refs)) {
     const r = resolveHandle(index, n, { allowExcluded: true });
     if (r.error !== undefined) {
-      texts.push(r.error);
+      sections.push({ handle: n, text: r.error });
       continue;
     }
     const ref = r.ref as ToolRef & { handle: number };
@@ -235,9 +251,10 @@ export function formatRefView(index: ToolRefIndex, refs: number[]): string {
     // Input and output separately, each without formatGet's header line; a blank line between parts.
     const part = (p: Part) => formatGet(ref, { part: p, maxChars: Number.POSITIVE_INFINITY }).text.split("\n").slice(1);
     const header = `#${ref.handle} ${ref.toolName} ${status(ref)}`;
-    texts.push([`──── ${header} ────`, facts.join(" · "), "", ...part("input"), "", ...part("output")].join("\n"));
+    const text = [`──── ${header} ────`, facts.join(" · "), "", ...part("input"), "", ...part("output")].join("\n");
+    sections.push({ handle: n, ref, header, text });
   }
-  return texts.join("\n\n");
+  return sections;
 }
 
 export type Where = "in" | "out";

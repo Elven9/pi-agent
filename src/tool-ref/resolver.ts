@@ -16,13 +16,20 @@ export const DEFAULT_EXCLUDE: readonly string[] = ["submit_result"];
 export interface ToolRefSettings {
   /** Tools whose results `get` and `grep` refuse to show (tool-ref's own tools come on top). */
   exclude: string[];
+  /** `provider/modelId` for the `/ref` panel's quick summary; no default, the feature is off without it. */
+  summaryModel?: string;
 }
 
 /** `toolRef` from pi's merged settings (`pi.getSettings()`), with defaults applied. */
 export function loadSettings(settings: unknown): ToolRefSettings {
-  const exclude = (settings as { toolRef?: { exclude?: unknown } } | undefined)?.toolRef?.exclude;
-  if (Array.isArray(exclude) && exclude.every((t) => typeof t === "string")) return { exclude: [...exclude] };
-  return { exclude: [...DEFAULT_EXCLUDE] };
+  const toolRef = (settings as { toolRef?: { exclude?: unknown; summaryModel?: unknown } } | undefined)?.toolRef;
+  const exclude = toolRef?.exclude;
+  const result: ToolRefSettings = {
+    exclude: Array.isArray(exclude) && exclude.every((t) => typeof t === "string") ? [...exclude] : [...DEFAULT_EXCLUDE],
+  };
+  const model = toolRef?.summaryModel;
+  if (typeof model === "string" && model.trim() !== "") result.summaryModel = model.trim();
+  return result;
 }
 
 /** The parts of a session entry the resolver reads (pi's `SessionEntry` fits). */

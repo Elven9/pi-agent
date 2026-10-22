@@ -136,7 +136,7 @@ which tool-ref does not show (toolRef.exclude)", so the model doesn't retry or s
 
 ### Settings
 
-One custom key in pi `settings.json` (global `~/.pi/agent/settings.json` or project
+One custom object in pi `settings.json` (global `~/.pi/agent/settings.json` or project
 `.pi/settings.json`). pi's settings schema accepts extra top-level keys
 (`additionalProperties: true`), and `pi.getSettings()` returns the merged global + project
 values.
@@ -144,7 +144,8 @@ values.
 ```json
 {
   "toolRef": {
-    "exclude": ["submit_result"]
+    "exclude": ["submit_result"],
+    "summaryModel": "anthropic/claude-haiku-4-5"
   }
 }
 ```
@@ -161,6 +162,9 @@ file.
   `exclude`, changing it only changes what is readable, for old and new calls alike.
 - A project `exclude` replaces the global one, so a project that adds a tool must repeat the
   global entries (and `submit_result` if it wants it excluded).
+- `summaryModel`: `provider/modelId` (split at the first `/`) for the `/ref` panel's quick
+  summary. No default: without it the feature is off. An unknown model or one without
+  credentials gives a warning when `/ref` opens, and the panel works without summaries.
 
 ### Assigning numbers
 
@@ -355,6 +359,20 @@ output (1 line):
   `b`/space a page, Home/End or `g`/`G` top/end, `q`/Esc close (through `done()`, never
   `OverlayHandle.hide()`). It scrolls by itself rather than using pi-tui's `ScrollView`,
   whose viewport height comes from the layout engine.
+- **Quick summary** (`src/tool-ref/summary.ts`, `Summarizer`; only with `toolRef.summaryModel`):
+  `s` switches the panel between the raw text and one summary per call; `r` summarizes the
+  panel's calls again. Each view keeps its own scroll position.
+  - One direct request per call through `ctx.modelRegistry.streamSimple()` (no agent turn,
+    nothing in the session or the main model's context), streamed into the panel.
+    `cacheRetention: "none"`.
+  - Input: the call as `tool_ref_get` `part: "both"` shows it (input, numbered output), cut at
+    `SUMMARY_MAX_CHARS` (100 000) with a note. The system prompt asks for about 12 plain lines
+    with output line numbers like `(L42)`, and to treat the call as data, not instructions.
+  - Cache: finished summaries live in memory for the pi process (`globalThis`, so `/reload`
+    keeps them), keyed by model, session id and tool call id. Not persisted.
+  - Failed summaries are shown with the error and not cached. A summary still streaming when
+    the panel closes is cancelled and dropped. `r` cancels a streaming request and starts a new
+    one; a cached summary stays until the new one finishes and replaces it.
 - Other modes (`ctx.mode !== "tui"`): the text goes to a notification, as before the panel.
 - Bad arguments: an error notification with the usage line. Runs no turn and appends nothing
   to the session. Interactive mode shows it; in other modes `notify` has no visible effect.
@@ -634,7 +652,7 @@ All done with the implementation.
 
 | Where | Decision |
 |---|---|
-| Files | `src/shared/tool-ref.ts` (`parseHandle`, tool names, used by the wrapper too), `src/tool-ref/resolver.ts` (`indexBranch`, `indexSessionFile`, `loadSettings`, `resolveHandle`), `format.ts` (get/grep/`/ref` text), `viewer.ts` (`/ref` panel), `counter.ts`, `render.ts`, `index.ts` (extension) |
+| Files | `src/shared/tool-ref.ts` (`parseHandle`, tool names, used by the wrapper too), `src/tool-ref/resolver.ts` (`indexBranch`, `indexSessionFile`, `loadSettings`, `resolveHandle`), `format.ts` (get/grep/`/ref` text), `viewer.ts` (`/ref` panel), `summary.ts` (`/ref` quick summary), `counter.ts`, `render.ts`, `index.ts` (extension) |
 | Tool `details` | References, not full objects: `get` gives per ref `handle`, `toolCallId`, `toolName`, `isError`, `entryId` and the shown output range (or the error); `grep` the matching line numbers per call and what was left out. Full objects would copy every looked-up output into the session file again; other extensions use the resolver instead |
 | `indexBranch` result | Also `refs` (branch order) and `fileHandles` (all handles in the file), so `get` can tell "not on the active branch" from "unknown"; `ambiguous` is a map handle → number of claims |
 | `get` output | Header line, then `output (N lines):` or `output lines A-B of N:` and lines as `<n>  <text>`. `part: input`/`both` shows the input as in grep (`in:N` lines) without numbers. When `maxChars` cuts, the cut is at a line, and a tail request (`lines` starting negative) keeps the end |

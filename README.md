@@ -93,6 +93,11 @@ transcript. The interactive UI hides the trailer; the session file keeps it.
 names tools whose results the two tools won't show; default `["submit_result"]`. Excluded
 calls are still numbered. Read at session start (`/reload` applies a change).
 
+`toolRef.summaryModel` (`provider/modelId`, e.g. `"anthropic/claude-haiku-4-5"`; no default)
+turns on quick summaries in the `/ref` panel: `s` switches to one summary per call, streamed
+from that model, and `r` summarizes them again. Summaries are kept in memory for the pi
+process only (reopening a ref shows them at once); nothing is written to the session.
+
 Never put
 `~/.pi/agent` itself under git: it mixes secrets (`auth.json`, `models.json` keys), state
 (`sessions/`, `trust.json`, `models-store.json`) and downloaded binaries (`bin/`).

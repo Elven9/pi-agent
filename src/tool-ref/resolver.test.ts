@@ -11,6 +11,12 @@ test("loadSettings: default, custom list, invalid values", () => {
   assert.deepEqual(loadSettings({ toolRef: { exclude: ["a", "b"] } }), { exclude: ["a", "b"] });
   assert.deepEqual(loadSettings({ toolRef: { exclude: [] } }), { exclude: [] });
   assert.deepEqual(loadSettings({ toolRef: { exclude: "a" } }), { exclude: ["submit_result"] });
+  assert.deepEqual(loadSettings({ toolRef: { summaryModel: " anthropic/claude-haiku-4-5 " } }), {
+    exclude: ["submit_result"],
+    summaryModel: "anthropic/claude-haiku-4-5",
+  });
+  assert.deepEqual(loadSettings({ toolRef: { summaryModel: "" } }), { exclude: ["submit_result"] });
+  assert.deepEqual(loadSettings({ toolRef: { summaryModel: 3 } }), { exclude: ["submit_result"] });
 });
 
 test("indexes the branch: input, output without trailer, timing, entry id", () => {
