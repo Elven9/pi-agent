@@ -327,7 +327,8 @@ Known limits:
 ### `/ref` command
 
 For the user, not the model: `/ref 12`, `/ref #12 #14` or `/ref 12,14` (at most 10 handles)
-shows each call in a notification:
+shows each call in a floating panel (interactive mode) that closes without leaving anything in
+the transcript:
 
 ```
 ──── #14 bash ERR ────
@@ -348,6 +349,13 @@ output (1 line):
   handles.
 - **Excluded calls are shown**, marked "excluded from tool_ref_get/grep": `toolRef.exclude`
   keeps plumbing out of the model's lookups, not out of the user's.
+- **Panel** (`src/tool-ref/viewer.ts`, `RefViewer`): `ctx.ui.custom()` with `overlay: true`,
+  90% wide, 80% high, centred. Lines wrap to the panel width; the title row shows the visible
+  range when the text is longer than the panel. Keys: ↑/↓ or `j`/`k` a line, PgUp/PgDn or
+  `b`/space a page, Home/End or `g`/`G` top/end, `q`/Esc close (through `done()`, never
+  `OverlayHandle.hide()`). It scrolls by itself rather than using pi-tui's `ScrollView`,
+  whose viewport height comes from the layout engine.
+- Other modes (`ctx.mode !== "tui"`): the text goes to a notification, as before the panel.
 - Bad arguments: an error notification with the usage line. Runs no turn and appends nothing
   to the session. Interactive mode shows it; in other modes `notify` has no visible effect.
 
@@ -624,7 +632,7 @@ All done with the implementation.
 
 | Where | Decision |
 |---|---|
-| Files | `src/shared/tool-ref.ts` (`parseHandle`, tool names, used by the wrapper too), `src/tool-ref/resolver.ts` (`indexBranch`, `indexSessionFile`, `loadSettings`, `resolveHandle`), `format.ts` (get/grep/`/ref` text), `counter.ts`, `render.ts`, `index.ts` (extension) |
+| Files | `src/shared/tool-ref.ts` (`parseHandle`, tool names, used by the wrapper too), `src/tool-ref/resolver.ts` (`indexBranch`, `indexSessionFile`, `loadSettings`, `resolveHandle`), `format.ts` (get/grep/`/ref` text), `viewer.ts` (`/ref` panel), `counter.ts`, `render.ts`, `index.ts` (extension) |
 | Tool `details` | References, not full objects: `get` gives per ref `handle`, `toolCallId`, `toolName`, `isError`, `entryId` and the shown output range (or the error); `grep` the matching line numbers per call and what was left out. Full objects would copy every looked-up output into the session file again; other extensions use the resolver instead |
 | `indexBranch` result | Also `refs` (branch order) and `fileHandles` (all handles in the file), so `get` can tell "not on the active branch" from "unknown"; `ambiguous` is a map handle → number of claims |
 | `get` output | Header line, then `output (N lines):` or `output lines A-B of N:` and lines as `<n>  <text>`. `part: input`/`both` shows the input as in grep (`in:N` lines) without numbers. When `maxChars` cuts, the cut is at a line, and a tail request (`lines` starting negative) keeps the end |

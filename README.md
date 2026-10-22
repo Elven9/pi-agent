@@ -85,8 +85,9 @@ number. Numbers are unique per session file. `tool_ref_get` shows results by han
 for a range, `part: input|both`), `tool_ref_grep` finds calls by regex over input and output
 (`pattern: ".", in: "input"` lists them). Both read the raw session entries of the active
 branch, so compaction does not hide anything. For yourself, `/ref 12 [14 ...]` shows the
-whole original input and output of calls by handle, excluded ones included. The interactive UI hides the trailer; the session
-file keeps it.
+whole original input and output of calls by handle, excluded ones included, in a floating panel
+(scroll with ↑/↓, `j`/`k`, PgUp/PgDn; close with `q` or Esc) that leaves nothing in the
+transcript. The interactive UI hides the trailer; the session file keeps it.
 
 `toolRef.exclude` in `settings.json` (global or project; a project list replaces the global one)
 names tools whose results the two tools won't show; default `["submit_result"]`. Excluded

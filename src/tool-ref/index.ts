@@ -16,6 +16,7 @@ import {
 } from "./format.ts";
 import { hideTrailer } from "./render.ts";
 import { indexBranch, loadSettings, TOOL_REF_GET, TOOL_REF_GREP, type ToolRefSettings } from "./resolver.ts";
+import { RefViewer, VIEWER_OVERLAY } from "./viewer.ts";
 
 /**
  * tool-ref extension: every tool result gets a short handle (`[tool-ref #12]`, its own text
@@ -123,7 +124,16 @@ export default function toolRef(pi: ExtensionAPI) {
         ctx.ui.notify((err as Error).message, "error");
         return;
       }
-      ctx.ui.notify(formatRefView(index(ctx), refs), "info");
+      const body = formatRefView(index(ctx), refs);
+      // Only the interactive UI can float a panel; other modes keep the notification.
+      if (ctx.mode !== "tui") {
+        ctx.ui.notify(body, "info");
+        return;
+      }
+      await ctx.ui.custom<void>(
+        (tui, theme, _keybindings, done) => new RefViewer(tui, theme, `/ref ${refs.join(" ")}`, body, () => done()),
+        { overlay: true, overlayOptions: VIEWER_OVERLAY },
+      );
     },
   });
 
