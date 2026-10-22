@@ -332,12 +332,15 @@ shows each call in a notification:
 ```
 ──── #14 bash ERR ────
 call toolu_01… · started 2026-10-22T08:15:02.000Z · 12 ms · entry 3f2a…
+
 input:
 apfs-fuse /dev/sdb2 /mnt/mac
+
 output (1 line):
 1  apfs-fuse: no such device
 ```
 
+- Details, input and output are separated by a blank line; each call starts with a `────` header.
 - The whole input and the whole persisted output, with line numbers, without the trailer and
   without a character cap (no model tokens are spent).
 - Same resolver as the tools: active branch only, raw entries (compaction and `context_edit`

@@ -232,9 +232,10 @@ export function formatRefView(index: ToolRefIndex, refs: number[]): string {
       `entry ${ref.entryId}`,
       ref.excluded && "excluded from tool_ref_get/grep",
     ].filter(Boolean);
-    const { text } = formatGet(ref, { part: "both", maxChars: Number.POSITIVE_INFINITY });
-    const [header, ...body] = text.split("\n");
-    texts.push([`──── ${header} ────`, facts.join(" · "), ...body].join("\n"));
+    // Input and output separately, each without formatGet's header line; a blank line between parts.
+    const part = (p: Part) => formatGet(ref, { part: p, maxChars: Number.POSITIVE_INFINITY }).text.split("\n").slice(1);
+    const header = `#${ref.handle} ${ref.toolName} ${status(ref)}`;
+    texts.push([`──── ${header} ────`, facts.join(" · "), "", ...part("input"), "", ...part("output")].join("\n"));
   }
   return texts.join("\n\n");
 }

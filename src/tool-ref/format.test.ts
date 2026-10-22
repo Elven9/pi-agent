@@ -203,20 +203,23 @@ test("/ref view: whole input and output, details, excluded calls shown, errors i
   const { formatRefView } = await import("./format.ts");
   const { index } = session();
   const text = formatRefView(index, [3, 4, 2, 99]);
-  const [bash, submit, read, unknown] = text.split("\n\n");
+  // Refs start with a ──── header line (or are an error line), parts are split by blank lines.
+  const [bash, submit, read, unknown] = text.split(/\n\n(?=────|#)/);
   assert.equal(
     bash,
     [
       "──── #3 bash ERR ────",
       `call c3 · started ${index.byHandle.get(3)!.startedAt} · entry ${index.byHandle.get(3)!.entryId}`,
+      "",
       "input:",
       "apfs-fuse /dev/sdb2 /mnt/mac",
       "echo done",
+      "",
       "output (1 line):",
       "1  apfs-fuse: no such device",
     ].join("\n"),
   );
-  assert.match(submit, /^──── #4 submit_result ok ────\n.*excluded from tool_ref_get\/grep\ninput:\nsummary: apfs\noutput \(1 line\):\n1  Result recorded\.$/);
+  assert.match(submit, /^──── #4 submit_result ok ────\n.*excluded from tool_ref_get\/grep\n\ninput:\nsummary: apfs\n\noutput \(1 line\):\n1  Result recorded\.$/);
   // No character cap: all 120 lines.
   assert.match(read, /output \(120 lines\):[\s\S]*120  line 120$/);
   assert.doesNotMatch(read, /not shown/);
