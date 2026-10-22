@@ -35,6 +35,7 @@ import { RefViewer, VIEWER_OVERLAY } from "./viewer.ts";
 /** Constant (no session data), so the system prompt stays cacheable. */
 export const GUIDELINES = [
   "Every tool result ends with `[tool-ref #N]`. Cite evidence by number, not by copying output.",
+  "When you show the user results, a summary or a conclusion, cite the tool results behind each claim inline, e.g. `the build fails on missing headers (#12)` or `(#12, #14)`.",
   "To see earlier results again, use `tool_ref_get` (with `lines`) instead of re-running the command.",
   "To find earlier calls, e.g. after context was summarized, use `tool_ref_grep`.",
 ];
