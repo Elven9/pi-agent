@@ -23,6 +23,31 @@ export function scenarioActiveTools(scenarioTools: readonly string[], active: re
 }
 
 /**
+ * The `<rules>` section for a scenario prompt. pi builds `<rules>` only for its default prompt,
+ * so with `customPrompt` extension tools' `promptGuidelines` would be lost. This restores just
+ * those: guidelines of active tools that are not built-in (in active order), then the run's
+ * global `promptGuidelines`; trimmed and de-duplicated like pi does. Built-in tools' guidelines
+ * and pi's fixed rules ("Be concise", ...) stay out: the scenario prompt decides those.
+ * Returns undefined when there is nothing to add.
+ */
+export function scenarioRules(
+  active: readonly string[],
+  all: readonly ToolSource[],
+  toolGuidelines: Readonly<Record<string, readonly string[]>>,
+  promptGuidelines: readonly string[],
+): string | undefined {
+  const builtin = new Set(all.filter(isBuiltinTool).map((t) => t.name));
+  const rules = new Set<string>();
+  const add = (rule: string) => {
+    const r = rule.trim();
+    if (r) rules.add(r);
+  };
+  for (const name of active) if (!builtin.has(name)) (toolGuidelines[name] ?? []).forEach(add);
+  promptGuidelines.forEach(add);
+  return rules.size > 0 ? [...rules].map((r) => `- ${r}`).join("\n") : undefined;
+}
+
+/**
  * Whether a skill stays in the prompt for `scenario`. Only this package's scenario skills
  * (`<skillsDir>/<other scenario>/<skill>/`) are dropped; shared and grouped skills, the
  * scenario's own and skills from anywhere else (personal skills, other packages) stay.

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import scenarioProfile from "./index.ts";
-import { keepSkill, scenarioActiveTools } from "./profile.ts";
+import { keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
 import { ENTRY, SCENARIO_CHANNEL } from "../shared/protocol.ts";
 import { getScenario } from "../shared/scenarios/index.ts";
 
@@ -47,6 +47,9 @@ function fakePi(flags: Record<string, string | undefined>) {
 function promptOptions() {
   return {
     customPrompt: undefined as string | undefined,
+    toolGuidelines: { read: ["Use read to examine files"], my_tool: ["Use my_tool for X"] } as Record<string, string[]>,
+    promptGuidelines: [] as string[],
+    sections: {} as Record<string, string>,
     skills: [
       skill(join(SKILLS, "shared")),
       skill(join(SKILLS, "synology", "synology-nas")),
@@ -91,7 +94,16 @@ test("applies the scenario's prompt, tools and skills", () => {
       options.skills.map((s) => s.name),
       ["shared", "synology-nas", "triage-only", "personal"],
     );
+    // Only the extension tool's guideline; read's (built-in) stays out.
+    assert.deepEqual(options.sections, { rules: "- Use my_tool for X" });
   }
+});
+
+test("scenarioRules: extension tools' and global guidelines only, de-duplicated", () => {
+  const all = [builtin("read"), builtin("bash"), fromExt("a"), fromExt("b"), fromExt("inactive")];
+  const guidelines = { read: ["r"], bash: ["b"], a: [" A1 ", "shared"], b: ["shared", ""], inactive: ["x"] };
+  assert.equal(scenarioRules(["read", "bash", "b", "a"], all, guidelines, ["global", "A1"]), "- shared\n- A1\n- global");
+  assert.equal(scenarioRules(["read", "bash"], all, guidelines, []), undefined);
 });
 
 test("scenarioActiveTools: built-ins are the scenario's, extension tools stay", () => {

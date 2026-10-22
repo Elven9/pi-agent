@@ -62,7 +62,8 @@ come after `<cwd>`, which is exactly where block B belongs.
 ```
 ┌ Block A: shared by every project, for one scenario ───────────────────┐
 │ tools: fixed for the whole run; submit_result is generic (done)        │
-│ system: preamble, APPEND_SYSTEM, skills, <cwd> (/sandbox everywhere)   │
+│ system: preamble, APPEND_SYSTEM, skills, <cwd> (/sandbox everywhere),  │
+│         <rules> (scenario-profile: extension tools' guidelines only)   │
 └──────────────────────────────────────────────────────────── ◆ marker ┘
 ┌ Block B: per project, fixed for the session ──────────────────────────┐
 │ <project> <project_rules> <agents_md> <project_commands>               │
@@ -309,7 +310,10 @@ at all, and with what review, is part of that later design.
 
 - **No reordering needed.** The wrapper already runs pi with `-na`/`-nc`, so pi's
   `project_context` is empty, and pi places extension sections after `<cwd>`. `<cwd>` therefore
-  ends block A (it is `/sandbox` in every sandbox).
+  ends block A (it is `/sandbox` in every sandbox), except that under `--scenario` the
+  scenario-profile extension adds a `<rules>` section (extension tools' `promptGuidelines`,
+  which pi drops with a custom prompt). It loads before this extension, so `<rules>` comes
+  before block B and stays in block A.
 - **Two extensions.** The runner (`dist/extension.js`) and the project extension
   (`dist/project.js`) are separate; the wrapper always loads both, because `AGENTS.md` is used
   even without a manifest.

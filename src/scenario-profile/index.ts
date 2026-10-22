@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { ENTRY, SCENARIO_CHANNEL, SCENARIO_FLAG, type ScenarioSelected } from "../shared/protocol.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
-import { keepSkill, scenarioActiveTools } from "./profile.ts";
+import { keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
 
 /**
  * This package's skills folder. Bundled: dist/scenario-profile.js -> ../skills. From source
@@ -32,6 +32,9 @@ function real(path: string): string {
  * - system prompt: the scenario's prompt replaces pi's default preamble (`customPrompt`, as
  *   `--system-prompt` would); appended prompts, context files, skills, cwd and extension
  *   sections (project context) still follow it,
+ * - rules: pi drops its `<rules>` section with a custom prompt; a `<rules>` section with only
+ *   the extension tools' `promptGuidelines` (and global ones) is added back, so extensions such
+ *   as tool-ref can give guidance in every scenario. Built-in tool rules stay out,
  * - tools: built-in tools are exactly the scenario's; tools from extensions stay,
  * - skills: other scenarios' skills (`skills/<other scenario>/`) are left out of the prompt.
  *
@@ -74,6 +77,10 @@ export default function scenarioProfile(pi: ExtensionAPI, skillsDir: string = de
     if (!scenario) return;
     const options = event.systemPromptOptions;
     options.customPrompt = scenario.systemPrompt;
+    // A custom section, so it follows <cwd>. Set before the project extension adds its
+    // sections (it loads after this one), so it stays in cache block A.
+    const rules = scenarioRules(pi.getActiveTools(), pi.getAllTools(), options.toolGuidelines, options.promptGuidelines);
+    if (rules) options.sections.rules = rules;
     const known = scenarioNames();
     const name = scenario.name;
     options.skills = options.skills.filter((s) => {
