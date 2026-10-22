@@ -1,6 +1,7 @@
 # Design: tool-call references (`tool-ref` extension)
 
-> Status: **design**, not implemented.
+> Status: **implemented** (`src/tool-ref/`, `src/shared/tool-ref.ts`); see "Implementation notes"
+> at the end for decisions made while implementing.
 > Based on pi `@earendil-works/pi-coding-agent` 1.4.0 (repo pin and global install):
 > `docs/extensions.md`, `docs/session-format.md`, `docs/compaction.md`, `docs/settings.md`,
 > `dist/core/extensions/runner.js` (`emit`, `emitToolResult`), the bundled `AgentSession`
@@ -211,7 +212,7 @@ Two order requirements, both on handler order, which follows extension load orde
 | Requirement | Why | Check |
 |---|---|---|
 | scenario-profile before project | `<rules>` must be added before the project sections, so it stays in cache block A | **Implemented.** Under `--scenario`, scenario-profile listens on `PROJECT_CHANNEL`; if the project extension announces itself (it does in its `session_start`) before scenario-profile's own `session_start` ran, the project loaded first. Error entry (`pi-agent.error`) and shutdown, like an unknown scenario. Test: `src/scenario-profile/load-order.test.ts` |
-| tool-ref last among `message_end` handlers that replace `toolResult` messages | A later handler can drop the trailer | **Task** (part of implementing tool-ref, see "Tasks"). Covers **pi-agent extensions only**; extensions outside this package are not checked |
+| tool-ref last among `message_end` handlers that replace `toolResult` messages | A later handler can drop the trailer | **Implemented.** Rewriters announce on `TOOL_RESULT_REWRITER_CHANNEL` from `session_start`; an announcement after tool-ref's own `session_start` → error entry and shutdown. Covers **pi-agent extensions only**; extensions outside this package are not checked. Test: `src/tool-ref/load-order.test.ts` |
 
 The runner (`src/wrapper/pi-command.ts`) and the package manifest already list scenario-profile
 before project.
@@ -482,11 +483,12 @@ tool results (see "Display").
   (`ContextEditEntry.replacement`), settings accept extra keys, the reload race (exists in
   print/RPC, see "Reload race"), how pi picks the leaf of a loaded file.
 - Checked in the spike: see "Spike results".
-- Verify during implementation: whether the interactive UI draws a live result from
-  `tool_execution_end` (no trailer) or from the `message_end` message; either way the
-  renderer wrapper handles results loaded from the session file.
+- Checked during implementation: the interactive UI draws a live result from
+  `tool_execution_end` (no trailer; `interactive-mode.js` `updateResult`), and results loaded
+  from the session from the message (with trailer). The renderer wrapper handles both.
 - Exact output caps for `get` and `grep` (per-call and total match caps, line window), after
-  trying on real sessions.
+  trying on real sessions. Implemented with the values above (4000 chars per ref; 5 / 50
+  matching lines; 200-char window) as constants in `src/tool-ref/format.ts`.
 
 ## Spike results
 
@@ -526,6 +528,8 @@ the order they were made, #8 for the aborted tool); `message_end` fired for role
 completion order) and accepting the gap (blocked calls can be evidence).
 
 ## Tasks
+
+All done with the implementation.
 
 - **Load-order check: tool-ref last among `message_end` handlers that replace `toolResult`
   messages (pi-agent extensions only).** Same pattern as the scenario-profile/project check:
@@ -584,3 +588,17 @@ completion order) and accepting the gap (blocked calls can be evidence).
 - Tool log: `ref` taken from the `toolResult` `message_end` by `toolCallId` (also for
   blocked and length-cut calls); `output` has no trailer; `ref: null` without a trailer and
   for unfinished calls.
+
+## Implementation notes
+
+| Where | Decision |
+|---|---|
+| Files | `src/shared/tool-ref.ts` (`parseHandle`, tool names, used by the wrapper too), `src/tool-ref/resolver.ts` (`indexBranch`, `indexSessionFile`, `loadSettings`, `resolveHandle`), `format.ts` (get/grep text), `counter.ts`, `render.ts`, `index.ts` (extension) |
+| Tool `details` | References, not full objects: `get` gives per ref `handle`, `toolCallId`, `toolName`, `isError`, `entryId` and the shown output range (or the error); `grep` the matching line numbers per call and what was left out. Full objects would copy every looked-up output into the session file again; other extensions use the resolver instead |
+| `indexBranch` result | Also `refs` (branch order) and `fileHandles` (all handles in the file), so `get` can tell "not on the active branch" from "unknown"; `ambiguous` is a map handle → number of claims |
+| `get` output | Header line, then `output (N lines):` or `output lines A-B of N:` and lines as `<n>  <text>`. `part: input`/`both` shows the input as in grep (`in:N` lines) without numbers. When `maxChars` cuts, the cut is at a line, and a tail request (`lines` starting negative) keeps the end |
+| `grep` input lines | `bash` (only `command`): the command; other tools: one `key: value` per argument, strings raw (multi-line strings continue on the next lines), others as JSON. Context lines are marked `in-N`/`out-N` like `rg`, groups separated by `--` |
+| `grep` without a usable handle | Results without a trailer (sessions from before tool-ref) are shown as `#?` like ambiguous ones, since they are still evidence |
+| `tool` param of grep | An array of names; a single string is accepted (`prepareArguments`) |
+| Fallback renderer | Added only for tools that are not built-in (`read`, `bash`, `powershell`, `edit`, `write`, `grep`, `find`, `ls`). In interactive mode built-in tools always have renderers in `next()`; in the HTML export a fallback would replace the template's own drawing of them, so they show the trailer there. `next()` undefined is left to pi (trailer shown) |
+| Tests | `src/tool-ref/session.test.ts` runs pi's SDK with the faux provider (the spike cases end to end, reload, resume, settings, guidance in `<rules>`) |
