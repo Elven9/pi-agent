@@ -197,6 +197,48 @@ export function formatGetMany(index: ToolRefIndex, refs: number[], options: GetO
   return { text: texts.join("\n\n"), results };
 }
 
+/**
+ * Parses `/ref` arguments: handles, with or without `#`, separated by spaces or commas.
+ * Throws with a usage message on anything else.
+ */
+export function parseRefArgs(args: string): number[] {
+  const words = args.split(/[\s,]+/).filter(Boolean);
+  const refs = words.map((w) => (/^#?\d+$/.test(w) ? Number(w.replace("#", "")) : NaN));
+  if (words.length === 0 || refs.some((n) => !Number.isSafeInteger(n) || n < 1)) {
+    throw new Error("Usage: /ref <N> [N ...], e.g. /ref 12 or /ref #12 #14");
+  }
+  if (refs.length > MAX_REFS) throw new Error(`At most ${MAX_REFS} refs at a time (got ${refs.length}).`);
+  return refs;
+}
+
+/**
+ * Text of the `/ref` command (for the user, not the model): per handle the call's details, its
+ * whole input and its whole output (no character cap), without the trailer. Excluded calls are
+ * shown too, marked; other problems (unknown, other branch, ambiguous) inline as in `get`.
+ */
+export function formatRefView(index: ToolRefIndex, refs: number[]): string {
+  const texts: string[] = [];
+  for (const n of new Set(refs)) {
+    const r = resolveHandle(index, n, { allowExcluded: true });
+    if (r.error !== undefined) {
+      texts.push(r.error);
+      continue;
+    }
+    const ref = r.ref as ToolRef & { handle: number };
+    const facts = [
+      `call ${ref.toolCallId}`,
+      ref.startedAt && `started ${ref.startedAt}`,
+      ref.durationMs !== undefined && `${ref.durationMs} ms`,
+      `entry ${ref.entryId}`,
+      ref.excluded && "excluded from tool_ref_get/grep",
+    ].filter(Boolean);
+    const { text } = formatGet(ref, { part: "both", maxChars: Number.POSITIVE_INFINITY });
+    const [header, ...body] = text.split("\n");
+    texts.push([`──── ${header} ────`, facts.join(" · "), ...body].join("\n"));
+  }
+  return texts.join("\n\n");
+}
+
 export type Where = "in" | "out";
 
 export interface GrepOptions {

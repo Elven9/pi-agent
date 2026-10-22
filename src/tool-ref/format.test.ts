@@ -190,3 +190,35 @@ test("grep: results without a usable handle show #?", () => {
   const text = formatGrep(grepRefs(indexBranch(s.entries, s.leafId, []), { pattern: "hit" })).text;
   assert.equal(text, "#? bash ok   y\n  out:1  hit\n#? bash ok   x\n  out:1  hit");
 });
+
+test("/ref arguments: handles with or without #, spaces or commas", async () => {
+  const { parseRefArgs } = await import("./format.ts");
+  assert.deepEqual(parseRefArgs("12"), [12]);
+  assert.deepEqual(parseRefArgs(" #12, 14 #3 "), [12, 14, 3]);
+  for (const bad of ["", "abc", "12 x", "0", "-1", "1.5"]) assert.throws(() => parseRefArgs(bad), /Usage: \/ref <N>/, bad);
+  assert.throws(() => parseRefArgs("1 2 3 4 5 6 7 8 9 10 11"), /At most 10/);
+});
+
+test("/ref view: whole input and output, details, excluded calls shown, errors inline", async () => {
+  const { formatRefView } = await import("./format.ts");
+  const { index } = session();
+  const text = formatRefView(index, [3, 4, 2, 99]);
+  const [bash, submit, read, unknown] = text.split("\n\n");
+  assert.equal(
+    bash,
+    [
+      "──── #3 bash ERR ────",
+      `call c3 · started ${index.byHandle.get(3)!.startedAt} · entry ${index.byHandle.get(3)!.entryId}`,
+      "input:",
+      "apfs-fuse /dev/sdb2 /mnt/mac",
+      "echo done",
+      "output (1 line):",
+      "1  apfs-fuse: no such device",
+    ].join("\n"),
+  );
+  assert.match(submit, /^──── #4 submit_result ok ────\n.*excluded from tool_ref_get\/grep\ninput:\nsummary: apfs\noutput \(1 line\):\n1  Result recorded\.$/);
+  // No character cap: all 120 lines.
+  assert.match(read, /output \(120 lines\):[\s\S]*120  line 120$/);
+  assert.doesNotMatch(read, /not shown/);
+  assert.match(unknown, /^#99 is unknown/);
+});

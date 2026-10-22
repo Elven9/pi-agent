@@ -25,6 +25,7 @@ async function startSession(order: Factory[]) {
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.push({ event, handler }),
     registerTool() {},
     registerToolRenderer() {},
+    registerCommand() {},
     getSettings: () => ({}),
     appendEntry: (customType: string, data: unknown) => void entries.push({ customType, data }),
   } as unknown as ExtensionAPI;

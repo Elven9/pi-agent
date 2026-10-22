@@ -23,6 +23,8 @@ The extension provides:
 3. `tool_ref_grep`: find calls by regex over their input and output. There is no
    `tool_ref_list` index tool; grep covers listing too (see "`tool_ref_grep`").
 4. A resolver module other extensions (report system) import to turn handles into data.
+5. `/ref <N> [N ...]`: a slash command for the user to view calls by handle (see "`/ref`
+   command").
 
 Out of scope for now:
 
@@ -322,6 +324,30 @@ Known limits:
   searchable. The temp file may be gone later. Not handled in v1.
 - **No multi-line patterns.** Matching is per line, like grep; `context` covers most needs.
 
+### `/ref` command
+
+For the user, not the model: `/ref 12`, `/ref #12 #14` or `/ref 12,14` (at most 10 handles)
+shows each call in a notification:
+
+```
+──── #14 bash ERR ────
+call toolu_01… · started 2026-10-22T08:15:02.000Z · 12 ms · entry 3f2a…
+input:
+apfs-fuse /dev/sdb2 /mnt/mac
+output (1 line):
+1  apfs-fuse: no such device
+```
+
+- The whole input and the whole persisted output, with line numbers, without the trailer and
+  without a character cap (no model tokens are spent).
+- Same resolver as the tools: active branch only, raw entries (compaction and `context_edit`
+  don't hide anything), and the same inline errors for unknown, ambiguous and other-branch
+  handles.
+- **Excluded calls are shown**, marked "excluded from tool_ref_get/grep": `toolRef.exclude`
+  keeps plumbing out of the model's lookups, not out of the user's.
+- Bad arguments: an error notification with the usage line. Runs no turn and appends nothing
+  to the session. Interactive mode shows it; in other modes `notify` has no visible effect.
+
 ### Prompt guidance (tool `promptGuidelines`)
 
 Text:
@@ -588,12 +614,14 @@ All done with the implementation.
 - Tool log: `ref` taken from the `toolResult` `message_end` by `toolCallId` (also for
   blocked and length-cut calls); `output` has no trailer; `ref: null` without a trailer and
   for unfinished calls.
+- `/ref`: argument parsing (`#`, commas, usage error, more than 10), whole input and output
+  without cap, excluded calls shown and marked, per-ref errors inline.
 
 ## Implementation notes
 
 | Where | Decision |
 |---|---|
-| Files | `src/shared/tool-ref.ts` (`parseHandle`, tool names, used by the wrapper too), `src/tool-ref/resolver.ts` (`indexBranch`, `indexSessionFile`, `loadSettings`, `resolveHandle`), `format.ts` (get/grep text), `counter.ts`, `render.ts`, `index.ts` (extension) |
+| Files | `src/shared/tool-ref.ts` (`parseHandle`, tool names, used by the wrapper too), `src/tool-ref/resolver.ts` (`indexBranch`, `indexSessionFile`, `loadSettings`, `resolveHandle`), `format.ts` (get/grep/`/ref` text), `counter.ts`, `render.ts`, `index.ts` (extension) |
 | Tool `details` | References, not full objects: `get` gives per ref `handle`, `toolCallId`, `toolName`, `isError`, `entryId` and the shown output range (or the error); `grep` the matching line numbers per call and what was left out. Full objects would copy every looked-up output into the session file again; other extensions use the resolver instead |
 | `indexBranch` result | Also `refs` (branch order) and `fileHandles` (all handles in the file), so `get` can tell "not on the active branch" from "unknown"; `ambiguous` is a map handle → number of claims |
 | `get` output | Header line, then `output (N lines):` or `output lines A-B of N:` and lines as `<n>  <text>`. `part: input`/`both` shows the input as in grep (`in:N` lines) without numbers. When `maxChars` cuts, the cut is at a line, and a tail request (`lines` starting negative) keeps the end |

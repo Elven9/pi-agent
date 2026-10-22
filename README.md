@@ -84,7 +84,8 @@ The tool-ref extension (`src/tool-ref/`, design in `docs/tool-ref-design.md`) ap
 number. Numbers are unique per session file. `tool_ref_get` shows results by handle (`lines`
 for a range, `part: input|both`), `tool_ref_grep` finds calls by regex over input and output
 (`pattern: ".", in: "input"` lists them). Both read the raw session entries of the active
-branch, so compaction does not hide anything. The interactive UI hides the trailer; the session
+branch, so compaction does not hide anything. For yourself, `/ref 12 [14 ...]` shows the
+whole original input and output of calls by handle, excluded ones included. The interactive UI hides the trailer; the session
 file keeps it.
 
 `toolRef.exclude` in `settings.json` (global or project; a project list replaces the global one)

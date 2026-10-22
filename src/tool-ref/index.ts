@@ -3,7 +3,17 @@ import { Type, type TSchema } from "typebox";
 import { ENTRY, TOOL_RESULT_REWRITER_CHANNEL, type ToolResultRewriterAnnounced } from "../shared/protocol.ts";
 import { parseHandle, trailerText } from "../shared/tool-ref.ts";
 import { HandleCounter } from "./counter.ts";
-import { DEFAULT_MAX_CHARS, formatGetMany, formatGrep, grepRefs, MAX_REFS, type GetOptions, type GrepOptions } from "./format.ts";
+import {
+  DEFAULT_MAX_CHARS,
+  formatGetMany,
+  formatGrep,
+  formatRefView,
+  grepRefs,
+  MAX_REFS,
+  parseRefArgs,
+  type GetOptions,
+  type GrepOptions,
+} from "./format.ts";
 import { hideTrailer } from "./render.ts";
 import { indexBranch, loadSettings, TOOL_REF_GET, TOOL_REF_GREP, type ToolRefSettings } from "./resolver.ts";
 
@@ -101,6 +111,21 @@ export default function toolRef(pi: ExtensionAPI) {
 
   const index = (ctx: ExtensionContext) =>
     indexBranch(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId(), settings.exclude);
+
+  // For the user: the original input and output of calls by handle, excluded ones included.
+  pi.registerCommand("ref", {
+    description: "Show the original input and output of tool calls by handle: /ref 12 [14 ...]",
+    handler: async (args, ctx) => {
+      let refs: number[];
+      try {
+        refs = parseRefArgs(args);
+      } catch (err) {
+        ctx.ui.notify((err as Error).message, "error");
+        return;
+      }
+      ctx.ui.notify(formatRefView(index(ctx), refs), "info");
+    },
+  });
 
   pi.registerTool({
     name: TOOL_REF_GET,

@@ -216,13 +216,17 @@ export function indexSessionFile(text: string, exclude: readonly string[]): Tool
 
 export type Resolved = { ref: ToolRef; error?: undefined } | { ref?: undefined; error: string };
 
-/** A handle the model asked for: the call, or why it can't be shown. */
-export function resolveHandle(index: ToolRefIndex, n: number): Resolved {
+/**
+ * A handle the model asked for: the call, or why it can't be shown. `allowExcluded` (the user's
+ * `/ref` command) also returns excluded calls: exclusion keeps plumbing out of the model's
+ * lookups, not out of the user's.
+ */
+export function resolveHandle(index: ToolRefIndex, n: number, options: { allowExcluded?: boolean } = {}): Resolved {
   const claims = index.ambiguous.get(n);
   if (claims) return { error: `#${n} is ambiguous (${claims} results claim it)` };
   const ref = index.byHandle.get(n);
   if (ref) {
-    if (!ref.excluded) return { ref };
+    if (!ref.excluded || options.allowExcluded) return { ref };
     const why = OWN_TOOLS.has(ref.toolName) ? "lookups are not evidence" : "toolRef.exclude";
     return { error: `#${n} is a ${ref.toolName} call, which tool-ref does not show (${why})` };
   }

@@ -40,7 +40,9 @@ test("reload race: the new instance continues from numbers the old one handed ou
 function loadExtension() {
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const tools: string[] = [];
+  const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
   const pi = {
+    registerCommand: (name: string, options: any) => void commands.set(name, options),
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.set(event, handler),
     registerTool: (tool: { name: string }) => void tools.push(tool.name),
     registerToolRenderer() {},
@@ -50,9 +52,19 @@ function loadExtension() {
   } as unknown as ExtensionAPI;
   // A process-global counter is shared by instances; use a fresh session id per test.
   const t = new TestSession();
-  const ctx = { sessionManager: sessionOf(t, `s-${Math.random()}`) };
+  const notices: Array<[string, string]> = [];
+  const ctx = {
+    sessionManager: sessionOf(t, `s-${Math.random()}`),
+    ui: { notify: (message: string, type: string) => void notices.push([message, type]) },
+  };
   toolRef(pi);
-  return { end: (message: object) => handlers.get("message_end")!({ type: "message_end", message }, ctx), tools };
+  return {
+    end: (message: object) => handlers.get("message_end")!({ type: "message_end", message }, ctx),
+    tools,
+    session: t,
+    /** Runs `/ref <args>` and returns the notification. */
+    ref: async (args: string) => (await commands.get("ref")!.handler(args, ctx), notices.at(-1)!),
+  };
 }
 
 test("message_end: toolResult only, own block at the end, other fields kept, once", () => {
@@ -70,4 +82,13 @@ test("message_end: toolResult only, own block at the end, other fields kept, onc
   assert.deepEqual(end({ ...message, content: [] }).message.content, [{ type: "text", text: "[tool-ref #3]" }]);
   // Output that only ends with a trailer line is numbered.
   assert.equal(parseHandle(end({ ...message, content: [{ type: "text", text: "x\n[tool-ref #1]" }] }).message.content), 4);
+});
+
+test("/ref command: shows the call from the session, usage error on bad arguments", async () => {
+  const { ref, session } = loadExtension();
+  session.calls({ id: "c1", tool: "bash", input: { command: "echo hi" }, output: "hi", handle: 1 });
+  const [text, type] = await ref("#1");
+  assert.equal(type, "info");
+  assert.match(text, /^──── #1 bash ok ────\ncall c1 · .*\ninput:\necho hi\noutput \(1 line\):\n1  hi$/);
+  assert.deepEqual(await ref("nope"), ["Usage: /ref <N> [N ...], e.g. /ref 12 or /ref #12 #14", "error"]);
 });
