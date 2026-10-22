@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type, type TSchema } from "typebox";
+import { ENTRY, TOOL_RESULT_REWRITER_CHANNEL, type ToolResultRewriterAnnounced } from "../shared/protocol.ts";
 import { parseHandle, trailerText } from "../shared/tool-ref.ts";
 import { HandleCounter } from "./counter.ts";
 import { DEFAULT_MAX_CHARS, formatGetMany, formatGrep, grepRefs, MAX_REFS, type GetOptions, type GrepOptions } from "./format.ts";
@@ -13,7 +14,10 @@ import { indexBranch, loadSettings, TOOL_REF_GET, TOOL_REF_GREP, type ToolRefSet
  * docs/tool-ref-design.md.
  *
  * Load order: last, at least after every extension whose `message_end` handler replaces
- * tool results (they could drop the trailer).
+ * tool results (they could drop the trailer). Checked for pi-agent extensions: they announce
+ * themselves on TOOL_RESULT_REWRITER_CHANNEL from their session_start; handlers run in load
+ * order, so an announcement after this extension's session_start means that extension loaded
+ * later. That is an error (entry + shutdown), like the scenario-profile/project check.
  */
 
 /** Constant (no session data), so the system prompt stays cacheable. */
@@ -60,10 +64,25 @@ export default function toolRef(pi: ExtensionAPI) {
   let settings: ToolRefSettings = loadSettings(undefined);
   const counter = new HandleCounter();
 
+  /** Set by this extension's session_start; a rewriter announcing after it loaded later. */
+  let started: ExtensionContext | undefined;
+  pi.events.on(TOOL_RESULT_REWRITER_CHANNEL, (data) => {
+    if (!started) return;
+    const { name } = data as ToolResultRewriterAnnounced;
+    const message =
+      `The tool-ref extension must load after ${name}, whose message_end handler replaces tool results ` +
+      "and would drop the [tool-ref #N] trailers (list tool-ref last in -e flags or the package manifest).";
+    // Startup entries are not streamed in --mode json, so also tell stderr.
+    console.error(`[pi-agent] ${message}`);
+    pi.appendEntry(ENTRY.error, { message });
+    started.shutdown();
+  });
+
   pi.on("session_start", (_event, ctx) => {
     // Read here, so a change applies after /reload.
     settings = loadSettings(pi.getSettings());
     counter.init(ctx.sessionManager);
+    started = ctx;
   });
 
   // Every result message, whatever produced it (tool, block, validation error, length cut),

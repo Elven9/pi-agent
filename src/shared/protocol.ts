@@ -39,6 +39,20 @@ export interface ProjectAnnounced {
   block: string;
 }
 
+/**
+ * `pi.events` channel: every pi-agent extension with a `message_end` handler that replaces
+ * `toolResult` messages emits `ToolResultRewriterAnnounced` from its session_start. Such a
+ * handler can drop tool-ref's trailer, so tool-ref must load after it: tool-ref listens, and an
+ * announcement after its own session_start ran means that extension loaded later (error entry
+ * and shutdown). No pi-agent extension rewrites tool results today; this guards future ones.
+ */
+export const TOOL_RESULT_REWRITER_CHANNEL = "pi-agent.tool-result-rewriter";
+
+export interface ToolResultRewriterAnnounced {
+  /** Extension name, for the error message. */
+  name: string;
+}
+
 /** Tool the agent calls with its final result. Its `details` are a `SubmittedResult`. */
 export const SUBMIT_RESULT = "submit_result";
 
@@ -61,7 +75,7 @@ export const ENTRY = {
   resubmit: "pi-agent.resubmit",
   /** `custom` entry with `SessionMetricsEntry` data (metrics extension), appended when the agent settles. */
   metrics: "pi-agent.metrics",
-  /** `custom` entry with `{ message }` when an extension cannot run (scenario or project). */
+  /** `custom` entry with `{ message }` when an extension cannot run (scenario, project, load order). */
   error: "pi-agent.error",
 } as const;
 
