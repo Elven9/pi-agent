@@ -259,7 +259,7 @@ TypeBox schema, strict:
 |---|---|
 | Block B | `before_agent_start`: load the manifest and `<cwd>/AGENTS.md` once per session, render, and set them as `systemPromptOptions.sections`. Edit sections only; returning a full `systemPrompt` would replace the prompt. The same sections on every prompt, so pi sends no delta |
 | Split A / B | `before_provider_request`: split the system text before the first project section into two text blocks, each with a cache marker; remove the tools and OAuth markers to stay within 4 |
-| Inspection | `/project` command: block B's sections with token estimates |
+| Inspection | `/project` command: block B's sections with token estimates. The project and block B are also announced on `PROJECT_CHANNEL` for `/context` (`src/context-view/`), which shows the whole setup and the full system prompt split at block B |
 | Report | The wrapper renders block B with the same code and inputs; `report.json` `projectContext` has the sections, size and `sha256` |
 
 ## Stability rules

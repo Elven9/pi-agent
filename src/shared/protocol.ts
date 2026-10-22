@@ -25,6 +25,20 @@ export interface ScenarioSelected {
 /** Project extension CLI flag: folder with `project.yaml` (`pi --project <dir>`). */
 export const PROJECT_FLAG = "project";
 
+/**
+ * `pi.events` channel: the project extension emits `ProjectAnnounced` at session start (after
+ * loading) and on every prompt (once it knows whether block B is used). Read by the context view
+ * extension (`/context`).
+ */
+export const PROJECT_CHANNEL = "pi-agent.project";
+
+export interface ProjectAnnounced {
+  /** The `--project` manifest, if any. */
+  project?: { name: string; dir: string };
+  /** Block B as it is in the system prompt; "" when not (yet) applied. */
+  block: string;
+}
+
 /** Tool the agent calls with its final result. Its `details` are a `SubmittedResult`. */
 export const SUBMIT_RESULT = "submit_result";
 

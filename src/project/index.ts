@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ENTRY, PROJECT_FLAG } from "../shared/protocol.ts";
+import { ENTRY, PROJECT_CHANNEL, PROJECT_FLAG, type ProjectAnnounced } from "../shared/protocol.ts";
 import {
   estimateTokens,
   loadProject,
@@ -43,12 +43,21 @@ export default function projectContext(pi: ExtensionAPI) {
   /** Block B goes into the prompt unless there is no --project and pi loaded context files. */
   const usesBlock = (piContextFiles: number) => project !== undefined || piContextFiles === 0;
 
+  /** Tell the context view (`/context`) what this extension adds. */
+  const announce = () =>
+    pi.events.emit(PROJECT_CHANNEL, {
+      project: project && { name: project.manifest.name, dir: project.dir },
+      block: applied ? block : "",
+    } satisfies ProjectAnnounced);
+
   pi.on("session_start", async (_event, ctx) => {
     const dir = pi.getFlag(PROJECT_FLAG);
     try {
       project = typeof dir === "string" && dir !== "" ? await loadProject(resolve(ctx.cwd, dir)) : undefined;
       sections = renderProjectSections({ cwd: ctx.cwd, project, agentsMd: await readAgentsMd(ctx.cwd) });
       block = renderBlock(sections);
+      applied = false;
+      announce();
     } catch (err) {
       // Startup entries are not streamed in --mode json, so also tell stderr.
       const message = (err as Error).message;
@@ -63,6 +72,7 @@ export default function projectContext(pi: ExtensionAPI) {
   pi.on("before_agent_start", (event) => {
     const options = event.systemPromptOptions;
     applied = usesBlock(options.contextFiles?.length ?? 0);
+    announce();
     if (!applied) return;
     if (project) options.contextFiles = [];
     Object.assign(options.sections, sections);

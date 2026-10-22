@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import projectContext from "./index.ts";
-import { ENTRY } from "../shared/protocol.ts";
+import { ENTRY, PROJECT_CHANNEL } from "../shared/protocol.ts";
 
 type ContextFile = { path: string; content: string };
 
@@ -15,8 +15,10 @@ function fakePi(flags: Record<string, string | undefined>, cwd: string, piContex
   const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
   const entries: Array<{ customType: string; data: unknown }> = [];
   const notices: string[] = [];
+  const announced: unknown[] = [];
   let shutdown = false;
   const pi = {
+    events: { emit: (channel: string, data: unknown) => void (channel === PROJECT_CHANNEL && announced.push(data)) },
     registerFlag() {},
     getFlag: (name: string) => flags[name],
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.set(event, handler),
@@ -33,6 +35,7 @@ function fakePi(flags: Record<string, string | undefined>, cwd: string, piContex
   return {
     entries,
     notices,
+    announced,
     get shutdown() {
       return shutdown;
     },
@@ -76,6 +79,10 @@ test("adds the project sections after pi's own, the same on every prompt", async
   await writeFile(join(workspace, "AGENTS.md"), "Changed.\n");
   assert.deepEqual(promptSections(pi), first);
 
+  // Announced for /context: at session start (not applied yet), then on each prompt.
+  assert.deepEqual(pi.announced[0], { project: { name: "demo", dir: project }, block: "" });
+  assert.match((pi.announced.at(-1) as { block: string }).block, /^<project>\nname: demo\n<\/project>\n\n<project_rules>/);
+
   await pi.command("project");
   assert.match(pi.notices[0], /^Project: demo \(.*\); pi's context files are off\n  <project>  ~\d+ tokens\n/);
   assert.match(pi.notices[0], /Block B total: ~\d+ tokens$/);
@@ -110,6 +117,7 @@ test("without --project, pi's own context files win and nothing is added or spli
   await pi.command("project");
   assert.match(pi.notices[0], /^No project context: no --project, pi loads its own context files \(1\)/);
   const options = promptOptions(pi, [PI_AGENTS_MD]);
+  assert.deepEqual(pi.announced.at(-1), { project: undefined, block: "" });
   assert.deepEqual(options.contextFiles, [PI_AGENTS_MD]);
   assert.deepEqual(options.sections, { cwd: "/w" });
   const request = payload(`prompt\n\n<agents_md>\npath: ${join(workspace, "AGENTS.md")}\nUse pnpm.\n</agents_md>`);
