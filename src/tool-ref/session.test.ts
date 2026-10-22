@@ -1,20 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai";
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-  type ExtensionAPI,
-} from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai";
+import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { parseHandle } from "../shared/tool-ref.ts";
 import toolRef, { GUIDELINES } from "./index.ts";
+import { makeSession as makeHarnessSession, type TestSessionOptions } from "./test-harness.ts";
 
 /**
  * End to end through pi's SDK with the faux provider: tool-ref numbers every kind of result
@@ -43,42 +34,10 @@ function probe(pi: ExtensionAPI) {
   });
 }
 
-async function makeSession(opts: { settings?: object; sessionManager?: SessionManager; root?: string } = {}) {
-  const root = opts.root ?? mkdtempSync(join(tmpdir(), "tool-ref-test-"));
-  const agentDir = join(root, "agent");
-  const cwd = join(root, "work");
-  mkdirSync(agentDir, { recursive: true });
-  mkdirSync(cwd, { recursive: true });
-  if (opts.settings) writeFileSync(join(agentDir, "settings.json"), JSON.stringify(opts.settings));
-  const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
-  const faux = fauxProvider();
-  const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: join(agentDir, "models.json") });
-  modelRuntime.registerNativeProvider(faux.provider);
-  const resourceLoader = new DefaultResourceLoader({
-    cwd,
-    agentDir,
-    settingsManager,
-    extensionFactories: [probe, toolRef],
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-  });
-  await resourceLoader.reload();
-  const sessionManager = opts.sessionManager ?? SessionManager.create(cwd, join(root, "sessions"));
-  const { session } = await createAgentSession({
-    cwd,
-    agentDir,
-    model: faux.getModel(),
-    thinkingLevel: "off",
-    modelRuntime,
-    resourceLoader,
-    sessionManager,
-    settingsManager,
-    tools: ["read", "bash", "throws", "submit_result", "tool_ref_get", "tool_ref_grep"],
-  });
-  await session.bindExtensions({});
-  return { session, faux, sessionManager, root };
+const TOOLS = ["read", "bash", "throws", "submit_result", "tool_ref_get", "tool_ref_grep"];
+
+function makeSession(opts: Partial<TestSessionOptions> = {}) {
+  return makeHarnessSession({ extensions: [probe, toolRef], tools: TOOLS, ...opts });
 }
 
 /** toolCallId → handle of the saved results, in file order. */
@@ -237,5 +196,102 @@ test("the renderer resolver is registered with pi's runner", async () => {
   const set = session.extensionRunner.resolveToolRenderers("bash", () => ({ renderResult: (r: unknown) => ((seen = r), {} as never) }));
   set!.renderResult!({ content: [{ type: "text", text: "x" }, { type: "text", text: "[tool-ref #1]" }], details: {} }, { expanded: false, isPartial: false }, {} as never, {} as never);
   assert.deepEqual(seen, { content: [{ type: "text", text: "x" }], details: {} });
+  session.dispose();
+});
+
+/** The run of the first test: every kind of result pi creates. */
+function allKindsOfResults(): FauxResponseStep[] {
+  return [
+    fauxAssistantMessage(
+      [
+        call("bash", { command: "echo hi" }, "ok"),
+        call("bash", { command: "echo BLOCK" }, "blocked"),
+        call("throws", {}, "throws"),
+        call("nosuchtool", {}, "unknown"),
+        call("read", { nope: 1 }, "badargs"),
+        call("tool_ref_grep", { pattern: "hi" }, "grep"),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([call("bash", { command: "echo cut" }, "cut")], { stopReason: "length" }),
+    fauxAssistantMessage(fauxText("done")),
+  ];
+}
+
+test("report.json tool log from the event stream: ref for every call, output without trailer", async () => {
+  const { ToolLog } = await import("../wrapper/tool-log.ts");
+  const { session, faux, sessionManager } = await makeSession();
+  const log = new ToolLog();
+  // JSON mode prints toJsonEvent(event), which only changes message_update events.
+  session.subscribe((event) => log.onRecord(JSON.parse(JSON.stringify(event))));
+  faux.setResponses(allKindsOfResults());
+  await session.prompt("go");
+
+  const saved = new Map(savedHandles(sessionManager));
+  const calls = log.entries();
+  assert.deepEqual(calls.map((c) => c.id), ["ok", "blocked", "throws", "unknown", "badargs", "grep", "cut"]);
+  for (const c of calls) {
+    assert.equal(c.ref, saved.get(c.id), `ref of ${c.id}`);
+    assert.ok(c.ref !== null, `${c.id} has a ref`);
+    assert.doesNotMatch(c.output ?? "", /tool-ref #/, `output of ${c.id}`);
+  }
+  session.dispose();
+});
+
+test("HTML export: pre-rendered custom tool results have no trailer; the embedded data keeps it", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  // The CLI sets up pi's global theme in every mode; renderers (pi's and ours) need it.
+  const { initTheme } = await import("@earendil-works/pi-coding-agent");
+  initTheme(undefined, false);
+  const { session, faux, root } = await makeSession();
+  faux.setResponses(allKindsOfResults());
+  await session.prompt("go");
+  const file = await session.exportToHtml(join(root, "export.html"));
+  const html = await readFile(file, "utf8");
+  const raw = /<script id="session-data"[^>]*>([\s\S]*?)<\/script>/.exec(html)![1].trim();
+  const data = JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
+  // Custom tools (throws: no renderResult, our fallback; tool_ref_grep) are drawn by renderers.
+  for (const id of ["throws", "grep"]) {
+    const rendered = JSON.stringify(data.renderedTools[id]);
+    assert.ok(rendered && rendered.includes("result"), `${id} pre-rendered`);
+    assert.doesNotMatch(rendered, /tool-ref #/, `${id} without trailer`);
+  }
+  assert.match(JSON.stringify(data.renderedTools.throws), /boom from execute/);
+  // Built-in tools are left to the template, which draws them from the raw content.
+  assert.equal(data.renderedTools.ok?.resultHtmlExpanded, undefined);
+  assert.match(JSON.stringify(data.entries), /\[tool-ref #1\]/);
+  session.dispose();
+});
+
+test("offline index of the session file equals the live index; /tree navigation without an entry", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { indexBranch, indexSessionFile } = await import("./resolver.ts");
+  const { session, faux, sessionManager } = await makeSession();
+  faux.setResponses(allKindsOfResults());
+  await session.prompt("go");
+  faux.setResponses([fauxAssistantMessage([call("bash", { command: "echo later" }, "later")], { stopReason: "toolUse" }), fauxAssistantMessage(fauxText("ok"))]);
+  await session.prompt("more");
+
+  const file = sessionManager.getSessionFile()!;
+  const live = () => indexBranch(sessionManager.getEntries(), sessionManager.getLeafId(), ["submit_result"]);
+  const offline = () => indexSessionFile(readFileSync(file, "utf8"), ["submit_result"]);
+  assert.equal(live().refs.length, 8);
+  assert.deepEqual(offline(), live());
+
+  // Go back to before the second prompt: the live leaf moves, the file is unchanged, so
+  // the offline index still ends at "later" (what --resume would continue).
+  const beforeLater = sessionManager.getBranch().findIndex((e) => e.type === "message" && e.message.role === "user" && JSON.stringify(e.message.content).includes("more"));
+  sessionManager.branch(sessionManager.getBranch()[beforeLater - 1].id);
+  assert.equal(live().byToolCallId.has("later"), false);
+  assert.equal(offline().byToolCallId.has("later"), true);
+  assert.equal(live().byHandle.has(8), false);
+
+  // The next entry makes file and live leaf agree again.
+  faux.setResponses([fauxAssistantMessage([call("bash", { command: "echo branch" }, "branch")], { stopReason: "toolUse" }), fauxAssistantMessage(fauxText("ok"))]);
+  await session.prompt("other way");
+  assert.deepEqual(offline(), live());
+  // The new branch continues after the file max (#8 is on the abandoned branch).
+  assert.equal(live().byToolCallId.get("branch")!.handle, 9);
   session.dispose();
 });
