@@ -69,6 +69,11 @@ export interface ToolCallLog {
   output: string | null;
   /** True if `args` or `output` was shortened. The session file has the full data. */
   truncated: boolean;
+  /**
+   * tool-ref handle (`[tool-ref #N]`) of the result; null without one (nested or unfinished
+   * call, trailer missing).
+   */
+  ref: number | null;
 }
 
 /** Project context in the system prompt (block B), as the wrapper rendered it. */

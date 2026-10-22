@@ -207,8 +207,10 @@ final model response failed and there is no result, or the result fails validati
 it is `ok` with a valid result and `no_result` without one.
 
 `toolCalls` lists every tool call in start order: `id`, `tool`, `turn`, `startedAt`,
-`durationMs`, `isError`, `args` and text `output` (images become `[image]`). Strings in `args`
-are cut at 1000 chars and `output` at 2000, with `truncated: true`.
+`durationMs`, `isError`, `args`, text `output` (images become `[image]`) and `ref`, the
+tool-ref handle (`#N`) of the result, or `null` without one (unfinished call). Strings in `args`
+are cut at 1000 chars and `output` at 2000, with `truncated: true`. `output` never contains the
+`[tool-ref #N]` trailer.
 
 ### Scenarios
 

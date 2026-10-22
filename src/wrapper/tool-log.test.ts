@@ -39,6 +39,7 @@ test("logs calls in start order with turn, duration, error flag and output", () 
       args: { path: "a.txt" },
       output: "hello\n[image]",
       truncated: false,
+      ref: null,
     },
     {
       id: "b",
@@ -50,6 +51,7 @@ test("logs calls in start order with turn, duration, error flag and output", () 
       args: { command: "false" },
       output: "exit 1",
       truncated: false,
+      ref: null,
     },
     // never finished
     {
@@ -62,6 +64,7 @@ test("logs calls in start order with turn, duration, error flag and output", () 
       args: { path: "c" },
       output: null,
       truncated: false,
+      ref: null,
     },
   ]);
 });
@@ -75,4 +78,29 @@ test("truncates long arg strings and output", () => {
   assert.deepEqual(entry.args, { path: "ab", content: "1234… [2 more chars]" });
   assert.equal(entry.output, "oko… [3 more chars]");
   assert.equal(entry.truncated, true);
+});
+
+test("ref comes from the toolResult message_end, matched by toolCallId; output has no trailer", () => {
+  const log = new ToolLog();
+  const emit = (e: object) => log.onRecord(e as StreamRecord);
+  const trailer = { type: "text", text: "[tool-ref #7]" };
+  emit({ type: "tool_execution_start", toolCallId: "a", toolName: "bash", args: {} });
+  emit({ type: "tool_execution_start", toolCallId: "blocked", toolName: "bash", args: {} });
+  emit({ type: "tool_execution_start", toolCallId: "plain", toolName: "bash", args: {} });
+  emit({ type: "tool_execution_start", toolCallId: "open", toolName: "bash", args: {} });
+  // Blocked: pi ends it without running it; the trailer only arrives with message_end.
+  emit({ type: "tool_execution_end", toolCallId: "blocked", toolName: "bash", isError: true, result: text("blocked") });
+  emit({ type: "tool_execution_end", toolCallId: "a", toolName: "bash", isError: false, result: text("hi") });
+  emit({ type: "tool_execution_end", toolCallId: "plain", toolName: "bash", isError: false, result: text("x") });
+  emit({ type: "message_end", message: { role: "toolResult", toolCallId: "blocked", content: [{ type: "text", text: "blocked" }, { ...trailer, text: "[tool-ref #8]" }] } });
+  emit({ type: "message_end", message: { role: "toolResult", toolCallId: "a", content: [{ type: "text", text: "hi" }, trailer] } });
+  emit({ type: "message_end", message: { role: "toolResult", toolCallId: "plain", content: [{ type: "text", text: "x" }] } });
+  emit({ type: "message_end", message: { role: "assistant", content: [trailer] } });
+  emit({ type: "message_end", message: { role: "toolResult", toolCallId: "unknown", content: [trailer] } });
+  const byId = Object.fromEntries(log.entries().map((e) => [e.id, e]));
+  assert.equal(byId.a.ref, 7);
+  assert.equal(byId.a.output, "hi");
+  assert.equal(byId.blocked.ref, 8);
+  assert.equal(byId.plain.ref, null);
+  assert.equal(byId.open.ref, null);
 });

@@ -1,4 +1,5 @@
 import type { ToolCallLog } from "../shared/report.ts";
+import { parseHandle } from "../shared/tool-ref.ts";
 import type { RecordSink, StreamRecord } from "./events.ts";
 
 export interface ToolLogOptions {
@@ -27,6 +28,11 @@ function resultText(result: unknown): string {
 /**
  * Records every tool call of the run, in start order. Calls run in parallel, so the end event
  * is paired with its start by toolCallId.
+ *
+ * `output` comes from `tool_execution_end`, which never has tool-ref's trailer. `ref` comes from
+ * the `toolResult` `message_end` (emitted after it, with the final content), also by
+ * toolCallId; it is the only event with the trailer, also for calls pi never ran (blocked,
+ * length-cut).
  */
 export class ToolLog implements RecordSink {
   private readonly maxArgChars: number;
@@ -68,6 +74,7 @@ export class ToolLog implements RecordSink {
           args,
           output: null,
           truncated,
+          ref: null,
         };
         this.calls.push(entry);
         this.open.set(event.toolCallId, { entry, start });
@@ -83,6 +90,14 @@ export class ToolLog implements RecordSink {
         entry.isError = event.isError;
         entry.output = out.text;
         entry.truncated ||= out.cut;
+        break;
+      }
+      case "message_end": {
+        const message = event.message as { role?: string; toolCallId?: string; content?: unknown };
+        if (message.role !== "toolResult" || typeof message.toolCallId !== "string") break;
+        // Latest start with this id (ids are unique per run in practice).
+        const entry = this.calls.findLast((c) => c.id === message.toolCallId);
+        if (entry) entry.ref = parseHandle(message.content) ?? null;
         break;
       }
     }
