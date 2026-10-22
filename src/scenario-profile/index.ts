@@ -2,7 +2,7 @@ import { realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ENTRY, SCENARIO_CHANNEL, SCENARIO_FLAG, type ScenarioSelected } from "../shared/protocol.ts";
+import { ENTRY, PROJECT_CHANNEL, SCENARIO_CHANNEL, SCENARIO_FLAG, type ScenarioSelected } from "../shared/protocol.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
 import { keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
 
@@ -40,6 +40,13 @@ function real(path: string): string {
  *
  * `submit_result` and the result format stay with the runner extension (src/extension/). This
  * extension owns the `--scenario` flag and tells the runner on SCENARIO_CHANNEL.
+ *
+ * Load order: this extension must load before the project extension, so `<rules>` is added
+ * before the project's sections (block B) and stays in cache block A. Under `--scenario` the
+ * order is checked at session start: handlers run in load order, so if the project extension
+ * announces itself (PROJECT_CHANNEL, sent from its session_start) before this extension's
+ * session_start ran, it loaded first. That is an error (entry + shutdown), like an unknown
+ * scenario.
  */
 export default function scenarioProfile(pi: ExtensionAPI, skillsDir: string = defaultSkillsDir()) {
   pi.registerFlag(SCENARIO_FLAG, {
@@ -52,18 +59,36 @@ export default function scenarioProfile(pi: ExtensionAPI, skillsDir: string = de
   /** Skill folder -> kept; skills don't move within a session. */
   const kept = new Map<string, boolean>();
 
+  /** This extension's session_start has run (later project announcements are expected). */
+  let started = false;
+  /** The project extension announced itself before our session_start: it loaded first. */
+  let projectLoadedFirst = false;
+  pi.events.on(PROJECT_CHANNEL, () => {
+    if (!started) projectLoadedFirst = true;
+  });
+
   // Flags are only parsed after extensions load, so everything happens from session_start on.
   pi.on("session_start", (_event, ctx) => {
+    started = true;
     const name = pi.getFlag(SCENARIO_FLAG);
     if (typeof name !== "string" || name === "") return;
-    try {
-      scenario = getScenario(name);
-    } catch (err) {
+    const fail = (message: string) => {
       // Startup entries are not streamed in --mode json, so also tell stderr.
-      const message = (err as Error).message;
       console.error(`[pi-agent] ${message}`);
       pi.appendEntry(ENTRY.error, { message });
       ctx.shutdown();
+    };
+    if (projectLoadedFirst) {
+      fail(
+        "The scenario-profile extension must load before the project extension " +
+          "(list it first in -e flags or the package manifest).",
+      );
+      return;
+    }
+    try {
+      scenario = getScenario(name);
+    } catch (err) {
+      fail((err as Error).message);
       return;
     }
     // Synchronous: the runner registers submit_result before the tools are set below.

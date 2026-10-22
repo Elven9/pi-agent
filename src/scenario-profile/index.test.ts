@@ -20,7 +20,7 @@ function fakePi(flags: Record<string, string | undefined>) {
   let shutdown = false;
   const announced: unknown[] = [];
   const pi = {
-    events: { emit: (channel: string, data: unknown) => void announced.push({ channel, data }) },
+    events: { emit: (channel: string, data: unknown) => void announced.push({ channel, data }), on() {} },
     registerFlag() {},
     getFlag: (name: string) => flags[name],
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.set(event, handler),

@@ -19,6 +19,8 @@ import { splitSystemPrompt } from "./cache-split.ts";
  * whole session (and across sessions while the files don't change).
  *
  * pi places extension sections after skills and `<cwd>`, which is where block B belongs.
+ * Must load after the scenario-profile extension (its `<rules>` section belongs in block A);
+ * scenario-profile checks this from the announcement sent at session start.
  *
  * Context files (pi's AGENTS.md/CLAUDE.md discovery, see `-nc`):
  * - With `--project`, pi's context files are dropped from every prompt (as if `-nc`): the
