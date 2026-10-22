@@ -62,3 +62,9 @@ test("tool-ref before a tool-result rewriter: error entry and shutdown", async (
   assert.equal(run.entries[0].customType, ENTRY.error);
   assert.match((run.entries[0].data as { message: string }).message, /tool-ref extension must load after redactor/);
 });
+
+test("package manifest lists tool-ref last", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const manifest = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
+  assert.equal(manifest.pi.extensions.at(-1), "./src/tool-ref/index.ts");
+});

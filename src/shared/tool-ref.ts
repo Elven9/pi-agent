@@ -3,6 +3,11 @@
  * (src/tool-ref/) and the wrapper's tool log. See docs/tool-ref-design.md.
  */
 
+/** tool-ref's tools (the runner adds them to its `--tools` allowlist). */
+export const TOOL_REF_GET = "tool_ref_get";
+export const TOOL_REF_GREP = "tool_ref_grep";
+export const TOOL_REF_TOOLS = [TOOL_REF_GET, TOOL_REF_GREP] as const;
+
 /** A text block that is exactly a trailer. */
 const TRAILER = /^\[tool-ref #(\d+)\]$/;
 

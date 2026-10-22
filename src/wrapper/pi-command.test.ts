@@ -20,6 +20,7 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     scenarioProfileExtensionPath: "/app/dist/scenario-profile.js",
     projectExtensionPath: "/app/dist/project.js",
     metricsExtensionPath: "/app/dist/metrics.js",
+    toolRefExtensionPath: "/app/dist/tool-ref.js",
     projectDir: "/project",
     skillPaths: ["/app/skills/shared", "/app/skills/s/own"],
     sessionDir: "/out/sessions",
@@ -30,12 +31,13 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     "-ne",
     "-e", "/app/dist/extension.js", "-e", "/app/dist/scenario-profile.js",
     "-e", "/app/dist/project.js", "-e", "/app/dist/metrics.js",
+    "-e", "/app/dist/tool-ref.js",
     "--no-mcp",
     "-ns", "--skill", "/app/skills/shared", "--skill", "/app/skills/s/own",
     "-np", "-nc", "--no-themes", "-na", "--offline",
     "--session-dir", "/out/sessions",
     "--fork", "/prev.jsonl",
-    "--tools", "read,bash,submit_result",
+    "--tools", "read,bash,submit_result,tool_ref_get,tool_ref_grep",
     "--model", "cpa/m",
     "--thinking", "low",
     "--scenario", "s",
@@ -52,6 +54,7 @@ test("piArgs omits optional flags", () => {
     scenarioProfileExtensionPath: "s.js",
     projectExtensionPath: "p.js",
     metricsExtensionPath: "m.js",
+    toolRefExtensionPath: "t.js",
     skillPaths: [],
     sessionDir: "d",
   });
@@ -60,4 +63,22 @@ test("piArgs omits optional flags", () => {
 
 test("shellQuote quotes only when needed", () => {
   assert.equal(shellQuote(["pi", "--tools", "a,b", "it's here", "a b"]), `pi --tools a,b 'it'\\''s here' 'a b'`);
+});
+
+test("piArgs loads tool-ref last and allows its tools", () => {
+  const args = piArgs({
+    task: { taskId: "t", scenario: "s", prompt: "p" },
+    scenario,
+    extensionPath: "e.js",
+    scenarioProfileExtensionPath: "s.js",
+    projectExtensionPath: "p.js",
+    metricsExtensionPath: "m.js",
+    toolRefExtensionPath: "t.js",
+    skillPaths: [],
+    sessionDir: "d",
+  });
+  const extensions = args.flatMap((a, i) => (a === "-e" ? [args[i + 1]] : []));
+  assert.equal(extensions.at(-1), "t.js");
+  const tools = args[args.indexOf("--tools") + 1].split(",");
+  assert.ok(tools.includes("tool_ref_get") && tools.includes("tool_ref_grep"));
 });

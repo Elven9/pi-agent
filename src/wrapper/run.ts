@@ -44,6 +44,8 @@ export interface RunOptions {
   projectExtensionPath: string;
   /** Bundled metrics extension (dist/metrics.js). */
   metricsExtensionPath: string;
+  /** Bundled tool-ref extension (dist/tool-ref.js). */
+  toolRefExtensionPath: string;
   /** Skill directories to load (absolute), see resolveSkills. */
   skillPaths: string[];
   /** Aborting stops pi; the report then has status "error". */
@@ -125,6 +127,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
     scenarioProfileExtensionPath: o.scenarioProfileExtensionPath,
     projectExtensionPath: o.projectExtensionPath,
     metricsExtensionPath: o.metricsExtensionPath,
+    toolRefExtensionPath: o.toolRefExtensionPath,
     projectDir: o.project?.dir,
     skillPaths: o.skillPaths,
     sessionDir,

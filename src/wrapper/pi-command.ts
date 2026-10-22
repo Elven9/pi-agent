@@ -1,5 +1,6 @@
 import { PROJECT_FLAG, SCENARIO_FLAG, SUBMIT_RESULT } from "../shared/protocol.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
+import { TOOL_REF_TOOLS } from "../shared/tool-ref.ts";
 import type { Task } from "../shared/task.ts";
 
 export interface PiCommandOptions {
@@ -13,6 +14,8 @@ export interface PiCommandOptions {
   projectExtensionPath: string;
   /** Bundled metrics extension (dist/metrics.js): writes pi-agent.metrics entries. */
   metricsExtensionPath: string;
+  /** Bundled tool-ref extension (dist/tool-ref.js): tool-call handles. Loaded last (see its load-order check). */
+  toolRefExtensionPath: string;
   /** Folder with a validated project.yaml. */
   projectDir?: string;
   /** Skill directories to load (absolute; from resolveSkills: shared, then the scenario's). */
@@ -25,7 +28,8 @@ export interface PiCommandOptions {
 /**
  * pi CLI arguments for one scenario run. Loads nothing implicitly: no discovered extensions,
  * skills, prompt templates, context files, themes, MCP or project config (the workdir is not
- * trusted). Only the runner, scenario profile, project and metrics extensions, the given skills
+ * trusted). Only the runner, scenario profile, project, metrics and tool-ref extensions (tool-ref
+ * last: no later extension may replace tool results and drop its trailers), the given skills
  * and the scenario's tools. The system prompt comes from the scenario profile extension (`--scenario`),
  * which also applies the tools and skills in-process; `--tools` and `--skill` stay as the hard
  * limits. Context files (AGENTS.md) come from the project extension, after skills, not from pi (`-nc`).
@@ -37,6 +41,7 @@ export function piArgs(o: PiCommandOptions): string[] {
     "-ne",
     "-e", o.extensionPath, "-e", o.scenarioProfileExtensionPath,
     "-e", o.projectExtensionPath, "-e", o.metricsExtensionPath,
+    "-e", o.toolRefExtensionPath,
     "--no-mcp",
     "-ns", ...o.skillPaths.flatMap((p) => ["--skill", p]),
     "-np",
@@ -46,7 +51,7 @@ export function piArgs(o: PiCommandOptions): string[] {
     "--offline",
     "--session-dir", o.sessionDir,
     ...(o.resumeFrom ? ["--fork", o.resumeFrom] : []),
-    "--tools", [...scenario.tools, SUBMIT_RESULT].join(","),
+    "--tools", [...scenario.tools, SUBMIT_RESULT, ...TOOL_REF_TOOLS].join(","),
     ...(task.model ? ["--model", task.model] : []),
     ...(task.thinkingLevel ? ["--thinking", task.thinkingLevel] : []),
     `--${SCENARIO_FLAG}`, scenario.name,

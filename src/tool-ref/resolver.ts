@@ -1,4 +1,4 @@
-import { parseHandle, trailerIndex } from "../shared/tool-ref.ts";
+import { parseHandle, TOOL_REF_GET, TOOL_REF_GREP, trailerIndex } from "../shared/tool-ref.ts";
 
 /**
  * Resolver: turns tool-ref handles into tool calls, from raw session entries. No pi state of its
@@ -6,9 +6,9 @@ import { parseHandle, trailerIndex } from "../shared/tool-ref.ts";
  * (`ctx.sessionManager`) or offline (a session JSONL file). See docs/tool-ref-design.md.
  */
 
+export { TOOL_REF_GET, TOOL_REF_GREP };
+
 /** tool-ref's own tools; always excluded from `get` and `grep`. */
-export const TOOL_REF_GET = "tool_ref_get";
-export const TOOL_REF_GREP = "tool_ref_grep";
 const OWN_TOOLS: ReadonlySet<string> = new Set([TOOL_REF_GET, TOOL_REF_GREP]);
 
 export const DEFAULT_EXCLUDE: readonly string[] = ["submit_result"];

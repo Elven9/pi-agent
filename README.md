@@ -12,12 +12,14 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
+| `src/tool-ref/` | pi extension: a handle (`[tool-ref #N]`) on every tool result, `tool_ref_get` / `tool_ref_grep` to look calls up (runner and personal pi) |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
 | `examples/` | Example task file and project folder (`project/`: `project.yaml`, a workflow, a doc) |
 | `testdata/` | Recorded pi run + `fake-pi.mjs` for wrapper tests |
 | `Dockerfile`, `docker/`, `openshell/`, `config/` | Sandbox image and OpenShell setup |
 | `docs/cli-vs-sdk-decision.md` | Why the CLI and not the SDK (from agents-core) |
 | `docs/project-context-design.md` | Project context and prompt-cache placement |
+| `docs/tool-ref-design.md` | Tool-call handles (`tool-ref`) |
 
 ## Personal pi
 
@@ -25,9 +27,10 @@ My pi resources and the sandbox agent runner, in one repo.
 pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /reload
 ```
 
-The manifest exposes `skills/`, `prompts/*.md` and four extensions: project context
-(`src/project/`), session metrics (`src/metrics/`) and session upload (`src/session-upload/`),
-loaded from source, and the scenario profile, loaded from `dist/scenario-profile.js` because
+The manifest exposes `skills/`, `prompts/*.md` and these extensions: project context
+(`src/project/`), context view (`src/context-view/`), session metrics (`src/metrics/`), session
+upload (`src/session-upload/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
+and the scenario profile, loaded from `dist/scenario-profile.js` because
 scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`
 after cloning and after changing a scenario. Not the runner extension.
 
@@ -74,6 +77,20 @@ appends its latest totals, so the file ends with them. A session with no file ye
 the timeout is 15 s, no retry. A crashed session is not uploaded; its file stays on disk.
 Sandbox runs never load it (`-ne`): the orchestrator uploads the session and report.
 
+### Tool references
+
+The tool-ref extension (`src/tool-ref/`, design in `docs/tool-ref-design.md`) appends
+`[tool-ref #N]` as an extra text block to every tool result, so the model can cite calls by
+number. Numbers are unique per session file. `tool_ref_get` shows results by handle (`lines`
+for a range, `part: input|both`), `tool_ref_grep` finds calls by regex over input and output
+(`pattern: ".", in: "input"` lists them). Both read the raw session entries of the active
+branch, so compaction does not hide anything. The interactive UI hides the trailer; the session
+file keeps it.
+
+`toolRef.exclude` in `settings.json` (global or project; a project list replaces the global one)
+names tools whose results the two tools won't show; default `["submit_result"]`. Excluded
+calls are still numbered. Read at session start (`/reload` applies a change).
+
 Never put
 `~/.pi/agent` itself under git: it mixes secrets (`auth.json`, `models.json` keys), state
 (`sessions/`, `trust.json`, `models-store.json`) and downloaded binaries (`bin/`).
@@ -118,12 +135,13 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 ### How a run works
 
 ```
-pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js
+pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/tool-ref.js
      ▲                    │    --scenario <name> [--project <dir>] … -- <prompt>
      │                    │  scenario-profile: owns --scenario; system prompt, tools, skills
      │                    │  extension: submit_result + instruction, nudge once
      │                    │  project:   project sections in the system prompt, cache split
      │                    │  metrics:   pi-agent.metrics entry at every settle
+     │                    │  tool-ref:  [tool-ref #N] on every tool result, tool_ref_get/grep (last)
      └──── JSONL events ──┘  (stdout, read continuously; split on LF only)
 ```
 
