@@ -222,13 +222,86 @@ export function formatRefView(index: ToolRefIndex, refs: number[]): string {
     .join("\n\n");
 }
 
-/** One `/ref` section: a resolved call (`ref`, `header`) or an error line (`text` only). */
+/**
+ * A piece of a `/ref` section. `code` lines may be highlighted by the viewer: `lang` names the
+ * language, `file` lets it derive one from the file extension; with neither (or an unknown
+ * extension) they stay plain text. `gutter` holds per-line prefixes (output line numbers) that
+ * are kept out of the highlighting.
+ */
+export type RefBlock =
+  | { kind: "text"; text: string }
+  | { kind: "code"; lines: string[]; lang?: string; file?: string; gutter?: string[] };
+
+/** One `/ref` section: a resolved call (`ref`, `header`, `blocks`) or an error line (`text` only). */
 export interface RefSection {
   handle: number;
   ref?: ToolRef & { handle: number };
   /** `#N tool ok|ERR`, for resolved calls. */
   header?: string;
+  /** Plain text of the section (`blocks` joined, for resolved calls). */
   text: string;
+  blocks?: RefBlock[];
+}
+
+/** Plain text of `/ref` blocks, one line per text block and code line. */
+export function refBlocksText(blocks: RefBlock[]): string {
+  return blocks
+    .flatMap((b) => (b.kind === "text" ? [b.text] : b.lines.map((l, i) => `${b.gutter?.[i] ?? ""}${l}`)))
+    .join("\n");
+}
+
+const textBlock = (text: string): RefBlock => ({ kind: "text", text });
+
+/** `/ref` input: code-like arguments (bash command, written content, edit texts) as code blocks. */
+function refInputBlocks(ref: ToolRef): RefBlock[] {
+  const input = ref.input;
+  if (!input) return [textBlock("input:"), textBlock("(call not found)")];
+  const blocks: RefBlock[] = [textBlock("input:")];
+  const file = typeof input.path === "string" ? input.path : undefined;
+  if (ref.toolName === "bash" && typeof input.command === "string" && Object.keys(input).length === 1) {
+    blocks.push({ kind: "code", lines: input.command.split("\n"), lang: "bash" });
+    return blocks;
+  }
+  const code = (label: string, value: string, source: { lang?: string; file?: string }) =>
+    blocks.push(textBlock(`${label}:`), { kind: "code", lines: value.split("\n"), ...source });
+  for (const [key, value] of Object.entries(input)) {
+    if (ref.toolName === "bash" && key === "command" && typeof value === "string") code(key, value, { lang: "bash" });
+    else if (ref.toolName === "write" && key === "content" && typeof value === "string") code(key, value, { file });
+    else if (ref.toolName === "edit" && key === "edits" && Array.isArray(value) && value.every(isEdit)) {
+      value.forEach((e, i) => {
+        code(`edits[${i}].oldText`, e.oldText, { file });
+        code(`edits[${i}].newText`, e.newText, { file });
+      });
+    } else {
+      for (const line of `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`.split("\n")) blocks.push(textBlock(line));
+    }
+  }
+  return blocks;
+}
+
+function isEdit(e: unknown): e is { oldText: string; newText: string } {
+  return typeof e === "object" && e !== null && typeof (e as any).oldText === "string" && typeof (e as any).newText === "string";
+}
+
+/** A closing `[...]` notice after a blank line, as `read` appends (`[Showing lines ...]`). */
+const NOTICE = /^\[.*\]$/;
+
+/** `/ref` output: numbered lines; a successful `read` is code in the language of its file. */
+function refOutputBlocks(ref: ToolRef): RefBlock[] {
+  const { lines, image } = outputLines(ref);
+  const total = lines.length;
+  if (total === 0) return [textBlock("output: (none)")];
+  const width = String(total).length;
+  const gutter = lines.map((_, i) => `${String(i + 1).padStart(width)}  `);
+  const path = ref.input?.path;
+  const file = ref.toolName === "read" && !ref.isError && typeof path === "string" && !image.includes(true) ? path : undefined;
+  const blocks: RefBlock[] = [textBlock(`output (${total} line${total === 1 ? "" : "s"}):`)];
+  // A trailing notice is not part of the file: keep it out of the highlighted block.
+  let end = total;
+  if (file && total >= 3 && NOTICE.test(lines[total - 1]!) && lines[total - 2] === "") end = total - 2;
+  blocks.push({ kind: "code", lines: lines.slice(0, end), gutter: gutter.slice(0, end), file });
+  if (end < total) blocks.push({ kind: "code", lines: lines.slice(end), gutter: gutter.slice(end) });
+  return blocks;
 }
 
 /** `/ref` text per handle (duplicates dropped), in the given order. */
@@ -248,11 +321,17 @@ export function refViewSections(index: ToolRefIndex, refs: number[]): RefSection
       `entry ${ref.entryId}`,
       ref.excluded && "excluded from tool_ref_get/grep",
     ].filter(Boolean);
-    // Input and output separately, each without formatGet's header line; a blank line between parts.
-    const part = (p: Part) => formatGet(ref, { part: p, maxChars: Number.POSITIVE_INFINITY }).text.split("\n").slice(1);
+    // Whole input and output (no character cap); a blank line between parts.
     const header = `#${ref.handle} ${ref.toolName} ${status(ref)}`;
-    const text = [`──── ${header} ────`, facts.join(" · "), "", ...part("input"), "", ...part("output")].join("\n");
-    sections.push({ handle: n, ref, header, text });
+    const blocks: RefBlock[] = [
+      textBlock(`──── ${header} ────`),
+      textBlock(facts.join(" · ")),
+      textBlock(""),
+      ...refInputBlocks(ref),
+      textBlock(""),
+      ...refOutputBlocks(ref),
+    ];
+    sections.push({ handle: n, ref, header, text: refBlocksText(blocks), blocks });
   }
   return sections;
 }

@@ -225,3 +225,41 @@ test("/ref view: whole input and output, details, excluded calls shown, errors i
   assert.doesNotMatch(read, /not shown/);
   assert.match(unknown, /^#99 is unknown/);
 });
+
+test("/ref view blocks: code marked for highlighting, other text plain", async () => {
+  const { refViewSections } = await import("./format.ts");
+  const s = new TestSession();
+  s.user("go");
+  s.calls(
+    { id: "r1", tool: "read", input: { path: "src/a.ts" }, output: "const a = 1;\nexport { a };\n\n[Showing lines 1-2 of 9. Use offset=3 to continue.]", handle: 1 },
+    { id: "w1", tool: "write", input: { path: "b.py", content: "x = 1\ny = 2" }, output: "Wrote b.py", handle: 2 },
+    { id: "e1", tool: "edit", input: { path: "c.go", edits: [{ oldText: "a", newText: "b\nc" }] }, output: "ok", handle: 3 },
+    { id: "b1", tool: "bash", input: { command: "ls -la", timeout: 5 }, output: "total 0", handle: 4 },
+    { id: "r2", tool: "read", input: { path: "missing.ts" }, output: "ENOENT", isError: true, handle: 5 },
+  );
+  const index = indexBranch(s.entries, s.leafId, []);
+  const [read, write, edit, bash, failed] = refViewSections(index, [1, 2, 3, 4, 5]);
+  const code = (sec: typeof read) => sec!.blocks!.filter((b) => b.kind === "code");
+
+  // read: file content is code of the file's language; the trailing notice is a plain block.
+  assert.deepEqual(code(read), [
+    { kind: "code", lines: ["const a = 1;", "export { a };"], gutter: ["1  ", "2  "], file: "src/a.ts" },
+    { kind: "code", lines: ["", "[Showing lines 1-2 of 9. Use offset=3 to continue.]"], gutter: ["3  ", "4  "] },
+  ]);
+  assert.match(read!.text, /output \(4 lines\):\n1  const a = 1;\n2  export \{ a \};\n3  \n4  \[Showing/);
+
+  assert.deepEqual(code(write)[0], { kind: "code", lines: ["x = 1", "y = 2"], file: "b.py" });
+  assert.match(write!.text, /input:\npath: b\.py\ncontent:\nx = 1\ny = 2\n/);
+  assert.equal(code(write)[1]!.kind === "code" && code(write)[1]!.file, undefined, "write output is not code");
+
+  assert.match(edit!.text, /edits\[0\]\.oldText:\na\nedits\[0\]\.newText:\nb\nc\n/);
+  assert.deepEqual(code(edit).slice(0, 2).map((b) => b.kind === "code" && b.file), ["c.go", "c.go"]);
+
+  assert.deepEqual(code(bash)[0], { kind: "code", lines: ["ls -la"], lang: "bash" });
+  assert.match(bash!.text, /input:\ncommand:\nls -la\ntimeout: 5\n/);
+  // bash output has no language: plain.
+  assert.equal(code(bash)[1]!.kind === "code" && (code(bash)[1]!.lang ?? code(bash)[1]!.file), undefined);
+
+  // Failed reads are not highlighted.
+  assert.equal(code(failed).at(-1)!.kind === "code" && code(failed).at(-1)!.file, undefined);
+});
