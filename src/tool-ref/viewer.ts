@@ -1,6 +1,6 @@
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, matchesKey, truncateToWidth, type TUI, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { RefSection } from "./format.ts";
+import { getLanguageFromPath, getMarkdownTheme, highlightCode, type Theme } from "@earendil-works/pi-coding-agent";
+import { type Component, Markdown, matchesKey, truncateToWidth, type TUI, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import type { RefBlock, RefSection } from "./format.ts";
 import type { Summarizer, SummaryState } from "./summary.ts";
 
 /**
@@ -11,6 +11,10 @@ import type { Summarizer, SummaryState } from "./summary.ts";
  * With a `Summarizer` (`toolRef.summaryModel` set), `s` switches to a summary view: one summary
  * per call, streamed in, started on first view; `r` summarizes the panel's calls again. Each
  * view keeps its own scroll position.
+ *
+ * The raw view highlights code blocks whose language is known (bash commands, `read` output,
+ * written and edited text by file extension); everything else stays plain text. The summary
+ * view renders summaries as markdown.
  */
 
 /** Overlay size; the viewer fits its height to the same fraction of the terminal. */
@@ -28,6 +32,8 @@ export class RefViewer implements Component {
   private mode: Mode = "raw";
   private readonly tops: Record<Mode, number> = { raw: 0, summary: 0 };
   private cache: { width: number; mode: Mode; lines: string[] } | undefined;
+  /** Highlighted raw body; it does not depend on the width. */
+  private raw: string | undefined;
   private innerWidth = 80;
 
   private readonly tui: TUI;
@@ -53,27 +59,41 @@ export class RefViewer implements Component {
   };
 
   private rawBody(): string {
-    return this.sections.map((s) => s.text).join("\n\n");
+    this.raw ??= this.sections.map((s) => (s.blocks ? this.renderBlocks(s.blocks) : s.text)).join("\n\n");
+    return this.raw;
   }
 
-  private summaryBody(): string {
+  private renderBlocks(blocks: RefBlock[]): string {
     const th = this.theme;
-    return this.sections
-      .map((s) => {
-        if (!s.ref || !this.summarizer) return s.text;
-        const state: SummaryState | undefined = this.summarizer.get(s.ref);
-        const head = `──── ${s.header} · summary ────`;
-        if (!state) return `${head}\n${th.fg("dim", "(not started)")}`;
-        if (state.status === "streaming") {
-          return `${head}\n${state.text === "" ? th.fg("dim", `summarizing with ${this.summarizer.label}…`) : `${state.text}${th.fg("dim", " ▍")}`}`;
-        }
-        if (state.status === "error") {
-          const partial = state.text === "" ? "" : `${state.text}\n`;
-          return `${head}\n${partial}${th.fg("error", `summary failed: ${state.error}`)} ${th.fg("dim", "(r to try again)")}`;
-        }
-        return `${head}\n${state.text}`;
+    return blocks
+      .flatMap((b) => {
+        if (b.kind === "text") return [b.text];
+        const lines = highlighted(b);
+        return lines.map((l, i) => (b.gutter ? th.fg("dim", b.gutter[i] ?? "") : "") + l);
       })
-      .join("\n\n");
+      .join("\n");
+  }
+
+  private summaryLines(width: number): string[] {
+    const th = this.theme;
+    const wrap = (text: string) => text.split("\n").flatMap((l) => (l === "" ? [""] : wrapTextWithAnsi(l, width)));
+    const markdown = (text: string) => new Markdown(text, 0, 0, getMarkdownTheme()).render(width);
+    return this.sections.flatMap((s, i) => {
+      const gap = i === 0 ? [] : [""];
+      if (!s.ref || !this.summarizer) return [...gap, ...wrap(s.text)];
+      const state: SummaryState | undefined = this.summarizer.get(s.ref);
+      const head = wrap(`──── ${s.header} · summary ────`);
+      if (!state) return [...gap, ...head, th.fg("dim", "(not started)")];
+      if (state.status === "streaming") {
+        if (state.text === "") return [...gap, ...head, th.fg("dim", `summarizing with ${this.summarizer.label}…`)];
+        return [...gap, ...head, ...markdown(state.text), th.fg("dim", "▍")];
+      }
+      if (state.status === "error") {
+        const partial = state.text === "" ? [] : markdown(state.text);
+        return [...gap, ...head, ...partial, ...wrap(`${th.fg("error", `summary failed: ${state.error}`)} ${th.fg("dim", "(r to try again)")}`)];
+      }
+      return [...gap, ...head, ...markdown(state.text)];
+    });
   }
 
   private viewHeight(): number {
@@ -82,8 +102,13 @@ export class RefViewer implements Component {
 
   private lines(width: number): string[] {
     if (this.cache?.width !== width || this.cache.mode !== this.mode) {
-      const body = this.mode === "raw" ? this.rawBody() : this.summaryBody();
-      this.cache = { width, mode: this.mode, lines: body.split("\n").flatMap((l) => (l === "" ? [""] : wrapTextWithAnsi(l, width))) };
+      const lines =
+        this.mode === "raw"
+          ? this.rawBody()
+              .split("\n")
+              .flatMap((l) => (l === "" ? [""] : wrapTextWithAnsi(l, width)))
+          : this.summaryLines(width);
+      this.cache = { width, mode: this.mode, lines };
     }
     return this.cache.lines;
   }
@@ -153,11 +178,22 @@ export class RefViewer implements Component {
   }
 
   invalidate(): void {
+    // Also after a theme change: the highlighting depends on the theme.
     this.cache = undefined;
+    this.raw = undefined;
   }
 
   /** Stops summaries still streaming (they are dropped, finished ones stay cached). */
   dispose(): void {
     this.summarizer?.abort();
   }
+}
+
+/** Code lines highlighted when their language is known, else as they are. */
+function highlighted(block: Extract<RefBlock, { kind: "code" }>): string[] {
+  const lang = block.lang ?? (block.file ? getLanguageFromPath(block.file) : undefined);
+  if (!lang) return block.lines;
+  const lines = highlightCode(block.lines.join("\n"), lang);
+  // Line numbers in the gutter must stay aligned with the code.
+  return lines.length === block.lines.length ? lines : block.lines;
 }
