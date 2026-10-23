@@ -57,6 +57,19 @@ interface MessageLike {
   toolName?: string;
   isError?: boolean;
   durationMs?: number;
+  /** pi's bounded record of calls this tool made (`ctx.executeTool`, e.g. a codemode script). */
+  nestedCalls?: { calls?: Array<{ name?: unknown; arguments?: unknown }>; complete?: unknown };
+}
+
+/**
+ * A tool-ref lookup a tool made through nested calls (a codemode script calling
+ * `tool_ref_get`/`tool_ref_grep`): provenance, so a result that re-shows earlier results says so.
+ * `refs`/`pattern` are absent when pi omitted the arguments (size limits).
+ */
+export interface Lookup {
+  tool: typeof TOOL_REF_GET | typeof TOOL_REF_GREP;
+  refs?: number[];
+  pattern?: string;
 }
 
 export interface ToolRef {
@@ -82,6 +95,15 @@ export interface ToolRef {
   durationMs: number | undefined;
   /** Session entry id of the tool result. */
   entryId: string;
+  /** tool-ref lookups among the result's nested calls, in call order; empty for most tools. */
+  lookups: Lookup[];
+  /** Names of the tools the call ran through nested calls (codemode scripts), distinct, in call order. */
+  nestedTools: string[];
+  /**
+   * The call only looked up earlier results: its nested calls are all tool-ref calls and pi's
+   * record is complete. `grep` skips it like tool-ref's own results; `get` still shows it.
+   */
+  lookupOnly: boolean;
 }
 
 export interface ToolRefIndex {
@@ -131,6 +153,33 @@ export function branchOf(entries: readonly EntryLike[], leafId: string | null): 
 
 export function isExcluded(toolName: string, exclude: readonly string[]): boolean {
   return OWN_TOOLS.has(toolName) || exclude.includes(toolName);
+}
+
+/** tool-ref lookups in a result's `nestedCalls`. */
+export function lookupsOf(nested: MessageLike["nestedCalls"]): Lookup[] {
+  const calls = Array.isArray(nested?.calls) ? nested.calls : [];
+  const lookups: Lookup[] = [];
+  for (const c of calls) {
+    if (c?.name !== TOOL_REF_GET && c?.name !== TOOL_REF_GREP) continue;
+    const args = (typeof c.arguments === "object" && c.arguments !== null ? c.arguments : {}) as { refs?: unknown; pattern?: unknown };
+    const lookup: Lookup = { tool: c.name };
+    if (Array.isArray(args.refs) && args.refs.every((n) => Number.isSafeInteger(n))) lookup.refs = args.refs as number[];
+    if (typeof args.pattern === "string") lookup.pattern = args.pattern;
+    lookups.push(lookup);
+  }
+  return lookups;
+}
+
+/** Distinct tool names in a result's `nestedCalls`, in call order. */
+export function nestedToolsOf(nested: MessageLike["nestedCalls"]): string[] {
+  const calls = Array.isArray(nested?.calls) ? nested.calls : [];
+  return [...new Set(calls.flatMap((c) => (typeof c?.name === "string" ? [c.name] : [])))];
+}
+
+/** Only tool-ref calls, and pi's record lost none (`complete: false` may hide other calls). */
+export function isLookupOnly(nested: MessageLike["nestedCalls"]): boolean {
+  const tools = nestedToolsOf(nested);
+  return nested?.complete !== false && tools.length > 0 && tools.every((t) => OWN_TOOLS.has(t));
 }
 
 const iso = (ms: number | undefined) => (typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined);
@@ -188,6 +237,9 @@ export function indexBranch(entries: readonly EntryLike[], leafId: string | null
       endedAt: iso(m.timestamp),
       durationMs: typeof m.durationMs === "number" ? m.durationMs : undefined,
       entryId: entry.id,
+      lookups: lookupsOf(m.nestedCalls),
+      nestedTools: nestedToolsOf(m.nestedCalls),
+      lookupOnly: isLookupOnly(m.nestedCalls),
     };
     index.refs.push(ref);
     index.byToolCallId.set(ref.toolCallId, ref);

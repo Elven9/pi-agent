@@ -15,6 +15,28 @@ export const GREP_LINE_CHARS = 200;
 const SUMMARY_CHARS = 100;
 
 const PATH_TOOLS = new Set(["read", "edit", "write"]);
+const CODEMODE = "codemode";
+
+/** Most characters of output per ref (`get`) and of match text in total (`grep`) in structured results. */
+export const STRUCTURED_MAX_CHARS = 1_048_576;
+/** `grep` caps for structured results (scripts filter themselves; the text caps are for the model). */
+export const GREP_STRUCTURED_PER_CALL = 50;
+export const GREP_STRUCTURED_TOTAL = 1000;
+
+/**
+ * Provenance line for a result whose tool looked up earlier results (a codemode script calling
+ * tool-ref tools): `looked up: #12 #14, grep /error/`. Undefined without lookups.
+ */
+export function lookupSummary(ref: Pick<ToolRef, "lookups">): string | undefined {
+  if (!ref.lookups?.length) return undefined;
+  const handles = (refs: number[]) => refs.map((n) => `#${n}`).join(" ");
+  const parts = ref.lookups.map((l) => {
+    if (l.tool === "tool_ref_get") return l.refs ? handles(l.refs) : "get (arguments not recorded)";
+    const grep = l.pattern !== undefined ? `grep /${l.pattern}/` : "grep (arguments not recorded)";
+    return l.refs ? `${grep} in ${handles(l.refs)}` : grep;
+  });
+  return `looked up: ${parts.join(", ")}`;
+}
 
 /** Cuts to the first line (plus `…` if there were more) and to `max` characters. */
 export function oneLine(text: string, max = SUMMARY_CHARS): string {
@@ -28,25 +50,42 @@ export function oneLine(text: string, max = SUMMARY_CHARS): string {
   return cut ? `${line}…` : line;
 }
 
-/** One-line input summary: `bash` command, `read`/`edit`/`write` path, else compact JSON. */
+/**
+ * A codemode script without its `// @options:` line and leading blank lines, so the summary
+ * starts with code.
+ */
+export function scriptStart(code: string): string {
+  return code.replace(/^\s*\/\/\s*@options:[^\n]*\n?/, "").replace(/^\s*\n/, "").trimStart();
+}
+
+/** One-line input summary: `bash` command, `read`/`edit`/`write` path, codemode script, else compact JSON. */
 export function inputSummary(ref: Pick<ToolRef, "toolName" | "input">): string {
   const input = ref.input;
   if (!input) return "(call not found)";
   if (ref.toolName === "bash" && typeof input.command === "string") return oneLine(input.command);
+  if (ref.toolName === CODEMODE && typeof input.code === "string") return oneLine(scriptStart(input.code));
   if (PATH_TOOLS.has(ref.toolName) && typeof input.path === "string") return oneLine(input.path);
   return oneLine(JSON.stringify(input));
 }
 
+/** The code of a call whose input is just its code (`bash` command, codemode script), else undefined. */
+function soleCode(ref: Pick<ToolRef, "toolName" | "input">): string | undefined {
+  const input = ref.input;
+  if (!input || Object.keys(input).length !== 1) return undefined;
+  const value = ref.toolName === "bash" ? input.command : ref.toolName === CODEMODE ? input.code : undefined;
+  return typeof value === "string" ? value : undefined;
+}
+
 /**
- * Input as lines (`in:N` in grep): the `bash` command as is, otherwise one `key: value` per
- * argument, strings raw (multi-line strings continue on the next lines), others as JSON.
+ * Input as lines (`in:N` in grep): a `bash` command or codemode script as is (so `in:N` is its
+ * own line number), otherwise one `key: value` per argument, strings raw (multi-line strings
+ * continue on the next lines), others as JSON.
  */
 export function inputLines(ref: Pick<ToolRef, "toolName" | "input">): string[] {
   const input = ref.input;
   if (!input) return [];
-  if (ref.toolName === "bash" && typeof input.command === "string" && Object.keys(input).length === 1) {
-    return input.command.split("\n");
-  }
+  const code = soleCode(ref);
+  if (code !== undefined) return code.split("\n");
   return Object.entries(input).flatMap(([key, value]) =>
     `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`.split("\n"),
   );
@@ -114,9 +153,13 @@ export function formatGet(ref: ToolRef & { handle: number }, options: GetOptions
     cut: false,
   };
   const out: string[] = [];
-  if (part === "output") out.push(`#${ref.handle} ${ref.toolName} ${status(ref)} · input: ${inputSummary(ref)}`);
-  else {
+  const lookups = lookupSummary(ref);
+  if (part === "output") {
+    out.push(`#${ref.handle} ${ref.toolName} ${status(ref)} · input: ${inputSummary(ref)}`);
+    if (lookups) out.push(lookups);
+  } else {
     out.push(`#${ref.handle} ${ref.toolName} ${status(ref)}`);
+    if (lookups) out.push(lookups);
     const input = ref.input ? inputLines(ref).join("\n") : "(call not found)";
     const text = cutChars(input, budget);
     shown.cut ||= text !== input;
@@ -197,6 +240,81 @@ export function formatGetMany(index: ToolRefIndex, refs: number[], options: GetO
   return { text: texts.join("\n\n"), results };
 }
 
+/** One ref of `tool_ref_get`'s structured result (what codemode scripts receive). */
+export type GetItem = {
+  handle: number;
+  toolName: string;
+  toolCallId: string;
+  isError: boolean;
+  /** Original arguments; null when not asked for (`part: "output"`) or the call is not found. */
+  input: Record<string, unknown> | null;
+  /** Whole text output (images as `[image]`), or the `lines` range; null for `part: "input"`. */
+  output: string | null;
+  /** Set when `lines` was given: the range returned and the total. */
+  lines?: { from: number; to: number; total: number };
+  /** Output cut at STRUCTURED_MAX_CHARS. */
+  truncated?: true;
+  /** tool-ref lookups the call made (codemode scripts). */
+  lookups?: ToolRef["lookups"];
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+};
+
+export type GetItemResult = GetItem | { handle: number; error: string };
+
+/**
+ * Structured `tool_ref_get`: raw data for scripts, no `maxChars` and no line numbers; `lines`
+ * selects a range. Output is capped at STRUCTURED_MAX_CHARS per ref. Per-ref errors inline.
+ */
+export function getStructured(index: ToolRefIndex, refs: number[], options: Omit<GetOptions, "maxChars"> = {}): { results: GetItemResult[] } {
+  const part = options.part ?? "output";
+  const results: GetItemResult[] = [];
+  for (const n of new Set(refs)) {
+    const r = resolveHandle(index, n);
+    if (r.error !== undefined) {
+      results.push({ handle: n, error: r.error });
+      continue;
+    }
+    const ref = r.ref;
+    const item: GetItem = {
+      handle: n,
+      toolName: ref.toolName,
+      toolCallId: ref.toolCallId,
+      isError: ref.isError,
+      input: part === "output" ? null : (ref.input ?? null),
+      output: null,
+    };
+    if (part !== "input") {
+      let output = ref.output;
+      if (options.lines) {
+        const { lines } = outputLines(ref);
+        const total = lines.length;
+        const at = (k: number) => (k < 0 ? total + 1 + k : k);
+        const from = Math.max(1, at(options.lines[0]));
+        const to = Math.min(total, at(options.lines[1]));
+        if (from > to) {
+          results.push({ handle: n, error: `#${n}: output lines ${options.lines[0]}..${options.lines[1]} are outside 1-${total}` });
+          continue;
+        }
+        output = lines.slice(from - 1, to).join("\n");
+        item.lines = { from, to, total };
+      }
+      if (output.length > STRUCTURED_MAX_CHARS) {
+        output = output.slice(0, STRUCTURED_MAX_CHARS);
+        item.truncated = true;
+      }
+      item.output = output;
+    }
+    if (ref.lookups.length > 0) item.lookups = ref.lookups;
+    if (ref.startedAt) item.startedAt = ref.startedAt;
+    if (ref.endedAt) item.endedAt = ref.endedAt;
+    if (ref.durationMs !== undefined) item.durationMs = ref.durationMs;
+    results.push(item);
+  }
+  return { results };
+}
+
 /**
  * Parses `/ref` arguments: handles, with or without `#`, separated by spaces or commas.
  * Throws with a usage message on anything else.
@@ -258,14 +376,16 @@ function refInputBlocks(ref: ToolRef): RefBlock[] {
   if (!input) return [textBlock("input:"), textBlock("(call not found)")];
   const blocks: RefBlock[] = [textBlock("input:")];
   const file = typeof input.path === "string" ? input.path : undefined;
-  if (ref.toolName === "bash" && typeof input.command === "string" && Object.keys(input).length === 1) {
-    blocks.push({ kind: "code", lines: input.command.split("\n"), lang: "bash" });
+  const sole = soleCode(ref);
+  if (sole !== undefined) {
+    blocks.push({ kind: "code", lines: sole.split("\n"), lang: ref.toolName === "bash" ? "bash" : "javascript" });
     return blocks;
   }
   const code = (label: string, value: string, source: { lang?: string; file?: string }) =>
     blocks.push(textBlock(`${label}:`), { kind: "code", lines: value.split("\n"), ...source });
   for (const [key, value] of Object.entries(input)) {
     if (ref.toolName === "bash" && key === "command" && typeof value === "string") code(key, value, { lang: "bash" });
+    else if (ref.toolName === CODEMODE && key === "code" && typeof value === "string") code(key, value, { lang: "javascript" });
     else if (ref.toolName === "write" && key === "content" && typeof value === "string") code(key, value, { file });
     else if (ref.toolName === "edit" && key === "edits" && Array.isArray(value) && value.every(isEdit)) {
       value.forEach((e, i) => {
@@ -320,6 +440,7 @@ export function refViewSections(index: ToolRefIndex, refs: number[]): RefSection
       ref.durationMs !== undefined && `${ref.durationMs} ms`,
       `entry ${ref.entryId}`,
       ref.excluded && "excluded from tool_ref_get/grep",
+      lookupSummary(ref),
     ].filter(Boolean);
     // Whole input and output (no character cap); a blank line between parts.
     const header = `#${ref.handle} ${ref.toolName} ${status(ref)}`;
@@ -374,7 +495,11 @@ export function compilePattern(pattern: string): RegExp {
   }
 }
 
-/** Finds calls on the active branch whose input or output lines match. Excluded calls are skipped silently. */
+/**
+ * Finds calls on the active branch whose input or output lines match. Excluded calls and
+ * lookup-only scripts (`ref.lookupOnly`) are skipped silently unless asked for by `refs`.
+ * `tool` also matches scripts that called that tool (`ref.nestedTools`).
+ */
 export function grepRefs(index: ToolRefIndex, options: GrepOptions): GrepResult {
   const regex = compilePattern(options.pattern);
   const where = options.in ?? "both";
@@ -392,11 +517,12 @@ export function grepRefs(index: ToolRefIndex, options: GrepOptions): GrepResult 
     // Newest first, like a search over everything.
     candidates.sort((a, b) => index.refs.indexOf(b) - index.refs.indexOf(a));
   } else {
-    candidates = index.refs.filter((r) => !r.excluded).reverse();
+    // Lookup-only scripts contain the patterns and handles they looked up: noise, like tool-ref's own results.
+    candidates = index.refs.filter((r) => !r.excluded && !r.lookupOnly).reverse();
   }
   const calls: GrepCall[] = [];
   for (const ref of candidates) {
-    if (tools && !tools.has(ref.toolName)) continue;
+    if (tools && !tools.has(ref.toolName) && !ref.nestedTools.some((t) => tools.has(t))) continue;
     if (options.errors !== undefined && ref.isError !== options.errors) continue;
     const matches: GrepCall["matches"] = [];
     if (where !== "output") {
@@ -452,7 +578,8 @@ export function formatGrep(result: GrepResult, options: GrepFormatOptions = {}):
     const { ref } = call;
     const matches = call.matches.slice(0, take);
     shown.push({ handle: ref.ambiguous ? undefined : ref.handle, toolCallId: ref.toolCallId, toolName: ref.toolName, matches });
-    out.push(`${handleText(ref).padEnd(handleWidth)} ${ref.toolName} ${status(ref).padEnd(3)}  ${inputSummary(ref)}`);
+    const lookups = lookupSummary(ref);
+    out.push(`${handleText(ref).padEnd(handleWidth)} ${ref.toolName} ${status(ref).padEnd(3)}  ${inputSummary(ref)}${lookups ? ` · ${lookups}` : ""}`);
     const sources: Record<Where, string[]> = { in: inputLines(ref), out: outputLines(ref).lines };
     // Lines to show per source: matches plus context, in order.
     const rows: Array<{ where: Where; line: number; match: boolean }> = [];
@@ -482,4 +609,48 @@ export function formatGrep(result: GrepResult, options: GrepFormatOptions = {}):
     );
   }
   return { text: out.join("\n"), shown, omitted };
+}
+
+/** One call of `tool_ref_grep`'s structured result. */
+export type GrepItem = {
+  /** null when the result has no usable handle (none, or ambiguous). */
+  handle: number | null;
+  toolName: string;
+  isError: boolean;
+  /** Matching lines (1-based), whole; input first. */
+  matches: Array<{ where: "input" | "output"; line: number; text: string }>;
+};
+
+/**
+ * Structured `tool_ref_grep`: whole matching lines, no context. Caps: `perCall` matches per
+ * call, `total` in all, and STRUCTURED_MAX_CHARS of match text; `omitted` counts the rest.
+ */
+export function grepStructured(
+  result: GrepResult,
+  options: { perCall?: number; total?: number; maxChars?: number } = {},
+): { calls: GrepItem[]; omitted: number; notes: string[] } {
+  const perCall = options.perCall ?? GREP_STRUCTURED_PER_CALL;
+  let left = options.total ?? GREP_STRUCTURED_TOTAL;
+  let chars = options.maxChars ?? STRUCTURED_MAX_CHARS;
+  const calls: GrepItem[] = [];
+  let omitted = 0;
+  for (const call of result.calls) {
+    const { ref } = call;
+    const sources: Record<Where, string[]> = { in: inputLines(ref), out: outputLines(ref).lines };
+    const matches: GrepItem["matches"] = [];
+    for (const m of call.matches) {
+      const text = sources[m.where][m.line - 1] ?? "";
+      if (matches.length >= perCall || left === 0 || text.length > chars) {
+        omitted++;
+        continue;
+      }
+      matches.push({ where: m.where === "in" ? "input" : "output", line: m.line, text });
+      left--;
+      chars -= text.length;
+    }
+    if (matches.length > 0) {
+      calls.push({ handle: ref.ambiguous || ref.handle === undefined ? null : ref.handle, toolName: ref.toolName, isError: ref.isError, matches });
+    }
+  }
+  return { calls, omitted, notes: result.notes };
 }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai";
-import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createCodemodeExtension, SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { parseHandle } from "../shared/tool-ref.ts";
 import toolRef, { GUIDELINES } from "./index.ts";
@@ -293,5 +293,43 @@ test("offline index of the session file equals the live index; /tree navigation 
   assert.deepEqual(offline(), live());
   // The new branch continues after the file max (#8 is on the abandoned branch).
   assert.equal(live().byToolCallId.get("branch")!.handle, 9);
+  session.dispose();
+});
+
+test("codemode: scripts get structured results, the script result gets one handle and shows its lookups", async () => {
+  const { session, faux, sessionManager } = await makeHarnessSession({
+    // pi loads codemode as a built-in extension; SDK sessions add it themselves.
+    extensions: [probe, createCodemodeExtension({ models: false }), toolRef],
+    tools: [...TOOLS, "codemode"],
+  });
+  const script = [
+    "const got = await tools.tool_ref_get({ refs: [1] });",
+    'const found = await tools.tool_ref_grep({ pattern: "two", in: "output" });',
+    "return { output: got.results[0].output, handle: got.results[0].handle, match: found.calls[0].matches[0] };",
+  ].join("\n");
+  faux.setResponses([
+    fauxAssistantMessage([call("bash", { command: "printf 'one\\ntwo'" }, "b1")], { stopReason: "toolUse" }),
+    fauxAssistantMessage([call("codemode", { code: script }, "cm")], { stopReason: "toolUse" }),
+    fauxAssistantMessage([call("tool_ref_get", { refs: [2] }, "g1")], { stopReason: "toolUse" }),
+    fauxAssistantMessage(fauxText("done")),
+  ]);
+  await session.prompt("go");
+
+  // Nested calls get no handle: the script result is #2, the lookup after it #3.
+  assert.deepEqual(savedHandles(sessionManager), [
+    ["b1", 1],
+    ["cm", 2],
+    ["g1", 3],
+  ]);
+  const scriptOut = resultText(sessionManager, "cm");
+  assert.match(scriptOut, /^Script completed/);
+  // The script received data, not the numbered text.
+  assert.ok(scriptOut.includes('{"output":"one\\ntwo","handle":1,"match":{"where":"output","line":2,"text":"two"}}'), scriptOut);
+  // The script stays citable and says what it looked up.
+  assert.match(resultText(sessionManager, "g1"), /^#2 codemode ok · input: const got = .*…\nlooked up: #1, grep \/two\/\n/);
+  // structuredContent is for callers only: not kept in the session file.
+  for (const e of sessionManager.getEntries()) {
+    if (e.type === "message" && e.message.role === "toolResult") assert.equal("structuredContent" in e.message, false);
+  }
   session.dispose();
 });

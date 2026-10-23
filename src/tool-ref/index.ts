@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type, type TSchema } from "typebox";
 import { ENTRY, TOOL_RESULT_REWRITER_CHANNEL, type ToolResultRewriterAnnounced } from "../shared/protocol.ts";
 import { parseHandle, trailerText } from "../shared/tool-ref.ts";
@@ -7,6 +7,8 @@ import {
   DEFAULT_MAX_CHARS,
   formatGetMany,
   formatGrep,
+  getStructured,
+  grepStructured,
   refViewSections,
   grepRefs,
   MAX_REFS,
@@ -37,6 +39,7 @@ import { RefViewer, VIEWER_OVERLAY } from "./viewer.ts";
 export const GUIDELINES = [
   "Every tool result ends with `[tool-ref #N]`. Cite evidence by number, not by copying output.",
   "When you show the user results, a summary or a conclusion, cite the tool results behind each claim inline, e.g. `the build fails on missing headers (#12)` or `(#12, #14)`.",
+  "Cite the result that first produced the evidence, not a later lookup or script that only re-shows it.",
   "To see earlier results again, use `tool_ref_get` (with `lines`) instead of re-running the command.",
   "To find earlier calls, e.g. after context was summarized, use `tool_ref_grep`.",
 ];
@@ -71,6 +74,57 @@ const GREP_PARAMETERS = Type.Object({
   errors: Type.Optional(Type.Boolean({ description: "true: only failed calls; false: only successful ones" })),
   context: Type.Optional(Type.Integer({ minimum: 0, maximum: 20, description: "Lines of context around each match (default 0)" })),
 });
+
+/**
+ * Structured results (`structuredContent`): what codemode scripts receive instead of the text.
+ * Raw data: whole output (no maxChars, no line numbers), whole grep lines. See format.ts.
+ */
+const LOOKUP = Type.Object({
+  tool: Type.String(),
+  refs: Type.Optional(Type.Array(Type.Integer())),
+  pattern: Type.Optional(Type.String()),
+});
+
+const GET_OUTPUT = Type.Object({
+  results: Type.Array(
+    Type.Union([
+      Type.Object({
+        handle: Type.Integer(),
+        toolName: Type.String(),
+        toolCallId: Type.String(),
+        isError: Type.Boolean(),
+        input: Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()], { description: "Original arguments; null unless part is input or both" }),
+        output: Type.Union([Type.String(), Type.Null()], { description: "Whole text output (images as [image]) or the requested lines; null for part input" }),
+        lines: Type.Optional(Type.Object({ from: Type.Integer(), to: Type.Integer(), total: Type.Integer() })),
+        truncated: Type.Optional(Type.Boolean({ description: "Output cut at 1 MiB; request lines" })),
+        lookups: Type.Optional(Type.Array(LOOKUP, { description: "Earlier results this call looked up (scripts)" })),
+        startedAt: Type.Optional(Type.String()),
+        endedAt: Type.Optional(Type.String()),
+        durationMs: Type.Optional(Type.Number()),
+      }),
+      Type.Object({ handle: Type.Integer(), error: Type.String() }),
+    ]),
+  ),
+});
+
+const GREP_OUTPUT = Type.Object({
+  calls: Type.Array(
+    Type.Object({
+      handle: Type.Union([Type.Integer(), Type.Null()]),
+      toolName: Type.String(),
+      isError: Type.Boolean(),
+      matches: Type.Array(
+        Type.Object({ where: stringEnum(["input", "output"] as const), line: Type.Integer(), text: Type.String() }),
+      ),
+    }),
+    { description: "Calls with matches, newest first" },
+  ),
+  omitted: Type.Integer({ description: "Matches left out by the caps" }),
+  notes: Type.Array(Type.String(), { description: "Problems with handles given in refs" }),
+});
+
+/** Our result types are plain JSON data; TypeScript cannot see that through their interfaces. */
+const json = (value: object) => value as NonNullable<AgentToolResult<unknown>["structuredContent"]>;
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 
@@ -168,11 +222,13 @@ export default function toolRef(pi: ExtensionAPI) {
       "Output lines are numbered; use `lines` for a range and `maxChars` to see more.",
     promptGuidelines: GUIDELINES,
     parameters: GET_PARAMETERS,
+    outputSchema: GET_OUTPUT,
     exposure: "direct",
     annotations: { readOnlyHint: true },
     async execute(_id, params: { refs: number[] } & GetOptions, _signal, _onUpdate, ctx) {
-      const { text: out, results } = formatGetMany(index(ctx), params.refs, params);
-      return { ...text(out), details: { results } };
+      const idx = index(ctx);
+      const { text: out, results } = formatGetMany(idx, params.refs, params);
+      return { ...text(out), details: { results }, structuredContent: json(getStructured(idx, params.refs, params)) };
     },
   } satisfies ToolDefinition<TSchema>);
 
@@ -183,6 +239,7 @@ export default function toolRef(pi: ExtensionAPI) {
       "Find earlier tool calls by regex over their input and output, newest first, with line numbers " +
       "for tool_ref_get. `pattern: \".\", in: \"input\"` lists the calls.",
     parameters: GREP_PARAMETERS,
+    outputSchema: GREP_OUTPUT,
     exposure: "direct",
     annotations: { readOnlyHint: true },
     // Models sometimes pass a single tool name as a string.
@@ -193,7 +250,7 @@ export default function toolRef(pi: ExtensionAPI) {
     async execute(_id, params: GrepOptions, _signal, _onUpdate, ctx) {
       const result = grepRefs(index(ctx), params);
       const { text: out, shown, omitted } = formatGrep(result, { context: params.context });
-      return { ...text(out), details: { calls: shown, omitted } };
+      return { ...text(out), details: { calls: shown, omitted }, structuredContent: json(grepStructured(result)) };
     },
   } satisfies ToolDefinition<TSchema>);
 }

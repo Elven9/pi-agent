@@ -32,10 +32,8 @@ Out of scope for now:
   in the fork; identity across sessions is not handled (see "Forks").
 - **Session server, global references, reports.** This is the in-session base they build on.
 - **User shell commands** (`!cmd`, `bashExecution` messages). They are not tool calls.
-- **Nested calls** (codemode scripts). Not used in this setup. Known gap: pi keeps a bounded
-  record of them as `nestedCalls` on the parent's result message, so a later version could
-  index them as sub-handles (`#12.3`) without changing trailers. In v1 only the parent call
-  gets a handle.
+- **Handles for nested calls** (the tool calls inside a codemode script). By design, not a
+  gap: the script's result is the evidence, so only it gets a handle (see "Codemode").
 
 ## Rules
 
@@ -128,7 +126,8 @@ Guards:
 | Tools in `toolRef.exclude` (default `submit_result`) | yes | no: "excluded" error in `get`, silently skipped by `grep` | Plumbing tools. Numbered anyway (R6), so numbering has no gaps that depend on settings, and a later settings change doesn't leave unnumbered calls |
 | `tool_ref_get`, `tool_ref_grep` | yes | no: as above | Always excluded. Looking things up is not evidence; avoids handles pointing at handles |
 | Blocked by a `tool_call` handler, unknown tool, invalid arguments, length-cut turn | yes | yes | pi's own error results; numbered via `message_end` like any other result |
-| Nested calls (e.g. from codemode) | no | no | Out of scope for v1 (see above). They produce no messages, so `message_end` never sees them |
+| Nested calls (e.g. from codemode) | no | no | By design: the script's result gets the handle and is the evidence (see "Codemode"). They produce no messages, so `message_end` never sees them |
+| A codemode script, also one that calls `tool_ref_get`/`tool_ref_grep` | yes | yes; `grep` skips scripts that only looked up (unless given in `refs`) | It is what the model reasoned on; its lookups are shown as provenance (see "Codemode") |
 | Calls queued behind an abort (sequential execution) | no | — | pi writes **no** result message for them at all, not even later; nothing to number |
 
 Reading an excluded handle returns an error naming the tool, e.g. "#7 is a submit_result call,
@@ -253,7 +252,9 @@ branch"), not "unknown", so the model doesn't search for it.
 ## Tools
 
 Read-only (`annotations.readOnlyHint: true`), `exposure: "direct"`, compact text for the
-model plus `details` with the full objects for renderers and other extensions.
+model plus `details` with the full objects for renderers and other extensions. Both declare
+an `outputSchema` and return `structuredContent`: raw data for programmatic callers
+(codemode scripts), see "Codemode".
 
 ### `tool_ref_get`
 
@@ -308,16 +309,17 @@ follow-up `tool_ref_get` can ask for exact `lines`:
 ```
 
 - Header per call: handle, tool, `ok`/`ERR`, one-line input summary (`bash`: command,
-  `read`/`edit`/`write`: path, others: shortened JSON; multi-line input cut to its first
-  line plus `…`).
+  `read`/`edit`/`write`: path, `codemode`: first code line, others: shortened JSON;
+  multi-line input cut to its first line plus `…`), then `· looked up: …` for scripts that
+  looked up earlier results.
 - Matching lines are prefixed `in:N` / `out:N`; context lines use the same numbering.
 - Caps: about 5 matching lines per call and 50 in total; the last line says how many
   matches in how many calls were left out and how to narrow. A matching line longer than
   about 200 characters (minified JSON, base64) is cut to a window around the match.
 - Listing is a grep: `pattern: ".", in: "input", tool: "bash"` lists the commands run, newest
-  first.
-- Scope: active branch only (R3). Excluded calls are skipped **silently** (unlike `get`, the
-  model did not ask for them by number). Images are skipped. Compaction and branch summaries
+  first (scripts that ran `bash` included, see "Codemode").
+- Scope: active branch only (R3). Excluded calls and lookup-only scripts are skipped
+  **silently** (unlike `get`, the model did not ask for them by number). Images are skipped. Compaction and branch summaries
   are not searched: they are not tool calls.
 
 Known limits:
@@ -387,6 +389,8 @@ Text:
 - To see earlier results again, use `tool_ref_get` (with `lines`) instead of re-running the
   command.
 - To find earlier calls, e.g. after context was summarized, use `tool_ref_grep`.
+- Cite the result that first produced the evidence, not a later lookup or script that only
+  re-shows it.
 
 Where: `promptGuidelines` of `tool_ref_get` (all lines on one tool, so they appear once). pi
 renders tool guidelines in `<rules>`, only while the tool is active.
@@ -413,6 +417,113 @@ Rules:
   (pi sends no prompt delta) or across sessions (block A cache stays valid).
 - Under `--scenario`, `<rules>` holds the guidelines of every active extension tool, so its
   text is shared only by setups with the same extension tools.
+
+## Codemode
+
+pi's `codemode` tool runs a JavaScript script that calls other tools (`ctx.executeTool`);
+only the script's output reaches the model. Checked in pi 1.4.0 with a live session and the
+SDK test.
+
+### One handle per script
+
+The goal of tool-ref is to name what the model used to reach its answer. With a script that
+is the script's output (after its own filtering), not the raw output of the calls inside it:
+
+- Nested calls add no transcript entries, so `message_end` numbers only the `codemode`
+  result. pi keeps a bounded record of the nested calls (`nestedCalls` on that result:
+  name, arguments, status, duration; never results), so their raw output is not recoverable
+  anyway.
+- Output over the script's `max_output_tokens` is stored as the model saw it (start, end,
+  temp-file path), so `get` shows exactly what the model reasoned on.
+- Finding a command run inside a script: the input of a `codemode` call is `{ code }`, one
+  multi-line string. `inputLines` returns the script lines as they are (like a `bash`
+  command, no `code: ` prefix), so `in:N` is the script's own line number and `pattern: "ls
+  -al", in: "input"` finds the script line.
+- The `tool` filter also matches scripts that called the tool: `ref.nestedTools` holds the
+  tool names in `nestedCalls`, so `tool: ["bash"]` finds `bash` calls and scripts that ran
+  `bash`. Added after a real session: the model filtered by `bash` first and found nothing.
+- Headers (`get`, `grep`, `/ref`) summarize a script by its first code line (the
+  `// @options:` line skipped, `scriptStart` in `format.ts`); `/ref` shows the script as a
+  JavaScript code block.
+
+### Structured results
+
+`tool_ref_get` and `tool_ref_grep` declare `outputSchema` and return `structuredContent`;
+scripts receive that instead of the text (which is formatted for the model: line numbers,
+character budgets). Scripts can hold and filter much more, so the structured data is raw:
+
+| | Text (model) | Structured (scripts) |
+|---|---|---|
+| `get` output | numbered lines, `maxChars` (default 4000) | whole text, no `maxChars`; `lines` selects a range (`lines: {from, to, total}`); cut at 1 MiB per ref (`truncated: true`) |
+| `get` input | per `part`, capped by `maxChars` | original arguments object, `null` for `part: "output"` |
+| `grep` matches | 5 per call, 50 in total, 200-char window, context lines | whole lines, 50 per call, 1000 in total, 1 MiB of match text in total; no context; `omitted` counts the rest |
+| Images | `[image]` | `[image]` placeholder (image blocks: later) |
+| Per-ref errors | inline | inline `{ handle, error }` (also `lines` out of range); invalid arguments or pattern throw |
+
+```ts
+// tool_ref_get
+{ results: Array<
+    | { handle; toolName; toolCallId; isError; input: object | null; output: string | null;
+        lines?: { from; to; total }; truncated?: true; lookups?: Lookup[];
+        startedAt?; endedAt?; durationMs? }
+    | { handle; error } > }
+// tool_ref_grep
+{ calls: Array<{ handle: number | null; toolName; isError;
+                 matches: Array<{ where: "input" | "output"; line; text }> }>;
+  omitted: number; notes: string[] }
+```
+
+`structuredContent` is not stored in the session: pi's `ToolResultMessage` has no such field
+(checked: a saved `bash` result has none), so whole outputs are not copied into the session
+file. The caps (constants in `format.ts`) keep a script's memory use bounded.
+
+### Lookups inside scripts: citable, with provenance
+
+`tool_ref_get`/`tool_ref_grep` results are excluded because looking up is not evidence and a
+handle should not point at a handle. Exclusion is by tool name, so a script that calls them
+produces a `codemode` result that is not excluded. A script may only re-show earlier results
+(a copy), derive new facts from them (a count over #12, #14, #18: real evidence) or mix
+lookups with fresh calls (real evidence). Hiding scripts would hide evidence, and guessing
+"lookup-only" from call names would hide derived facts too. Decision (A + C):
+
+- **A:** scripts stay citable; a guideline asks the model to cite the result that first
+  produced the evidence, not a lookup or script that only re-shows it.
+- **C:** provenance is shown. The resolver reads `nestedCalls` into `ref.lookups`
+  (`lookupsOf` in `resolver.ts`): tool-ref calls with their `refs` / `pattern` (absent when
+  pi omitted the arguments). `get` adds a line after the header, `grep` appends it to the
+  call header, `/ref` to the details, and structured `get` has `lookups`:
+
+```
+#31 codemode ok · input: const got = await tools.tool_ref_get({ refs: [12, 14] });…
+looked up: #12 #14, grep /error/
+```
+
+**Lookup-only scripts are skipped by `grep`.** A script whose nested calls are all
+`tool_ref_get`/`tool_ref_grep` (`ref.lookupOnly`, `isLookupOnly` in `resolver.ts`) contains
+the patterns and handles it looked up, and its output is often a copy. In a real session a
+script `tool_ref_grep({ pattern: "pwd" })` became the first match of the next grep for
+`pwd`. So `grep` skips these scripts silently, like tool-ref's own results, unless they are
+given in `refs`. They keep their handle, `get` and `/ref` show them, and they can still be
+cited (a fact derived from lookups only is found by handle, not by grep). A record with
+`complete: false` may have lost other calls, so it never counts as lookup-only.
+
+To revisit after real use: whether the model cites copies anyway (then consider a stronger
+guideline).
+
+### Open
+
+- Guideline placement. With `codemode.mode: "on"` (default) the tool-ref tools stay
+  declared and their guidelines stay in `<rules>`. With `"only"` they become hidden
+  declarations: the default prompt drops their rules and the guidelines travel in the
+  `codemode` description (subject to `codemode.inlineBudget`); under `--scenario`,
+  `scenarioRules` still includes them (hidden tools stay active). The citation rules are
+  session-wide, not about one tool, so they may move to their own section. Decide together
+  with codemode under `--scenario` (scenario-profile currently drops `codemode`: its
+  `sourceInfo.path` is `builtin:codemode`).
+- Trailer hiding on `codemode` results in the interactive UI (`hideTrailer` wraps the
+  codemode renderer): to be checked manually.
+- The runner's `report.json` tool log lists nested calls (`tool_execution_*` with
+  `parentToolCallId`) as calls without a `ref`; decide later.
 
 ## Resolver module (for other extensions)
 
@@ -543,6 +654,7 @@ tool results (see "Display").
 - Checked during implementation: the interactive UI draws a live result from
   `tool_execution_end` (no trailer; `interactive-mode.js` `updateResult`), and results loaded
   from the session from the message (with trailer). The renderer wrapper handles both.
+- Codemode open items: see "Codemode" → "Open".
 - Exact output caps for `get` and `grep` (per-call and total match caps, line window), after
   trying on real sessions. Implemented with the values above (4000 chars per ref; 5 / 50
   matching lines; 200-char window) as constants in `src/tool-ref/format.ts`.

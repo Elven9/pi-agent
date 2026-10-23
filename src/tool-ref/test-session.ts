@@ -37,6 +37,8 @@ export class TestSession {
       isError?: boolean;
       handle?: number;
       durationMs?: number;
+      /** pi's `nestedCalls` record on the result (codemode scripts). */
+      nestedCalls?: { calls: Array<{ id?: string; name: string; arguments?: Record<string, unknown>; status?: string }>; complete?: boolean };
     }>
   ): string[] {
     this.message({
@@ -53,6 +55,7 @@ export class TestSession {
         content,
         isError: c.isError ?? false,
         ...(c.durationMs !== undefined ? { durationMs: c.durationMs } : {}),
+        ...(c.nestedCalls ? { nestedCalls: { complete: true, ...c.nestedCalls } } : {}),
       });
     });
   }

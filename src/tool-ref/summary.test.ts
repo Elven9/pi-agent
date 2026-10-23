@@ -19,6 +19,9 @@ function ref(id: string, output = "hi"): ToolRef & { handle: number } {
     endedAt: undefined,
     durationMs: undefined,
     entryId: `e-${id}`,
+    lookups: [],
+    nestedTools: [],
+    lookupOnly: false,
   };
 }
 

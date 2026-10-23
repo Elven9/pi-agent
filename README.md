@@ -89,6 +89,11 @@ whole original input and output of calls by handle, excluded ones included, in a
 (scroll with ↑/↓, `j`/`k`, PgUp/PgDn; close with `q` or Esc) that leaves nothing in the
 transcript. The interactive UI hides the trailer; the session file keeps it.
 
+With codemode (`--tools +codemode`) a script's result gets one handle, like any call; the
+calls inside it get none (the script's output is the evidence). Scripts that call the two tools
+get structured data (whole output, whole grep lines; capped at 1 MiB), and a script's handle
+shows what it looked up (`looked up: #12 #14`).
+
 `toolRef.exclude` in `settings.json` (global or project; a project list replaces the global one)
 names tools whose results the two tools won't show; default `["submit_result"]`. Excluded
 calls are still numbered. Read at session start (`/reload` applies a change).
