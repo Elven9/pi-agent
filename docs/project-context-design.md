@@ -313,7 +313,8 @@ at all, and with what review, is part of that later design.
   ends block A (it is `/sandbox` in every sandbox), except that under `--scenario` the
   scenario-profile extension adds a `<rules>` section (extension tools' `promptGuidelines`,
   which pi drops with a custom prompt). It loads before this extension, so `<rules>` comes
-  before block B and stays in block A.
+  before block B and stays in block A. tool-ref loads last but puts its `<tool_refs>` section
+  first among the extension sections, so it is in block A too.
 - **Two extensions.** The runner (`dist/extension.js`) and the project extension
   (`dist/project.js`) are separate; the wrapper always loads both, because `AGENTS.md` is used
   even without a manifest.

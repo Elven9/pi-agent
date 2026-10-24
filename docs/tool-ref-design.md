@@ -216,7 +216,7 @@ Two order requirements, both on handler order, which follows extension load orde
 
 | Requirement | Why | Check |
 |---|---|---|
-| scenario-profile before project | `<rules>` must be added before the project sections, so it stays in cache block A | **Implemented.** Under `--scenario`, scenario-profile listens on `PROJECT_CHANNEL`; if the project extension announces itself (it does in its `session_start`) before scenario-profile's own `session_start` ran, the project loaded first. Error entry (`pi-agent.error`) and shutdown, like an unknown scenario. Test: `src/scenario-profile/load-order.test.ts` |
+| scenario-profile before project | `<rules>` must be added before the project sections, so it stays in cache block A. (tool-ref's `<tool_refs>` needs no order: it is put first among the custom sections, see "Prompt guidance") | **Implemented.** Under `--scenario`, scenario-profile listens on `PROJECT_CHANNEL`; if the project extension announces itself (it does in its `session_start`) before scenario-profile's own `session_start` ran, the project loaded first. Error entry (`pi-agent.error`) and shutdown, like an unknown scenario. Test: `src/scenario-profile/load-order.test.ts` |
 | tool-ref last among `message_end` handlers that replace `toolResult` messages | A later handler can drop the trailer | **Implemented.** Rewriters announce on `TOOL_RESULT_REWRITER_CHANNEL` from `session_start`; an announcement after tool-ref's own `session_start` → error entry and shutdown. Covers **pi-agent extensions only**; extensions outside this package are not checked. Test: `src/tool-ref/load-order.test.ts` |
 
 The runner (`src/wrapper/pi-command.ts`) and the package manifest already list scenario-profile
@@ -379,44 +379,50 @@ output (1 line):
 - Bad arguments: an error notification with the usage line. Runs no turn and appends nothing
   to the session. Interactive mode shows it; in other modes `notify` has no visible effect.
 
-### Prompt guidance (tool `promptGuidelines`)
+### Prompt guidance (`<tool_refs>` section)
 
-Text:
+Text (`GUIDELINES` in `src/tool-ref/index.ts`):
 
-- Every tool result ends with `[tool-ref #N]`. Cite evidence by number, not by copying output.
-- When you show the user results, a summary or a conclusion, cite the tool results behind
-  each claim inline, e.g. `the build fails on missing headers (#12)` or `(#12, #14)`.
-- To see earlier results again, use `tool_ref_get` (with `lines`) instead of re-running the
-  command.
-- To find earlier calls, e.g. after context was summarized, use `tool_ref_grep`.
+- Every tool result ends with `[tool-ref #N]`, its handle. A codemode script's result gets
+  one handle; the calls inside the script get none.
+- Cite evidence by handle instead of copying output. When you give the user results, a
+  summary or a conclusion, cite the results behind each claim inline, e.g. `the build fails
+  on missing headers (#12)` or `(#12, #14)`.
 - Cite the result that first produced the evidence, not a later lookup or script that only
   re-shows it.
+- To see earlier results again, use `tool_ref_get` (with `lines` for a range) instead of
+  re-running the command. To find earlier calls, e.g. after context was summarized, use
+  `tool_ref_grep`.
+- In a codemode script both return data instead of text: the whole output and whole matching
+  lines.
 
-Where: `promptGuidelines` of `tool_ref_get` (all lines on one tool, so they appear once). pi
-renders tool guidelines in `<rules>`, only while the tool is active.
+Where: tool-ref's own system prompt section `<tool_refs>`, added in `before_agent_start`
+while `tool_ref_get` is active. Not the tools' `promptGuidelines` (the first version):
 
-pi builds `<rules>` only for its default prompt, not when `customPrompt` is set. The
-scenario-profile extension adds a `<rules>` section back under `--scenario`, with only the
-`promptGuidelines` of active extension tools (built-in tools' rules and pi's fixed rules stay
-out; `scenarioRules` in `src/scenario-profile/profile.ts`).
+- The rules are about every result, not about one tool.
+- Guidelines move with their tool. With `codemode.mode: "only"` the tool-ref tools are hidden
+  declarations: pi leaves their guidelines out of `<rules>` and puts them in the codemode
+  description, cut by `codemode.inlineBudget`; under `--scenario`, scenario-profile's
+  `<rules>` had them a second time.
+- A section is the same text in every scenario, project and codemode mode.
 
-Position in the prompt (pi 1.4.0 `buildSystemPromptSections`):
+Position: pi renders custom sections in insertion order after `<cwd>`. The project extension's
+sections (block B) run to the end of the prompt (`cache-split.ts`), and tool-ref loads last
+(see "Load order"), so appending would put `<tool_refs>` in block B. tool-ref puts its
+section **first** among the custom sections (`addSectionFirst`), so it is in block A whatever
+the load order:
 
 | Mode | Sequence |
 |---|---|
-| no `--scenario` | preamble, `<tools>`, **`<rules>`** (pi's, all tools), `<docs>`, `<addendum>`, `<project_context>`, `<skills>`, `<cwd>`, project sections |
-| `--scenario` | scenario preamble, `<addendum>`, `<project_context>`, `<skills>`, `<cwd>`, **`<rules>`** (extension tools only), project sections |
-
-In both modes it is in cache block A (before the project sections). Under `--scenario` that
-relies on scenario-profile loading before the project extension, which is now checked at
-session start (see "Load order").
+| no `--scenario` | preamble, `<tools>`, `<rules>` (pi's), `<docs>`, `<addendum>`, `<project_context>`, `<skills>`, `<cwd>`, **`<tool_refs>`**, project sections |
+| `--scenario` | scenario preamble, `<addendum>`, `<project_context>`, `<skills>`, `<cwd>`, **`<tool_refs>`**, `<rules>` (scenario-profile), project sections |
 
 Rules:
 
 - **Constant text.** No counts, dates or session data, so it never changes within a session
   (pi sends no prompt delta) or across sessions (block A cache stays valid).
-- Under `--scenario`, `<rules>` holds the guidelines of every active extension tool, so its
-  text is shared only by setups with the same extension tools.
+- Added on every prompt: pi rebuilds the options from its base each time, and clears them
+  after the run (`session.systemPrompt` between prompts has no `<tool_refs>`).
 
 ## Codemode
 
@@ -742,8 +748,9 @@ All done with the implementation.
   lines; newest first; per-call and total caps with the "… N more" line; long lines cut
   around the match; excluded calls, other branches and images skipped; invalid pattern →
   error; `pattern: "."` with `in: "input"` lists calls.
-- Guidance: in pi's `<rules>` without a scenario, in scenario-profile's `<rules>` with one
-  (covered by `src/scenario-profile` tests); absent when `tool_ref_get` is not active.
+- Guidance: in `<tool_refs>`, before the other extension sections, with and without a
+  scenario; not in `<rules>` or the codemode description; absent when `tool_ref_get` is not
+  active.
 - Results without a trailer are indexed by `toolCallId` only.
 - Offline index from a JSONL file equals the live index (use `testdata/` recording), including
   a file whose last entry follows `/tree` navigation.

@@ -94,6 +94,9 @@ calls inside it get none (the script's output is the evidence). Scripts that cal
 get structured data (whole output, whole grep lines; capped at 1 MiB), and a script's handle
 shows what it looked up (`looked up: #12 #14`).
 
+The guidance for the model is tool-ref's own `<tool_refs>` prompt section, the same in every
+scenario, project and codemode mode, and placed before the project's sections (cache block A).
+
 `toolRef.exclude` in `settings.json` (global or project; a project list replaces the global one)
 names tools whose results the two tools won't show; default `["submit_result"]`. Excluded
 calls are still numbered. Read at session start (`/reload` applies a change).

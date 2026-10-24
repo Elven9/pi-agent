@@ -33,16 +33,43 @@ import { RefViewer, VIEWER_OVERLAY } from "./viewer.ts";
  * themselves on TOOL_RESULT_REWRITER_CHANNEL from their session_start; handlers run in load
  * order, so an announcement after this extension's session_start means that extension loaded
  * later. That is an error (entry + shutdown), like the scenario-profile/project check.
+ *
+ * Guidance: its own `<tool_refs>` section, not the tools' `promptGuidelines`. The rules are
+ * about every result, not one tool, and guidelines move with the tool: with
+ * `codemode.mode: "only"` pi drops hidden tools' guidelines from the prompt and puts them in
+ * the codemode description instead (cut by its `inlineBudget`).
  */
 
-/** Constant (no session data), so the system prompt stays cacheable. */
+/** Name of the system prompt section with the guidance (`<tool_refs>`). */
+export const SECTION = "tool_refs";
+
+/**
+ * The guidance, one rule per line. Constant (no session data, the same in every scenario,
+ * project and codemode mode), so the system prompt stays cacheable.
+ */
 export const GUIDELINES = [
-  "Every tool result ends with `[tool-ref #N]`. Cite evidence by number, not by copying output.",
-  "When you show the user results, a summary or a conclusion, cite the tool results behind each claim inline, e.g. `the build fails on missing headers (#12)` or `(#12, #14)`.",
+  "Every tool result ends with `[tool-ref #N]`, its handle. A codemode script's result gets one handle; the calls inside the script get none.",
+  "Cite evidence by handle instead of copying output. When you give the user results, a summary or a conclusion, cite the results behind each claim inline, e.g. `the build fails on missing headers (#12)` or `(#12, #14)`.",
   "Cite the result that first produced the evidence, not a later lookup or script that only re-shows it.",
-  "To see earlier results again, use `tool_ref_get` (with `lines`) instead of re-running the command.",
-  "To find earlier calls, e.g. after context was summarized, use `tool_ref_grep`.",
+  "To see earlier results again, use `tool_ref_get` (with `lines` for a range) instead of re-running the command. To find earlier calls, e.g. after context was summarized, use `tool_ref_grep`.",
+  "In a codemode script both return data instead of text: the whole output and whole matching lines.",
 ];
+
+/** The `<tool_refs>` section text (pi adds the tags). */
+export const SECTION_TEXT = GUIDELINES.map((l) => `- ${l}`).join("\n");
+
+/**
+ * Puts `section` first among the custom sections. pi renders them in insertion order after
+ * `<cwd>`; the project extension's sections (block B) run to the end of the prompt, so a
+ * section added after them would leave the shared cached part (block A). First keeps it in A
+ * whatever the load order (tool-ref loads last, see above).
+ */
+export function addSectionFirst(sections: Record<string, string>, name: string, text: string): void {
+  const rest = Object.entries(sections).filter(([key]) => key !== name);
+  for (const [key] of rest) delete sections[key];
+  sections[name] = text;
+  for (const [key, value] of rest) sections[key] = value;
+}
 
 function stringEnum<T extends string>(values: readonly T[], options: { description?: string } = {}) {
   return Type.Unsafe<T>({ type: "string", enum: [...values], ...options });
@@ -146,6 +173,13 @@ export default function toolRef(pi: ExtensionAPI) {
     started.shutdown();
   });
 
+  // pi rebuilds the options for every prompt, so add the section every time. Only while the
+  // tools are active (in codemode "only" mode they are active, but hidden).
+  pi.on("before_agent_start", (event) => {
+    if (!pi.getActiveTools().includes(TOOL_REF_GET)) return;
+    addSectionFirst(event.systemPromptOptions.sections, SECTION, SECTION_TEXT);
+  });
+
   pi.on("session_start", (_event, ctx) => {
     // Read here, so a change applies after /reload.
     settings = loadSettings(pi.getSettings());
@@ -220,7 +254,6 @@ export default function toolRef(pi: ExtensionAPI) {
     description:
       "Show earlier tool results by their handle (the N of `[tool-ref #N]`): output, input or both. " +
       "Output lines are numbered; use `lines` for a range and `maxChars` to see more.",
-    promptGuidelines: GUIDELINES,
     parameters: GET_PARAMETERS,
     outputSchema: GET_OUTPUT,
     exposure: "direct",

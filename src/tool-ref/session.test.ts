@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseStep } f
 import { createCodemodeExtension, SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { parseHandle } from "../shared/tool-ref.ts";
-import toolRef, { GUIDELINES } from "./index.ts";
+import toolRef, { addSectionFirst, GUIDELINES, SECTION_TEXT } from "./index.ts";
 import { makeSession as makeHarnessSession, type TestSessionOptions } from "./test-harness.ts";
 
 /**
@@ -145,15 +145,23 @@ test("tool_ref_get and tool_ref_grep read back calls; their own results are numb
   session.dispose();
 });
 
-test("toolRef.exclude from settings; guidance in pi's <rules>", async () => {
+test("toolRef.exclude from settings; guidance in its own <tool_refs> section, not in <rules>", async () => {
   const { session, faux, sessionManager } = await makeSession({ settings: { toolRef: { exclude: ["throws"] } } });
-  for (const line of GUIDELINES) assert.ok(session.systemPrompt.includes(line), line);
+  // Added per prompt (before_agent_start), so not in the prompt built at session start.
+  assert.ok(!session.systemPrompt.includes("<tool_refs>"));
+  let sections: Record<string, string> = {};
   faux.setResponses([
-    fauxAssistantMessage([call("throws", {}, "t"), call("submit_result", {}, "s")], { stopReason: "toolUse" }),
+    (context) => {
+      // What the model got (the system message pi built for this request).
+      sections = (context.messages.find((m) => m.role === "system") as { sections?: Record<string, string> }).sections ?? {};
+      return fauxAssistantMessage([call("throws", {}, "t"), call("submit_result", {}, "s")], { stopReason: "toolUse" });
+    },
     fauxAssistantMessage([call("tool_ref_get", { refs: [1, 2] }, "g")], { stopReason: "toolUse" }),
     fauxAssistantMessage(fauxText("done")),
   ]);
   await session.prompt("go");
+  assert.equal(sections.tool_refs, `<tool_refs>\n${SECTION_TEXT}\n</tool_refs>`);
+  for (const line of GUIDELINES) assert.ok(!sections.rules!.includes(line), line);
   const out = resultText(sessionManager, "g");
   assert.match(out, /^#1 is a throws call, which tool-ref does not show/);
   // A project list replaces the default, so submit_result is readable now.
@@ -332,4 +340,12 @@ test("codemode: scripts get structured results, the script result gets one handl
     if (e.type === "message" && e.message.role === "toolResult") assert.equal("structuredContent" in e.message, false);
   }
   session.dispose();
+});
+
+test("addSectionFirst: the section goes before other extension sections, which keep their order", () => {
+  const sections: Record<string, string> = { cwd: "c", rules: "r", project: "p" };
+  addSectionFirst(sections, "tool_refs", "t");
+  assert.deepEqual(Object.entries(sections), [["tool_refs", "t"], ["cwd", "c"], ["rules", "r"], ["project", "p"]]);
+  addSectionFirst(sections, "tool_refs", "t");
+  assert.deepEqual(Object.keys(sections), ["tool_refs", "cwd", "rules", "project"]);
 });

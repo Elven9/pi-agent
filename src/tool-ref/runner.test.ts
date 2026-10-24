@@ -9,7 +9,7 @@ import scenarioProfile from "../scenario-profile/index.ts";
 import { SUBMIT_RESULT } from "../shared/protocol.ts";
 import { demo } from "../shared/scenarios/demo.ts";
 import { parseHandle, TOOL_REF_TOOLS } from "../shared/tool-ref.ts";
-import toolRef, { GUIDELINES } from "./index.ts";
+import toolRef, { SECTION_TEXT } from "./index.ts";
 import { indexBranch, loadSettings } from "./resolver.ts";
 import { makeSession } from "./test-harness.ts";
 
@@ -19,7 +19,7 @@ import { makeSession } from "./test-harness.ts";
  */
 const RUNNER_EXTENSIONS: ExtensionFactory[] = [piAgentRunner, (pi) => scenarioProfile(pi), projectContext, metrics, toolRef];
 
-test("runner setup under --scenario: tools active, guidance in the scenario's <rules>, submit_result numbered but excluded", async () => {
+test("runner setup under --scenario: tools active, guidance in <tool_refs>, submit_result numbered but excluded", async () => {
   const { session, faux, sessionManager } = await makeSession({
     extensions: RUNNER_EXTENSIONS,
     tools: [...demo.tools, SUBMIT_RESULT, ...TOOL_REF_TOOLS],
@@ -51,10 +51,10 @@ test("runner setup under --scenario: tools active, guidance in the scenario's <r
   ]);
   await session.prompt("describe the project");
 
-  // pi's own <rules> is gone with the scenario prompt; scenario-profile adds one with only the
-  // extension tools' guidelines (here: tool-ref's).
+  // tool-ref's own section; no extension tool has guidelines left for the scenario's <rules>.
   assert.equal(sections?.preamble, demo.systemPrompt.trim());
-  assert.equal(sections?.rules, `<rules>\n${GUIDELINES.map((l) => `- ${l}`).join("\n")}\n</rules>`);
+  assert.equal(sections?.tool_refs, `<tool_refs>\n${SECTION_TEXT}\n</tool_refs>`);
+  assert.equal(sections?.rules, undefined);
 
   assert.equal(getOutput, "#1 bash ok · input: echo hello\noutput (2 lines):\n1  hello\n2  \n[tool-ref #2]");
   const results = sessionManager.getEntries().flatMap((e) => (e.type === "message" && e.message.role === "toolResult" ? [e.message] : []));
