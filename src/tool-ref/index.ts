@@ -16,7 +16,7 @@ import {
   type GetOptions,
   type GrepOptions,
 } from "./format.ts";
-import { hideTrailer } from "./render.ts";
+import { RowStore, toolRefRenderer } from "./render.ts";
 import { indexBranch, loadSettings, TOOL_REF_GET, TOOL_REF_GREP, type ToolRefSettings } from "./resolver.ts";
 import { Summarizer } from "./summary.ts";
 import { RefViewer, VIEWER_OVERLAY } from "./viewer.ts";
@@ -45,7 +45,8 @@ export const SECTION = "tool_refs";
 
 /**
  * The guidance, one rule per line. Constant (no session data, the same in every scenario,
- * project and codemode mode), so the system prompt stays cacheable.
+ * project and codemode mode), so the system prompt stays cacheable. With the `codemode` tool
+ * active, CODEMODE_GUIDELINE follows (fixed per scenario, so still cacheable).
  */
 export const GUIDELINES = [
   "Every tool result ends with `[tool-ref #N]`, its handle. A codemode script's result gets one handle; the calls inside the script get none.",
@@ -55,8 +56,17 @@ export const GUIDELINES = [
   "In a codemode script both return data instead of text: the whole output and whole matching lines.",
 ];
 
+/** Asks for the line the compact codemode row shows (render.ts). */
+export const CODEMODE_GUIDELINE =
+  "Start every codemode script with a `// intent: <what it does and why, one line>` comment (after the `// @options:` line if there is one); it is shown to the user as the call's title.";
+
 /** The `<tool_refs>` section text (pi adds the tags). */
 export const SECTION_TEXT = GUIDELINES.map((l) => `- ${l}`).join("\n");
+
+/** The section text, with the intent rule while `codemode` is active. */
+export function sectionText(codemode: boolean): string {
+  return codemode ? `${SECTION_TEXT}\n- ${CODEMODE_GUIDELINE}` : SECTION_TEXT;
+}
 
 /**
  * Puts `section` first among the custom sections. pi renders them in insertion order after
@@ -155,9 +165,13 @@ const json = (value: object) => value as NonNullable<AgentToolResult<unknown>["s
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 
+const CODEMODE = "codemode";
+
 export default function toolRef(pi: ExtensionAPI) {
   let settings: ToolRefSettings = loadSettings(undefined);
   const counter = new HandleCounter();
+  /** Handles and durations of codemode rows, for their compact line. */
+  const rows = new RowStore();
 
   /** Set by this extension's session_start; a rewriter announcing after it loaded later. */
   let started: ExtensionContext | undefined;
@@ -176,8 +190,9 @@ export default function toolRef(pi: ExtensionAPI) {
   // pi rebuilds the options for every prompt, so add the section every time. Only while the
   // tools are active (in codemode "only" mode they are active, but hidden).
   pi.on("before_agent_start", (event) => {
-    if (!pi.getActiveTools().includes(TOOL_REF_GET)) return;
-    addSectionFirst(event.systemPromptOptions.sections, SECTION, SECTION_TEXT);
+    const active = pi.getActiveTools();
+    if (!active.includes(TOOL_REF_GET)) return;
+    addSectionFirst(event.systemPromptOptions.sections, SECTION, sectionText(active.includes(CODEMODE)));
   });
 
   pi.on("session_start", (_event, ctx) => {
@@ -185,6 +200,15 @@ export default function toolRef(pi: ExtensionAPI) {
     settings = loadSettings(pi.getSettings());
     counter.init(ctx.sessionManager);
     started = ctx;
+    rows.clear();
+    // Resumed rows: handle and duration for the compact codemode line (the call line is drawn
+    // before the result, so it can't read the trailer in time). Only the interactive UI draws.
+    if (ctx.mode === "tui") {
+      for (const ref of index(ctx).refs) {
+        if (ref.toolName !== CODEMODE) continue;
+        rows.set(ref.toolCallId, { handle: ref.ambiguous ? undefined : ref.handle, durationMs: ref.durationMs });
+      }
+    }
   });
 
   // Every result message, whatever produced it (tool, block, validation error, length cut),
@@ -194,11 +218,16 @@ export default function toolRef(pi: ExtensionAPI) {
     if (message.role !== "toolResult") return;
     if (parseHandle(message.content) !== undefined) return;
     const n = counter.take(ctx.sessionManager);
+    if (message.toolName === CODEMODE) {
+      const durationMs = (message as { durationMs?: unknown }).durationMs;
+      rows.set(message.toolCallId, { handle: n, durationMs: typeof durationMs === "number" ? durationMs : undefined });
+    }
     return { message: { ...message, content: [...message.content, { type: "text", text: trailerText(n) }] } };
   });
 
   // Display only: the trailer is hidden in the interactive UI, kept in the session and the context.
-  pi.registerToolRenderer(hideTrailer);
+  // codemode rows collapse to `codemode #N 0.1s <intent>`; click (or ctrl+o) shows the script.
+  pi.registerToolRenderer(toolRefRenderer(rows));
 
   const index = (ctx: ExtensionContext) =>
     indexBranch(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId(), settings.exclude);

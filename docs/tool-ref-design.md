@@ -625,6 +625,35 @@ Checked in 1.4.0 source:
   tell them apart, or the fallback is skipped and tools without their own `renderResult`
   show the trailer in both.
 
+### Compact codemode rows
+
+`codemode` rows collapse to a short header (render.ts, `compactCodemode`):
+
+```
+[codemode] <intent>
+
+#12 · 0.1s
+```
+
+The metadata line (handle, duration, `failed`; `rowMetadata`, where new items go) and the
+empty line before it appear only once there is metadata, so a running row is one line.
+Collapsed, the header is the whole row; expanded (click the row in
+fullscreen mode, or `ctrl+o` for all rows) the script follows, then pi's own codemode result
+view (nested calls, output).
+
+- **Intent.** Not a schema field: codemode's input is `{ code }`, and for OpenAI-style models pi
+  samples it as raw JavaScript through a grammar (`constrainedSampling`), which has no room for
+  another field. The script's first line (after `// @options:`) is `// intent: …` instead;
+  `<tool_refs>` asks for it while `codemode` is active (`CODEMODE_GUIDELINE`). Without one the
+  line shows the script's first line, dimmed.
+- **Handle.** Live rows are drawn from `tool_execution_end`, before `message_end` assigns the
+  handle, and pi never redraws them from the saved message. So `message_end` records
+  `toolCallId → handle, duration` in a `RowStore`, which redraws the row (its
+  `context.invalidate`, kept from the latest render). Resumed sessions are filled from the
+  branch index at `session_start` (interactive mode only); a saved result's trailer fills it too.
+- **HTML export.** The call line is always drawn collapsed and before the result, and only the
+  result part expands, so the script lives in the expanded result, not the call line.
+
 ## `report.json` tool log
 
 The runner's tool log (`src/wrapper/tool-log.ts`) reads `tool_execution_end`, which is
