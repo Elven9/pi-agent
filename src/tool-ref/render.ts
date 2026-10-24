@@ -1,7 +1,9 @@
 import { highlightCode, keyHint, type Theme, type ToolRendererResolver, type ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import { parseHandle, withoutTrailer } from "../shared/tool-ref.ts";
-import { oneLine, scriptStart } from "./format.ts";
+import { oneLine, scriptIntent, scriptStart } from "./format.ts";
+
+export { scriptIntent };
 
 /**
  * Hides the trailer when tool results are drawn; the session file and the model keep it.
@@ -67,14 +69,6 @@ export const hideTrailer: ToolRendererResolver = (toolName, next) => {
 // --- Compact codemode rows ---------------------------------------------------------------
 
 const CODEMODE = "codemode";
-const INTENT = /^\/\/\s*intent:\s*(\S.*)$/;
-
-/** The script's `// intent:` line (first line, or right after `// @options:`), else undefined. */
-export function scriptIntent(code: string): string | undefined {
-  const first = scriptStart(code).split("\n", 1)[0].trim();
-  return INTENT.exec(first)?.[1].trim();
-}
-
 /** `850ms`, `1.2s`, `2m 05s`. */
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;

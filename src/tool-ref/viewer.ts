@@ -8,9 +8,11 @@ import type { Summarizer, SummaryState } from "./summary.ts";
  * Scrolls by itself instead of using `ScrollView`, whose viewport comes from the layout engine.
  * Closes through `done()`; the panel never writes to the transcript.
  *
+ * One ref per page: with several refs, ←/→ (or h/l) switch between them. Each page and view
+ * keeps its own scroll position.
+ *
  * With a `Summarizer` (`toolRef.summaryModel` set), `s` switches to a summary view: one summary
- * per call, streamed in, started on first view; `r` summarizes the panel's calls again. Each
- * view keeps its own scroll position.
+ * of the page's call, streamed in, started on first view; `r` summarizes it again.
  *
  * The raw view highlights code blocks whose language is known (bash commands, `read` output,
  * written and edited text by file extension); everything else stays plain text. The summary
@@ -30,10 +32,12 @@ type Mode = "raw" | "summary";
 
 export class RefViewer implements Component {
   private mode: Mode = "raw";
-  private readonly tops: Record<Mode, number> = { raw: 0, summary: 0 };
-  private cache: { width: number; mode: Mode; lines: string[] } | undefined;
-  /** Highlighted raw body; it does not depend on the width. */
-  private raw: string | undefined;
+  private page = 0;
+  /** Scroll position per page and view, keyed `page:mode`. */
+  private readonly tops = new Map<string, number>();
+  private cache: { width: number; mode: Mode; page: number; lines: string[] } | undefined;
+  /** Highlighted raw body per page; it does not depend on the width. */
+  private raw = new Map<number, string>();
   private innerWidth = 80;
 
   private readonly tui: TUI;
@@ -58,16 +62,33 @@ export class RefViewer implements Component {
     this.tui.requestRender();
   };
 
+  private get section(): RefSection {
+    return this.sections[this.page]!;
+  }
+
+  private get top(): number {
+    return this.tops.get(`${this.page}:${this.mode}`) ?? 0;
+  }
+
+  private set top(value: number) {
+    this.tops.set(`${this.page}:${this.mode}`, value);
+  }
+
   private rawBody(): string {
-    this.raw ??= this.sections.map((s) => (s.blocks ? this.renderBlocks(s.blocks) : s.text)).join("\n\n");
-    return this.raw;
+    let body = this.raw.get(this.page);
+    if (body === undefined) {
+      const s = this.section;
+      body = s.blocks ? this.renderBlocks(s.blocks) : s.text;
+      this.raw.set(this.page, body);
+    }
+    return body;
   }
 
   private renderBlocks(blocks: RefBlock[]): string {
     const th = this.theme;
     return blocks
       .flatMap((b) => {
-        if (b.kind === "text") return [b.text];
+        if (b.kind === "text") return [b.intent ? th.bold(th.fg("accent", b.text)) : b.text];
         const lines = highlighted(b);
         return lines.map((l, i) => (b.gutter ? th.fg("dim", b.gutter[i] ?? "") : "") + l);
       })
@@ -78,22 +99,20 @@ export class RefViewer implements Component {
     const th = this.theme;
     const wrap = (text: string) => text.split("\n").flatMap((l) => (l === "" ? [""] : wrapTextWithAnsi(l, width)));
     const markdown = (text: string) => new Markdown(text, 0, 0, getMarkdownTheme()).render(width);
-    return this.sections.flatMap((s, i) => {
-      const gap = i === 0 ? [] : [""];
-      if (!s.ref || !this.summarizer) return [...gap, ...wrap(s.text)];
-      const state: SummaryState | undefined = this.summarizer.get(s.ref);
-      const head = wrap(`──── ${s.header} · summary ────`);
-      if (!state) return [...gap, ...head, th.fg("dim", "(not started)")];
-      if (state.status === "streaming") {
-        if (state.text === "") return [...gap, ...head, th.fg("dim", `summarizing with ${this.summarizer.label}…`)];
-        return [...gap, ...head, ...markdown(state.text), th.fg("dim", "▍")];
-      }
-      if (state.status === "error") {
-        const partial = state.text === "" ? [] : markdown(state.text);
-        return [...gap, ...head, ...partial, ...wrap(`${th.fg("error", `summary failed: ${state.error}`)} ${th.fg("dim", "(r to try again)")}`)];
-      }
-      return [...gap, ...head, ...markdown(state.text)];
-    });
+    const s = this.section;
+    if (!s.ref || !this.summarizer) return wrap(s.text);
+    const state: SummaryState | undefined = this.summarizer.get(s.ref);
+    const head = wrap(`──── ${s.header} · summary ────`);
+    if (!state) return [...head, th.fg("dim", "(not started)")];
+    if (state.status === "streaming") {
+      if (state.text === "") return [...head, th.fg("dim", `summarizing with ${this.summarizer.label}…`)];
+      return [...head, ...markdown(state.text), th.fg("dim", "▍")];
+    }
+    if (state.status === "error") {
+      const partial = state.text === "" ? [] : markdown(state.text);
+      return [...head, ...partial, ...wrap(`${th.fg("error", `summary failed: ${state.error}`)} ${th.fg("dim", "(r to try again)")}`)];
+    }
+    return [...head, ...markdown(state.text)];
   }
 
   private viewHeight(): number {
@@ -101,14 +120,14 @@ export class RefViewer implements Component {
   }
 
   private lines(width: number): string[] {
-    if (this.cache?.width !== width || this.cache.mode !== this.mode) {
+    if (this.cache?.width !== width || this.cache.mode !== this.mode || this.cache.page !== this.page) {
       const lines =
         this.mode === "raw"
           ? this.rawBody()
               .split("\n")
               .flatMap((l) => (l === "" ? [""] : wrapTextWithAnsi(l, width)))
           : this.summaryLines(width);
-      this.cache = { width, mode: this.mode, lines };
+      this.cache = { width, mode: this.mode, page: this.page, lines };
     }
     return this.cache.lines;
   }
@@ -117,8 +136,10 @@ export class RefViewer implements Component {
     return Math.max(0, this.lines(this.innerWidth).length - this.viewHeight());
   }
 
-  private startSummaries(): void {
-    for (const s of this.sections) if (s.ref) this.summarizer?.start(s.ref, this.onSummaryUpdate);
+  /** Starts the page's summary (no-op when started or done). */
+  private startSummary(): void {
+    const ref = this.section.ref;
+    if (ref) this.summarizer?.start(ref, this.onSummaryUpdate);
   }
 
   render(width: number): string[] {
@@ -126,7 +147,7 @@ export class RefViewer implements Component {
     this.innerWidth = inner;
     const lines = this.lines(inner);
     const height = this.viewHeight();
-    const top = (this.tops[this.mode] = Math.min(this.tops[this.mode], this.maxTop()));
+    const top = (this.top = Math.min(this.top, this.maxTop()));
     const end = Math.min(lines.length, top + height);
 
     const th = this.theme;
@@ -134,9 +155,12 @@ export class RefViewer implements Component {
     const row = (s: string) => border("│") + truncateToWidth(s, inner, "", true) + border("│");
     const position = lines.length > height ? `  ${top + 1}-${end}/${lines.length}` : "";
     const view = this.mode === "summary" ? ` · summary (${this.summarizer?.label})` : "";
-    const hint = !this.summarizer ? HINT : this.mode === "raw" ? `${HINT} · s summary` : `${HINT} · s raw · r regenerate`;
+    const many = this.sections.length > 1;
+    const pager = many ? ` · ‹ ${this.page + 1}/${this.sections.length} › ${this.section.header ?? `#${this.section.handle}`}` : "";
+    const base = many ? ` ←→/h l ref ·${HINT}` : HINT;
+    const hint = !this.summarizer ? base : this.mode === "raw" ? `${base} · s summary` : `${base} · s raw · r regenerate`;
 
-    const out = [border(`╭${"─".repeat(inner)}╮`), row(th.fg("accent", ` ${this.title}${view}`) + th.fg("dim", position))];
+    const out = [border(`╭${"─".repeat(inner)}╮`), row(th.fg("accent", ` ${this.title}${pager}${view}`) + th.fg("dim", position))];
     for (let i = top; i < end; i++) out.push(row(lines[i]!));
     for (let i = end - top; i < height; i++) out.push(row(""));
     out.push(row(th.fg("dim", hint)), border(`╰${"─".repeat(inner)}╯`));
@@ -151,18 +175,29 @@ export class RefViewer implements Component {
     }
     if (this.summarizer && data === "s") {
       this.mode = this.mode === "raw" ? "summary" : "raw";
-      if (this.mode === "summary") this.startSummaries();
+      if (this.mode === "summary") this.startSummary();
       this.cache = undefined;
       this.tui.requestRender();
       return;
     }
     if (this.summarizer && this.mode === "summary" && data === "r") {
-      for (const s of this.sections) if (s.ref) this.summarizer.regenerate(s.ref, this.onSummaryUpdate);
+      const ref = this.section.ref;
+      if (ref) this.summarizer.regenerate(ref, this.onSummaryUpdate);
+      return;
+    }
+    const step = matchesKey(data, "left") || data === "h" ? -1 : matchesKey(data, "right") || data === "l" ? 1 : 0;
+    if (step !== 0) {
+      const next = Math.max(0, Math.min(this.sections.length - 1, this.page + step));
+      if (next === this.page) return;
+      this.page = next;
+      if (this.mode === "summary") this.startSummary();
+      this.cache = undefined;
+      this.tui.requestRender();
       return;
     }
 
     const page = this.viewHeight();
-    let top = this.tops[this.mode];
+    let top = this.top;
     if (matchesKey(data, "up") || data === "k") top--;
     else if (matchesKey(data, "down") || data === "j") top++;
     else if (matchesKey(data, "pageUp") || data === "b") top -= page;
@@ -172,15 +207,15 @@ export class RefViewer implements Component {
     else return;
 
     top = Math.max(0, Math.min(top, this.maxTop()));
-    if (top === this.tops[this.mode]) return;
-    this.tops[this.mode] = top;
+    if (top === this.top) return;
+    this.top = top;
     this.tui.requestRender();
   }
 
   invalidate(): void {
     // Also after a theme change: the highlighting depends on the theme.
     this.cache = undefined;
-    this.raw = undefined;
+    this.raw.clear();
   }
 
   /** Stops summaries still streaming (they are dropped, finished ones stay cached). */

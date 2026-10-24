@@ -211,17 +211,17 @@ test("/ref view: whole input and output, details, excluded calls shown, errors i
       "──── #3 bash ERR ────",
       `call c3 · started ${index.byHandle.get(3)!.startedAt} · entry ${index.byHandle.get(3)!.entryId}`,
       "",
+      "output (1 line):",
+      "1  apfs-fuse: no such device",
+      "",
       "input:",
       "apfs-fuse /dev/sdb2 /mnt/mac",
       "echo done",
-      "",
-      "output (1 line):",
-      "1  apfs-fuse: no such device",
     ].join("\n"),
   );
-  assert.match(submit, /^──── #4 submit_result ok ────\n.*excluded from tool_ref_get\/grep\n\ninput:\nsummary: apfs\n\noutput \(1 line\):\n1  Result recorded\.$/);
+  assert.match(submit, /^──── #4 submit_result ok ────\n.*excluded from tool_ref_get\/grep\n\noutput \(1 line\):\n1  Result recorded\.\n\ninput:\nsummary: apfs$/);
   // No character cap: all 120 lines.
-  assert.match(read, /output \(120 lines\):[\s\S]*120  line 120$/);
+  assert.match(read, /output \(120 lines\):[\s\S]*120  line 120\n\ninput:/);
   assert.doesNotMatch(read, /not shown/);
   assert.match(unknown, /^#99 is unknown/);
 });
@@ -248,18 +248,19 @@ test("/ref view blocks: code marked for highlighting, other text plain", async (
   ]);
   assert.match(read!.text, /output \(4 lines\):\n1  const a = 1;\n2  export \{ a \};\n3  \n4  \[Showing/);
 
-  assert.deepEqual(code(write)[0], { kind: "code", lines: ["x = 1", "y = 2"], file: "b.py" });
-  assert.match(write!.text, /input:\npath: b\.py\ncontent:\nx = 1\ny = 2\n/);
-  assert.equal(code(write)[1]!.kind === "code" && code(write)[1]!.file, undefined, "write output is not code");
+  // Output first, then input.
+  assert.deepEqual(code(write)[1], { kind: "code", lines: ["x = 1", "y = 2"], file: "b.py" });
+  assert.match(write!.text, /input:\npath: b\.py\ncontent:\nx = 1\ny = 2$/);
+  assert.equal(code(write)[0]!.kind === "code" && code(write)[0]!.file, undefined, "write output is not code");
 
-  assert.match(edit!.text, /edits\[0\]\.oldText:\na\nedits\[0\]\.newText:\nb\nc\n/);
-  assert.deepEqual(code(edit).slice(0, 2).map((b) => b.kind === "code" && b.file), ["c.go", "c.go"]);
+  assert.match(edit!.text, /edits\[0\]\.oldText:\na\nedits\[0\]\.newText:\nb\nc$/);
+  assert.deepEqual(code(edit).slice(1, 3).map((b) => b.kind === "code" && b.file), ["c.go", "c.go"]);
 
-  assert.deepEqual(code(bash)[0], { kind: "code", lines: ["ls -la"], lang: "bash" });
-  assert.match(bash!.text, /input:\ncommand:\nls -la\ntimeout: 5\n/);
+  assert.deepEqual(code(bash)[1], { kind: "code", lines: ["ls -la"], lang: "bash" });
+  assert.match(bash!.text, /input:\ncommand:\nls -la\ntimeout: 5$/);
   // bash output has no language: plain.
-  assert.equal(code(bash)[1]!.kind === "code" && (code(bash)[1]!.lang ?? code(bash)[1]!.file), undefined);
+  assert.equal(code(bash)[0]!.kind === "code" && (code(bash)[0]!.lang ?? code(bash)[0]!.file), undefined);
 
   // Failed reads are not highlighted.
-  assert.equal(code(failed).at(-1)!.kind === "code" && code(failed).at(-1)!.file, undefined);
+  assert.equal(code(failed)[0]!.kind === "code" && code(failed)[0]!.file, undefined);
 });

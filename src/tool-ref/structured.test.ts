@@ -88,7 +88,7 @@ test("provenance in get, grep and /ref: the script stays citable and says what i
   const view = refViewSections(index, [3])[0]!;
   assert.ok(view.text.includes(`· ${line}\n`));
   // The script is a JavaScript code block in /ref.
-  assert.deepEqual(view.blocks!.find((b) => b.kind === "code"), { kind: "code", lines: SCRIPT.split("\n"), lang: "javascript" });
+  assert.deepEqual(view.blocks!.find((b) => b.kind === "code" && b.lang === "javascript"), { kind: "code", lines: SCRIPT.split("\n"), lang: "javascript" });
 });
 
 test("structured get: whole output, no maxChars, input by part, timing, lookups, errors inline", () => {

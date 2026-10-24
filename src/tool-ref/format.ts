@@ -58,6 +58,14 @@ export function scriptStart(code: string): string {
   return code.replace(/^\s*\/\/\s*@options:[^\n]*\n?/, "").replace(/^\s*\n/, "").trimStart();
 }
 
+const INTENT = /^\/\/\s*intent:\s*(\S.*)$/;
+
+/** The script's `// intent:` line (first line, or right after `// @options:`), else undefined. */
+export function scriptIntent(code: string): string | undefined {
+  const first = scriptStart(code).split("\n", 1)[0].trim();
+  return INTENT.exec(first)?.[1].trim();
+}
+
 /** One-line input summary: `bash` command, `read`/`edit`/`write` path, codemode script, else compact JSON. */
 export function inputSummary(ref: Pick<ToolRef, "toolName" | "input">): string {
   const input = ref.input;
@@ -330,8 +338,8 @@ export function parseRefArgs(args: string): number[] {
 }
 
 /**
- * Text of the `/ref` command (for the user, not the model): per handle the call's details, its
- * whole input and its whole output (no character cap), without the trailer. Excluded calls are
+ * Text of the `/ref` command (for the user, not the model): per handle the call's details (a
+ * script's intent first), its whole output and its whole input (no character cap), without the trailer. Excluded calls are
  * shown too, marked; other problems (unknown, other branch, ambiguous) inline as in `get`.
  */
 export function formatRefView(index: ToolRefIndex, refs: number[]): string {
@@ -344,10 +352,10 @@ export function formatRefView(index: ToolRefIndex, refs: number[]): string {
  * A piece of a `/ref` section. `code` lines may be highlighted by the viewer: `lang` names the
  * language, `file` lets it derive one from the file extension; with neither (or an unknown
  * extension) they stay plain text. `gutter` holds per-line prefixes (output line numbers) that
- * are kept out of the highlighting.
+ * are kept out of the highlighting. A text block with `intent` is a script's intent line, emphasized.
  */
 export type RefBlock =
-  | { kind: "text"; text: string }
+  | { kind: "text"; text: string; intent?: true }
   | { kind: "code"; lines: string[]; lang?: string; file?: string; gutter?: string[] };
 
 /** One `/ref` section: a resolved call (`ref`, `header`, `blocks`) or an error line (`text` only). */
@@ -442,15 +450,18 @@ export function refViewSections(index: ToolRefIndex, refs: number[]): RefSection
       ref.excluded && "excluded from tool_ref_get/grep",
       lookupSummary(ref),
     ].filter(Boolean);
-    // Whole input and output (no character cap); a blank line between parts.
+    // Whole output and input (no character cap); a blank line between parts. The script's
+    // intent first, the output (what the user mostly wants) before the input.
     const header = `#${ref.handle} ${ref.toolName} ${status(ref)}`;
+    const intent = ref.toolName === CODEMODE && typeof ref.input?.code === "string" ? scriptIntent(ref.input.code) : undefined;
     const blocks: RefBlock[] = [
       textBlock(`──── ${header} ────`),
+      ...(intent ? [{ kind: "text" as const, text: `intent: ${intent}`, intent: true as const }] : []),
       textBlock(facts.join(" · ")),
       textBlock(""),
-      ...refInputBlocks(ref),
-      textBlock(""),
       ...refOutputBlocks(ref),
+      textBlock(""),
+      ...refInputBlocks(ref),
     ];
     sections.push({ handle: n, ref, header, text: refBlocksText(blocks), blocks });
   }

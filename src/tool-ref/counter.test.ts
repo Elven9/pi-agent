@@ -89,6 +89,6 @@ test("/ref command: shows the call from the session, usage error on bad argument
   session.calls({ id: "c1", tool: "bash", input: { command: "echo hi" }, output: "hi", handle: 1 });
   const [text, type] = await ref("#1");
   assert.equal(type, "info");
-  assert.match(text, /^──── #1 bash ok ────\ncall c1 · .*\n\ninput:\necho hi\n\noutput \(1 line\):\n1  hi$/);
+  assert.match(text, /^──── #1 bash ok ────\ncall c1 · .*\n\noutput \(1 line\):\n1  hi\n\ninput:\necho hi$/);
   assert.deepEqual(await ref("nope"), ["Usage: /ref <N> [N ...], e.g. /ref 12 or /ref #12 #14", "error"]);
 });
