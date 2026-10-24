@@ -8,6 +8,12 @@ export interface ToolSource {
   sourceInfo: { path: string };
 }
 
+/**
+ * Built-in tools whose guidelines a scenario keeps. codemode's say when to write a script; with
+ * `codemode.mode: "only"` it is the model's main tool, and a scenario prompt does not cover that.
+ */
+const BUILTIN_RULES_KEPT = new Set(["codemode"]);
+
 export function isBuiltinTool(tool: ToolSource): boolean {
   return tool.sourceInfo.path.startsWith(BUILTIN_PREFIX);
 }
@@ -27,22 +33,27 @@ export function scenarioActiveTools(scenarioTools: readonly string[], active: re
  * so with `customPrompt` extension tools' `promptGuidelines` would be lost. This restores just
  * those: guidelines of active tools that are not built-in (in active order), then the run's
  * global `promptGuidelines`; trimmed and de-duplicated like pi does. Built-in tools' guidelines
- * and pi's fixed rules ("Be concise", ...) stay out: the scenario prompt decides those.
- * Returns undefined when there is nothing to add.
+ * and pi's fixed rules ("Be concise", ...) stay out: the scenario prompt decides those; except
+ * codemode's (BUILTIN_RULES_KEPT).
+ *
+ * Hidden tools (`hiddenTools`: with `codemode.mode: "only"`, the tools only scripts call) are
+ * left out, like pi's own `<rules>` does: the codemode description already carries their
+ * guidelines. Returns undefined when there is nothing to add.
  */
 export function scenarioRules(
   active: readonly string[],
   all: readonly ToolSource[],
   toolGuidelines: Readonly<Record<string, readonly string[]>>,
   promptGuidelines: readonly string[],
+  hiddenTools: readonly string[] = [],
 ): string | undefined {
-  const builtin = new Set(all.filter(isBuiltinTool).map((t) => t.name));
+  const skip = new Set([...all.filter((t) => isBuiltinTool(t) && !BUILTIN_RULES_KEPT.has(t.name)).map((t) => t.name), ...hiddenTools]);
   const rules = new Set<string>();
   const add = (rule: string) => {
     const r = rule.trim();
     if (r) rules.add(r);
   };
-  for (const name of active) if (!builtin.has(name)) (toolGuidelines[name] ?? []).forEach(add);
+  for (const name of active) if (!skip.has(name)) (toolGuidelines[name] ?? []).forEach(add);
   promptGuidelines.forEach(add);
   return rules.size > 0 ? [...rules].map((r) => `- ${r}`).join("\n") : undefined;
 }

@@ -7,7 +7,7 @@ export const codeWriter = defineScenario({
   name: "code-writer",
   detailKind: "code-writer/v1",
   systemPrompt,
-  tools: ["read", "bash", "edit", "write"],
+  tools: ["codemode", "read", "bash", "edit", "write"],
   detailSchema: Type.Object(
     {
       filesChanged: Type.Array(Type.String({ minLength: 1 }), { description: "Paths of the files you created or changed" }),

@@ -3,6 +3,8 @@ import type { Scenario } from "../shared/scenarios/index.ts";
 import { TOOL_REF_TOOLS } from "../shared/tool-ref.ts";
 import type { Task } from "../shared/task.ts";
 
+const CODEMODE = "codemode";
+
 export interface PiCommandOptions {
   task: Task;
   scenario: Scenario;
@@ -33,12 +35,16 @@ export interface PiCommandOptions {
  * and the scenario's tools. The system prompt comes from the scenario profile extension (`--scenario`),
  * which also applies the tools and skills in-process; `--tools` and `--skill` stay as the hard
  * limits. Context files (AGENTS.md) come from the project extension, after skills, not from pi (`-nc`).
+ * `-ne` also turns off pi's built-in extensions, so a scenario with the `codemode` tool loads
+ * `builtin:codemode` explicitly (first, as pi loads built-ins). Its mode (`codemode.mode`) comes
+ * from the settings in the agent dir.
  */
 export function piArgs(o: PiCommandOptions): string[] {
   const { task, scenario } = o;
   return [
     "--mode", "json",
     "-ne",
+    ...(scenario.tools.includes(CODEMODE) ? ["-e", `builtin:${CODEMODE}`] : []),
     "-e", o.extensionPath, "-e", o.scenarioProfileExtensionPath,
     "-e", o.projectExtensionPath, "-e", o.metricsExtensionPath,
     "-e", o.toolRefExtensionPath,

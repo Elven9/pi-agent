@@ -30,6 +30,9 @@ export class RunState {
       description:
         "Submit the final result of the task. Call it once when you are done; calling it again replaces the previous result.",
       parameters: SUBMIT_PARAMETERS,
+      // Declared to the model in every codemode mode ("only" hides direct tools) and not
+      // callable from scripts: the result is the model's own final call.
+      exposure: "model-only",
       execute: async (_toolCallId, params: { summary: string; detail: unknown }) => {
         // pi has validated the envelope; the scenario's detail is checked here. Throwing makes
         // this a failed tool result, so the model sees the errors and can call again.

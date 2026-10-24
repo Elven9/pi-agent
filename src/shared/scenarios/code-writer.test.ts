@@ -8,7 +8,7 @@ test("code-writer is registered", () => {
   assert.ok(scenarioNames().includes("code-writer"));
   assert.equal(getScenario("code-writer"), codeWriter);
   assert.equal(codeWriter.detailKind, "code-writer/v1");
-  assert.deepEqual(codeWriter.tools, ["read", "bash", "edit", "write"]);
+  assert.deepEqual(codeWriter.tools, ["codemode", "read", "bash", "edit", "write"]);
 });
 
 test("code-writer validates detail", () => {

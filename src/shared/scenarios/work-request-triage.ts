@@ -56,7 +56,7 @@ export const workRequestTriage = defineScenario({
   detailKind: "work-request-triage/v1",
   systemPrompt,
   // Only to read the project's extraction workflows; no bash, the text is the whole input.
-  tools: ["read"],
+  tools: ["codemode", "read"],
   detailSchema: Type.Object(
     {
       tasks: Type.Array(WorkTask, { minItems: 1, description: "One entry per request in the text" }),

@@ -104,8 +104,8 @@ test("project context: passed to pi and described in the report", async () => {
     { project, warnings: ["from input"], files: { "AGENTS.md": "Use pnpm.\n" } },
   );
   assert.equal(args[args.indexOf("--project") + 1], projectDir);
-  assert.deepEqual(args.slice(args.indexOf("-ne"), args.indexOf("-ne") + 7), [
-    "-ne", "-e", "/app/dist/extension.js", "-e", "/app/dist/scenario-profile.js", "-e", "/app/dist/project.js",
+  assert.deepEqual(args.slice(args.indexOf("-ne"), args.indexOf("-ne") + 9), [
+    "-ne", "-e", "builtin:codemode", "-e", "/app/dist/extension.js", "-e", "/app/dist/scenario-profile.js", "-e", "/app/dist/project.js",
   ]);
   const ctx = report.projectContext!;
   assert.equal(ctx.dir, projectDir);

@@ -32,7 +32,7 @@ test("work-request-triage is registered with read only", () => {
   assert.ok(scenarioNames().includes("work-request-triage"));
   assert.equal(getScenario("work-request-triage"), workRequestTriage);
   assert.equal(workRequestTriage.detailKind, "work-request-triage/v1");
-  assert.deepEqual(workRequestTriage.tools, ["read"]);
+  assert.deepEqual(workRequestTriage.tools, ["codemode", "read"]);
   assert.match(workRequestTriage.systemPrompt, /^You triage work requests\./);
 });
 

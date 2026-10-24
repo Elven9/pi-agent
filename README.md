@@ -40,7 +40,10 @@ pi --scenario work-request-triage   # that scenario's system prompt, tools and s
 
 The scenario's prompt replaces pi's default preamble (appended prompts, context files, skills
 and project context still follow). Built-in tools are exactly the scenario's; tools from other
-extensions (MCP, personal) stay. Skills of other scenarios (`skills/<other>/`) are left out of
+extensions (MCP, personal) stay. Every scenario lists `codemode`; with `"codemode": { "mode":
+"only" }` in `settings.json` the model writes scripts that call the scenario's tools. The
+scenario's `<rules>` has the extension tools' guidelines and codemode's (other built-in tools'
+rules and those of tools only scripts call stay out). Skills of other scenarios (`skills/<other>/`) are left out of
 the prompt; shared, grouped and skills from outside this package stay. There is no
 `submit_result` and no instruction to call it: both come from the runner extension. Without
 `--scenario` the extension does nothing.
@@ -150,7 +153,7 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 ### How a run works
 
 ```
-pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/tool-ref.js
+pi-agent run ──spawn──▶ pi --mode json -ne -e builtin:codemode -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/tool-ref.js
      ▲                    │    --scenario <name> [--project <dir>] … -- <prompt>
      │                    │  scenario-profile: owns --scenario; system prompt, tools, skills
      │                    │  extension: submit_result + instruction, nudge once
@@ -163,7 +166,10 @@ pi-agent run ──spawn──▶ pi --mode json -ne -e dist/extension.js -e dis
 The wrapper loads nothing implicitly: no discovered extensions, skills, prompt templates,
 context files, MCP or project config (`-na`: the workdir is not trusted). The scenario decides
 the system prompt and tools, the `skills/` layout its skills (shared + the scenario's, one
-`--skill` each); the project extension adds the project context. The scenario profile
+`--skill` each); the project extension adds the project context. `-ne` also turns off pi's
+built-in extensions, so `builtin:codemode` is loaded explicitly when the scenario has the
+`codemode` tool; its mode comes from the agent dir's `settings.json`. `submit_result` stays a
+tool the model calls itself (`exposure: "model-only"`), not one scripts can call. The scenario profile
 extension sets the system prompt and applies the tools and skills in-process, as in personal
 pi; `--tools` and `--skill` stay as the hard limits. It announces the scenario on the
 `pi-agent.scenario` `pi.events` channel, and the runner extension registers `submit_result`

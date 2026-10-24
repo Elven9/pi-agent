@@ -82,3 +82,21 @@ test("piArgs loads tool-ref last and allows its tools", () => {
   const tools = args[args.indexOf("--tools") + 1].split(",");
   assert.ok(tools.includes("tool_ref_get") && tools.includes("tool_ref_grep"));
 });
+
+test("piArgs loads pi's built-in codemode (off with -ne) first when the scenario has the tool", () => {
+  const base = {
+    task: { taskId: "t", scenario: "s", prompt: "p" },
+    extensionPath: "e.js",
+    scenarioProfileExtensionPath: "s.js",
+    projectExtensionPath: "p.js",
+    metricsExtensionPath: "m.js",
+    toolRefExtensionPath: "t.js",
+    skillPaths: [],
+    sessionDir: "d",
+  };
+  const extensions = (args: string[]) => args.flatMap((a, i) => (a === "-e" ? [args[i + 1]] : []));
+  const withCodemode = piArgs({ ...base, scenario: { ...scenario, tools: ["codemode", "read"] } });
+  assert.deepEqual(extensions(withCodemode), ["builtin:codemode", "e.js", "s.js", "p.js", "m.js", "t.js"]);
+  assert.ok(withCodemode[withCodemode.indexOf("--tools") + 1].split(",").includes("codemode"));
+  assert.ok(!extensions(piArgs({ ...base, scenario })).includes("builtin:codemode"));
+});

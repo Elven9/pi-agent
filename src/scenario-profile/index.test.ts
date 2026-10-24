@@ -83,7 +83,7 @@ test("applies the scenario's prompt, tools and skills", () => {
   const pi = fakePi({ scenario: "work-request-triage" });
   pi.emit("session_start");
   assert.deepEqual(pi.announced, [{ channel: SCENARIO_CHANNEL, data: { name: "work-request-triage" } }]);
-  assert.deepEqual(pi.active, ["read", "my_tool"]);
+  assert.deepEqual(pi.active, ["codemode", "read", "my_tool"]);
 
   // Twice: pi rebuilds the options for every prompt.
   for (let i = 0; i < 2; i++) {
@@ -104,6 +104,12 @@ test("scenarioRules: extension tools' and global guidelines only, de-duplicated"
   const guidelines = { read: ["r"], bash: ["b"], a: [" A1 ", "shared"], b: ["shared", ""], inactive: ["x"] };
   assert.equal(scenarioRules(["read", "bash", "b", "a"], all, guidelines, ["global", "A1"]), "- shared\n- A1\n- global");
   assert.equal(scenarioRules(["read", "bash"], all, guidelines, []), undefined);
+});
+
+test("scenarioRules: codemode's guidelines stay; hidden tools' are left out (they are in codemode's description)", () => {
+  const all = [builtin("codemode"), builtin("read"), fromExt("a"), fromExt("b")];
+  const guidelines = { codemode: ["Use codemode"], read: ["r"], a: ["A"], b: ["B"] };
+  assert.equal(scenarioRules(["codemode", "read", "a", "b"], all, guidelines, [], ["read", "a"]), "- Use codemode\n- B");
 });
 
 test("scenarioActiveTools: built-ins are the scenario's, extension tools stay", () => {

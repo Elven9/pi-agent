@@ -518,16 +518,15 @@ guideline).
 
 ### Open
 
-- Guideline placement. With `codemode.mode: "on"` (default) the tool-ref tools stay
-  declared and their guidelines stay in `<rules>`. With `"only"` they become hidden
-  declarations: the default prompt drops their rules and the guidelines travel in the
-  `codemode` description (subject to `codemode.inlineBudget`); under `--scenario`,
-  `scenarioRules` still includes them (hidden tools stay active). The citation rules are
-  session-wide, not about one tool, so they may move to their own section. Decide together
-  with codemode under `--scenario` (scenario-profile currently drops `codemode`: its
-  `sourceInfo.path` is `builtin:codemode`).
-- Trailer hiding on `codemode` results in the interactive UI (`hideTrailer` wraps the
-  codemode renderer): to be checked manually.
+- Guideline placement: done, see "Prompt guidance" (`<tool_refs>`).
+- Trailer hiding on `codemode` results in the interactive UI: checked manually, hidden.
+- Under `--scenario` with `codemode.mode: "only"` (the runner setup, tested in
+  `src/tool-ref/runner.test.ts`): every scenario lists `codemode`; the model gets `codemode`
+  and `submit_result` (`exposure: "model-only"`: declared, not callable from scripts); scripts
+  reach the scenario's built-in tools and the tool-ref tools.
+- A `tool_call` guard limiting scripts to the scenario's tools: postponed. Scripts reach
+  active `direct` tools and every `codemode`/`deferred` tool; the runner registers none of the
+  latter (`--no-mcp`).
 - The runner's `report.json` tool log lists nested calls (`tool_execution_*` with
   `parentToolCallId`) as calls without a `ref`; decide later.
 
@@ -780,4 +779,4 @@ All done with the implementation.
 | `tool` param of grep | An array of names; a single string is accepted (`prepareArguments`) |
 | Fallback renderer | Added only for tools that are not built-in (`read`, `bash`, `powershell`, `edit`, `write`, `grep`, `find`, `ls`). In interactive mode built-in tools always have renderers in `next()`; in the HTML export a fallback would replace the template's own drawing of them, so they show the trailer there. `next()` undefined is left to pi (trailer shown) |
 | HTML export (checked) | Built-in tools (`bash`, `read`, `write`, `edit`, `ls`) are drawn by the template from the raw content and show the trailer; custom tools are pre-rendered through the renderers and don't. Renderers need pi's global theme: the CLI sets it up in every mode, SDK embedders must call `initTheme()` (pi swallows the error and falls back otherwise) |
-| Tests | `src/tool-ref/runner.test.ts`: the runner's extensions in `piArgs` order under `--scenario demo` (active tools, `<rules>` sent to the model, `submit_result` numbered and excluded). `src/tool-ref/session.test.ts` runs pi's SDK with the faux provider (the spike cases end to end, reload, resume, settings, guidance in `<rules>`, the wrapper's tool log fed from the event stream, HTML export, offline index of the session file vs. live, `/tree` navigation) |
+| Tests | `src/tool-ref/runner.test.ts`: the runner's extensions in `piArgs` order (pi's codemode first) under `--scenario demo`, `--project` and `codemode.mode: "only"` (active and declared tools, the codemode description, section order and `<rules>` sent to the model, scripts calling bash and `tool_ref_get` but not `submit_result`, `submit_result` numbered and excluded). `src/tool-ref/session.test.ts` runs pi's SDK with the faux provider (the spike cases end to end, reload, resume, settings, guidance in `<tool_refs>`, the wrapper's tool log fed from the event stream, HTML export, offline index of the session file vs. live, `/tree` navigation) |

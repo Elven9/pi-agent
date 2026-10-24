@@ -63,7 +63,8 @@ come after `<cwd>`, which is exactly where block B belongs.
 ┌ Block A: shared by every project, for one scenario ───────────────────┐
 │ tools: fixed for the whole run; submit_result is generic (done)        │
 │ system: preamble, APPEND_SYSTEM, skills, <cwd> (/sandbox everywhere),  │
-│         <rules> (scenario-profile: extension tools' guidelines only)   │
+│         <tool_refs> (tool-ref), <rules> (scenario-profile: extension   │
+│         tools' and codemode's guidelines)                              │
 └──────────────────────────────────────────────────────────── ◆ marker ┘
 ┌ Block B: per project, fixed for the session ──────────────────────────┐
 │ <project> <project_rules> <agents_md> <project_commands>               │

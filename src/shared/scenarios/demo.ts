@@ -7,7 +7,7 @@ export const demo = defineScenario({
   name: "demo",
   detailKind: "demo/v1",
   systemPrompt,
-  tools: ["read", "bash"],
+  tools: ["codemode", "read", "bash"],
   detailSchema: Type.Object({
     projectName: Type.String({ description: "Name of the project" }),
     filesRead: Type.Array(Type.String(), { description: "Paths of the files you read" }),
