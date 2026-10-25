@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-slim
     outputs:
       prs_created: ${{ steps.release.outputs.prs_created }}
+      # The release pull request's branch, e.g. release-please--branches--main.
+      branch: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
     steps:
       - id: release
         uses: googleapis/release-please-action@v5
@@ -31,11 +33,11 @@ jobs:
     if: needs.release-please.outputs.prs_created == 'true'
     runs-on: ubuntu-latest
     env:
-      BRANCH: release-please--branches--main
+      BRANCH: ${{ needs.release-please.outputs.branch }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: release-please--branches--main
+          ref: ${{ needs.release-please.outputs.branch }}
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
       - uses: actions/setup-node@v7
         with:
