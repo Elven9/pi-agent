@@ -1,5 +1,8 @@
 node_modules/
-dist/
+# Only the built extension pi loads is committed (pi doesn't build git packages); the
+# release pull request rebuilds it, see .github/workflows/release-please.yml.
+dist/*
+!dist/scenario-profile.js
 .agent-out/
 .DS_Store
 tmp

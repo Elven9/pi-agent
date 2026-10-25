@@ -11,9 +11,46 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-slim
+    outputs:
+      prs_created: ${{ steps.release.outputs.prs_created }}
     steps:
-      - uses: googleapis/release-please-action@v5
+      - id: release
+        uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+  # pi installs git packages without building them (npm install --omit=dev, no build step), so the
+  # built extension pi loads (dist/scenario-profile.js, see "pi.extensions") is committed. It is
+  # built here into the release pull request, so the release commit and its tag contain it.
+  # release-please regenerates its branch when main moves, dropping this commit; this job then
+  # runs again right after.
+  build:
+    needs: release-please
+    if: needs.release-please.outputs.prs_created == 'true'
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: release-please--branches--main
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: release-please--branches--main
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Commit dist/scenario-profile.js
+        run: |
+          git add dist/scenario-profile.js
+          if git diff --cached --quiet; then
+            echo "dist/scenario-profile.js is up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: build dist/scenario-profile.js"
+          git push origin "HEAD:$BRANCH"

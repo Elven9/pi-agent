@@ -393,6 +393,13 @@ keeps a release pull request open and updated on every push to `main`: the next 
 (`bump-minor-pre-major`); `fix` bumps the patch. Other types (`docs`, `chore`, `ci`, …) don't
 make a release on their own.
 
+Pi installs a git package without building it (`npm install --omit=dev`, no build step), so the
+built extension it loads, `dist/scenario-profile.js`, is committed (the rest of `dist/` is
+ignored). The workflow's `build` job rebuilds it into the release pull request each time
+release-please updates it (`npm ci`, `npm run check`, commit if changed), so a release tag is
+installable: `pi install git:github.com/Elven9/pi-agent@vX.Y.Z`. The Docker image builds its own
+`dist/`.
+
 The workflow needs the repository secret `RELEASE_PLEASE_TOKEN`: a token with contents and pull
 request write access to this repository (pull requests opened with the default `GITHUB_TOKEN`
 don't trigger other workflows). Versions start at 0.1.0, the commit in `bootstrap-sha` in
