@@ -315,6 +315,42 @@ agent runs (for sandbox runs: in the image). The rendering is deterministic
 carries over between runs. Keep the folder at the same path on every run: paths are part of the
 text.
 
+#### Remote project (GitHub / GitLab)
+
+Instead of a folder, the project can live in a repository, pinned to a tag. Add a `project`
+entry to pi's `settings.json` (the agent dir's for `pi-agent run`; global or project settings
+for plain pi):
+
+```json
+"project": {
+  "repo": "https://gitlab.example.com/group/sub/billing",
+  "provider": "gitlab",
+  "tag": "v1.4.0",
+  "path": "projects/billing"
+}
+```
+
+`provider` is `github` or `gitlab`. `path` (optional, default the root) is the folder with
+`project.yaml`, so one repository can hold several projects, all pinned by the same tag;
+manifest paths and `project_read` paths are relative to it. With the entry,
+the project is on without `--project`; `--project` still wins over it (and in `pi-agent run`
+the entry wins over `PI_AGENT_PROJECT`). At session start the extension resolves the tag to
+a commit (GitHub: `refs/tags/<tag>`, so never a branch) and reads `project.yaml` and every
+listed workflow and doc at that commit, through the logged-in `gh` / `glab` CLI (`gh api`,
+`glab api` with `--hostname` from the URL, so GitHub Enterprise and self-hosted GitLab work).
+Nothing is cloned; auth is whatever `gh auth login` / `glab auth login` set up.
+
+The agent reads the workflows and docs with the `project_read` tool (path relative to the
+repo root, `offset`/`limit` for long files), registered by the extension and active only with
+a remote project (`pi-agent run` adds it to `--tools`). With a remote project it is registered with
+`codemode` exposure and activated, so it is both a direct tool (also with `codemode.mode: "only"`,
+which hides only active `direct` tools) and callable from codemode scripts; otherwise it is
+`hidden`, so it doesn't appear in codemode's tool list. Block B lists repo-relative paths and
+no tag or commit, so bumping the tag changes the cached prefix only where files changed.
+`pi-agent run` validates the same entry before starting pi (exit 2 when invalid, the tag is
+missing or a listed file is not in the repo); `report.json` `projectContext.remote` has the
+provider, repo, `path` (when set), tag and resolved commit.
+
 The extension also splits the system prompt into two cached blocks, A (prompt, skills, cwd) and
 B (project), so A's cache is shared across projects. On an OAuth account the `cpa` proxy
 rearranges the prompt and markers anyway (see the design doc).

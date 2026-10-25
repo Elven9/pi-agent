@@ -1,13 +1,18 @@
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
-import { isAbsolute, join, normalize, resolve, sep } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, normalize, resolve } from "node:path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { parse as parseYaml } from "yaml";
+import { localSource, projectPath, type ProjectSource } from "./project-source.ts";
+import { PROJECT_READ } from "./protocol.ts";
 
 /**
  * Project context (docs/project-context-design.md): `project.yaml` in a read-only project
  * folder plus `AGENTS.md` at the workspace root, rendered into "block B" of the system prompt.
+ *
+ * The project files come from a `ProjectSource`: a local folder or a remote repository pinned to
+ * a tag (project-source.ts). A remote project's workflows and docs are read with `project_read`.
  *
  * Used by both the wrapper (validation, report) and the extension (the prompt), so both render
  * the same bytes. Rendering must stay deterministic: the same inputs always give the same text,
@@ -52,9 +57,11 @@ export const ProjectManifestSchema = Type.Object(
 export type ProjectManifest = Static<typeof ProjectManifestSchema>;
 
 export interface Project {
-  /** Absolute path of the folder containing `project.yaml`, as given (not resolved further). */
-  dir: string;
+  /** Local project: absolute path of the folder containing `project.yaml`. Undefined when remote. */
+  dir?: string;
   manifest: ProjectManifest;
+  /** Where the files come from; reads go through it. */
+  source: ProjectSource;
 }
 
 /** `AGENTS.md` at the workspace root. */
@@ -77,12 +84,8 @@ export const SECTION = {
   docs: "project_docs",
 } as const;
 
-async function isFile(path: string): Promise<boolean> {
-  return (await stat(path).catch(() => undefined))?.isFile() ?? false;
-}
-
 /** Problems with the manifest that the schema can't express (paths, duplicates, keys). */
-async function manifestProblems(dir: string, m: ProjectManifest): Promise<string[]> {
+async function manifestProblems(source: ProjectSource, m: ProjectManifest): Promise<string[]> {
   const problems: string[] = [];
   for (const command of Object.keys(m.commands ?? {})) {
     if (command.trim() === "" || /[\r\n]/.test(command)) {
@@ -95,20 +98,23 @@ async function manifestProblems(dir: string, m: ProjectManifest): Promise<string
     }
   }
   const seen = new Map<string, string>();
+  const checks: Array<Promise<string | undefined>> = [];
   for (const key of ["workflows", "docs"] as const) {
     for (const [i, entry] of (m[key] ?? []).entries()) {
       const where = `/${key}/${i}/path`;
-      const rel = normalize(entry.path);
-      if (isAbsolute(entry.path) || rel === ".." || rel.startsWith(`..${sep}`)) {
+      const rel = projectPath(entry.path);
+      if (rel === undefined) {
         problems.push(`${where}: ${entry.path} must be a relative path inside the project folder`);
         continue;
       }
       const previous = seen.get(rel);
       if (previous) problems.push(`${where}: ${entry.path} is already listed at ${previous}`);
       seen.set(rel, where);
-      if (!(await isFile(join(dir, rel)))) problems.push(`${where}: ${entry.path} is not a file`);
+      // In parallel: remote reads are API calls (and fill the source's cache for project_read).
+      checks.push(source.read(rel).then((content) => (content === undefined ? `${where}: ${entry.path} is not a file` : undefined)));
     }
   }
+  for (const problem of await Promise.all(checks)) if (problem) problems.push(problem);
   return problems;
 }
 
@@ -117,14 +123,16 @@ async function manifestProblems(dir: string, m: ProjectManifest): Promise<string
  * a missing `project.yaml` returns undefined instead (an invalid one still throws).
  */
 export async function loadProject(dir: string, opts: { optional?: boolean } = {}): Promise<Project | undefined> {
-  dir = resolve(dir);
-  const file = join(dir, PROJECT_FILE);
-  let text: string;
-  try {
-    text = await readFile(file, "utf8");
-  } catch (err) {
-    if (opts.optional && (err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw new Error(`Cannot read ${file}: ${(err as Error).message}`);
+  return loadProjectFrom(localSource(resolve(dir)), opts);
+}
+
+/** Loads and validates `project.yaml` from any source (see `loadProject`). */
+export async function loadProjectFrom(source: ProjectSource, opts: { optional?: boolean } = {}): Promise<Project | undefined> {
+  const file = source.dir ? join(source.dir, PROJECT_FILE) : `${PROJECT_FILE} in ${source.label}`;
+  const text = await source.read(PROJECT_FILE);
+  if (text === undefined) {
+    if (opts.optional) return undefined;
+    throw new Error(`Cannot read ${file}: no such file`);
   }
   let raw: unknown;
   try {
@@ -140,9 +148,9 @@ export async function loadProject(dir: string, opts: { optional?: boolean } = {}
       .map((e) => `${e.instancePath || "/"} ${e.message === "schema is false" ? "is not a known key" : e.message}`);
     throw new Error(`Invalid ${file}:\n${errors.join("\n")}`);
   }
-  const problems = await manifestProblems(dir, raw);
+  const problems = await manifestProblems(source, raw);
   if (problems.length) throw new Error(`Invalid ${file}:\n${problems.join("\n")}`);
-  return { dir, manifest: raw };
+  return { ...(source.dir !== undefined && { dir: source.dir }), manifest: raw, source };
 }
 
 /** Reads `<cwd>/AGENTS.md`; undefined if it is missing or blank. Nothing else is looked up. */
@@ -184,7 +192,10 @@ function code(command: string): string {
 export function renderProjectSections(o: { cwd: string; project?: Project; agentsMd?: AgentsMd }): ProjectSections {
   const sections: ProjectSections = {};
   const m = o.project?.manifest;
-  const at = (rel: string) => join(o.project!.dir, normalize(rel));
+  // Local: absolute paths for the read tool. Remote: paths in the repository, for project_read.
+  const dir = o.project?.dir;
+  const at = (rel: string) => (dir !== undefined ? join(dir, normalize(rel)) : projectPath(rel)!);
+  const via = dir !== undefined ? "" : ` with the ${PROJECT_READ} tool`;
   if (m) {
     sections[SECTION.project] = [`name: ${m.name}`, ...(m.description ? [normalizeText(m.description)] : [])].join("\n");
     if (m.rules?.length) sections[SECTION.rules] = m.rules.map(item).join("\n");
@@ -207,13 +218,13 @@ export function renderProjectSections(o: { cwd: string; project?: Project; agent
     }
     if (m.workflows?.length) {
       sections[SECTION.workflows] = [
-        "Before doing one of these tasks, read its file and follow the steps in order. If several apply, follow them one after another, finishing each before starting the next:",
+        `Before doing one of these tasks, read its file${via} and follow the steps in order. If several apply, follow them one after another, finishing each before starting the next:`,
         ...m.workflows.map((w) => `- ${at(w.path)}: ${w.when.trim()}`),
       ].join("\n");
     }
     if (m.docs?.length) {
       sections[SECTION.docs] = [
-        "Read every doc whose condition applies; a task can need several docs on different topics:",
+        `Read every doc whose condition applies${via}; a task can need several docs on different topics:`,
         ...m.docs.map((d) => `- ${at(d.path)}: ${d.when.trim()}`),
       ].join("\n");
     }

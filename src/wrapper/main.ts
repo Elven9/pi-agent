@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { loadProject, PROJECT_FILE } from "../shared/project.ts";
+import { loadProject, loadProjectFrom, PROJECT_FILE } from "../shared/project.ts";
+import { projectSetting, remoteSource } from "../shared/project-source.ts";
 import { getScenario, scenarioNames } from "../shared/scenarios/index.ts";
 import { loadTask } from "../shared/task.ts";
 import { writeReport } from "./report-file.ts";
@@ -59,11 +61,36 @@ function locate(): {
 }
 
 /**
- * `--project` must point to a valid manifest. `PI_AGENT_PROJECT` is a default (the image sets
+ * pi's settings.json in the agent dir, the only settings pi reads in a run (the workdir is not
+ * trusted, so no project settings). Empty when there is none.
+ */
+async function agentSettings(): Promise<unknown> {
+  const dir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+  const file = join(dir, "settings.json");
+  const text = await readFile(file, "utf8").catch((err: NodeJS.ErrnoException) => {
+    if (err.code === "ENOENT") return undefined;
+    throw new Error(`Cannot read ${file}: ${err.message}`);
+  });
+  if (text === undefined) return {};
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    throw new Error(`Invalid ${file}: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * In order: `--project` must point to a valid manifest. Then the remote project in settings.json
+ * (`project`: repo, provider, tag), which must open and be valid; pi gets no `--project` then and
+ * the extension reads the same setting. Then `PI_AGENT_PROJECT`, a default (the image sets
  * /project): without a project.yaml there the run continues without project context and
- * warns. An invalid manifest is an error either way.
+ * warns. An invalid manifest is an error in every case.
  */
 async function resolveProject(flag: string | undefined) {
+  if (flag === undefined) {
+    const setting = projectSetting(await agentSettings());
+    if (setting) return { project: await loadProjectFrom(await remoteSource(setting)), warnings: [] };
+  }
   const dir = flag ?? (process.env.PI_AGENT_PROJECT || undefined);
   if (!dir) return { project: undefined, warnings: [] };
   const project = await loadProject(resolve(dir), { optional: flag === undefined });

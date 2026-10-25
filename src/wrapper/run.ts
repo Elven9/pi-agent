@@ -32,7 +32,7 @@ export interface RunOptions {
   workdir: string;
   out: string;
   resume?: PreviousSession;
-  /** Validated project manifest (`--project`). */
+  /** Validated project manifest (`--project`, settings.json `project` or `PI_AGENT_PROJECT`). */
   project?: Project;
   /** Warnings found while reading the input (e.g. no project.yaml at the default path). */
   warnings?: string[];
@@ -77,7 +77,13 @@ async function findSessionFile(dir: string, id: string): Promise<string | null> 
 async function projectContext(project: Project | undefined, workdir: string): Promise<ProjectContextInfo | null> {
   const sections = renderProjectSections({ cwd: workdir, project, agentsMd: await readAgentsMd(workdir) });
   if (Object.keys(sections).length === 0) return null;
-  return { dir: project?.dir ?? null, name: project?.manifest.name ?? null, ...describeBlock(sections) };
+  const r = project?.source.remote;
+  return {
+    dir: project?.dir ?? null,
+    name: project?.manifest.name ?? null,
+    ...(r && { remote: { provider: r.provider, repo: r.repo, ...(r.path && { path: r.path }), tag: r.tag, commit: r.commit } }),
+    ...describeBlock(sections),
+  };
 }
 
 /** Streams assistant text and tool names, for humans. */
@@ -129,6 +135,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
     metricsExtensionPath: o.metricsExtensionPath,
     toolRefExtensionPath: o.toolRefExtensionPath,
     projectDir: o.project?.dir,
+    projectRead: o.project?.source.kind === "remote",
     skillPaths: o.skillPaths,
     sessionDir,
     resumeFrom: resume?.sessionPath,

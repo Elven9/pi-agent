@@ -3,3 +3,6 @@ dist/
 .agent-out/
 .DS_Store
 tmp
+
+# Local pi project settings (e.g. a remote project entry for testing)
+.pi/

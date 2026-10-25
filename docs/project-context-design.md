@@ -254,6 +254,24 @@ TypeBox schema, strict:
 - `src/shared/project.ts`: schema, loading and rendering, used by both the wrapper and the
   extension. YAML via the `yaml` package, bundled into both builds.
 
+### Remote project
+
+The project can also come from a GitHub or GitLab repository pinned to a tag: the `project`
+entry in pi's `settings.json` (`repo` URL, `provider`, `tag`, and optionally `path`: the
+folder with `project.yaml`, so a repository can hold several projects sharing its tags; every
+read is under it and all project paths stay relative to it). `--project` wins over it; in
+the wrapper it wins over `PI_AGENT_PROJECT`. Every project file is read through one
+`ProjectSource` (`src/shared/project-source.ts`): a local folder, or the logged-in `gh` /
+`glab` CLI (`gh api repos/<o>/<r>/contents/<path>?ref=<commit>`,
+`glab api projects/<id>/repository/files/<path>?ref=<commit>`).
+
+- The tag is resolved to a commit once per session; all reads use the commit, so a moved tag
+  can't mix versions within a session. The wrapper and the extension each resolve it.
+- Path checks read each listed file (in parallel); the content is cached for `project_read`.
+- The agent reads workflows and docs with `project_read` (active only with a remote project).
+  Block B lists repo-relative paths and says to use the tool; no tag or commit in the text.
+- `report.json` `projectContext.remote`: provider, repo, path (when set), tag, commit; `dir` is null.
+
 ## Mechanisms (`src/project/` extension, `dist/project.js`)
 
 | What | How |

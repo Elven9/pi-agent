@@ -1,4 +1,4 @@
-import { PROJECT_FLAG, SCENARIO_FLAG, SUBMIT_RESULT } from "../shared/protocol.ts";
+import { PROJECT_FLAG, PROJECT_READ, SCENARIO_FLAG, SUBMIT_RESULT } from "../shared/protocol.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
 import { TOOL_REF_TOOLS } from "../shared/tool-ref.ts";
 import type { Task } from "../shared/task.ts";
@@ -18,8 +18,10 @@ export interface PiCommandOptions {
   metricsExtensionPath: string;
   /** Bundled tool-ref extension (dist/tool-ref.js): tool-call handles. Loaded last (see its load-order check). */
   toolRefExtensionPath: string;
-  /** Folder with a validated project.yaml. */
+  /** Folder with a validated project.yaml (local project). */
   projectDir?: string;
+  /** Remote project (from settings.json): the agent reads its files with project_read. */
+  projectRead?: boolean;
   /** Skill directories to load (absolute; from resolveSkills: shared, then the scenario's). */
   skillPaths: string[];
   sessionDir: string;
@@ -57,7 +59,7 @@ export function piArgs(o: PiCommandOptions): string[] {
     "--offline",
     "--session-dir", o.sessionDir,
     ...(o.resumeFrom ? ["--fork", o.resumeFrom] : []),
-    "--tools", [...scenario.tools, SUBMIT_RESULT, ...TOOL_REF_TOOLS].join(","),
+    "--tools", [...scenario.tools, SUBMIT_RESULT, ...TOOL_REF_TOOLS, ...(o.projectRead ? [PROJECT_READ] : [])].join(","),
     ...(task.model ? ["--model", task.model] : []),
     ...(task.thinkingLevel ? ["--thinking", task.thinkingLevel] : []),
     `--${SCENARIO_FLAG}`, scenario.name,

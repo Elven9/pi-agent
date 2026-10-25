@@ -100,3 +100,22 @@ test("piArgs loads pi's built-in codemode (off with -ne) first when the scenario
   assert.ok(withCodemode[withCodemode.indexOf("--tools") + 1].split(",").includes("codemode"));
   assert.ok(!extensions(piArgs({ ...base, scenario })).includes("builtin:codemode"));
 });
+
+test("piArgs adds project_read to --tools for a remote project only", () => {
+  const base = {
+    task: { taskId: "t", scenario: "s", prompt: "p" },
+    scenario,
+    extensionPath: "e.js",
+    scenarioProfileExtensionPath: "s.js",
+    projectExtensionPath: "p.js",
+    metricsExtensionPath: "m.js",
+    toolRefExtensionPath: "t.js",
+    skillPaths: [],
+    sessionDir: "d",
+  };
+  const tools = (args: string[]) => args[args.indexOf("--tools") + 1].split(",");
+  const remote = piArgs({ ...base, projectRead: true });
+  assert.ok(tools(remote).includes("project_read"));
+  assert.ok(!remote.includes("--project"));
+  assert.ok(!tools(piArgs(base)).includes("project_read"));
+});

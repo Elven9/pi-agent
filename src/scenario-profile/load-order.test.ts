@@ -31,6 +31,8 @@ async function startSession(order: Factory[], flags: Record<string, string>) {
     getFlag: (name: string) => flags[name],
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.push({ event, handler }),
     registerCommand() {},
+    registerTool() {},
+    getSettings: () => ({}),
     getActiveTools: () => ["read"],
     getAllTools: () => [{ name: "read", sourceInfo: { path: "builtin:read" } }],
     setActiveTools() {},

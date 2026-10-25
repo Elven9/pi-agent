@@ -22,8 +22,17 @@ export interface ScenarioSelected {
   name: string;
 }
 
-/** Project extension CLI flag: folder with `project.yaml` (`pi --project <dir>`). */
+/**
+ * Project extension CLI flag: folder with `project.yaml` (`pi --project <dir>`). Wins over the
+ * remote project in settings.json (`project`, see project-source.ts).
+ */
 export const PROJECT_FLAG = "project";
+
+/**
+ * Tool the project extension registers to read a remote project's files (workflows, docs).
+ * Active only with a remote project; the wrapper adds it to `--tools` then.
+ */
+export const PROJECT_READ = "project_read";
 
 /**
  * `pi.events` channel: the project extension emits `ProjectAnnounced` at session start (after
@@ -33,7 +42,7 @@ export const PROJECT_FLAG = "project";
 export const PROJECT_CHANNEL = "pi-agent.project";
 
 export interface ProjectAnnounced {
-  /** The `--project` manifest, if any. */
+  /** The project manifest, if any. `dir`: its folder, or `<repo>@<tag>` for a remote project. */
   project?: { name: string; dir: string };
   /** Block B as it is in the system prompt; "" when not (yet) applied. */
   block: string;

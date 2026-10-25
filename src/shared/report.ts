@@ -1,4 +1,5 @@
 import type { ProjectBlockInfo } from "./project.ts";
+import type { RemoteProject } from "./project-source.ts";
 import type { SubmittedResult } from "./result.ts";
 
 /** `report.json` contract (carried over from agents-core). */
@@ -78,10 +79,12 @@ export interface ToolCallLog {
 
 /** Project context in the system prompt (block B), as the wrapper rendered it. */
 export interface ProjectContextInfo extends ProjectBlockInfo {
-  /** Folder with `project.yaml`; null when only the workspace `AGENTS.md` is used. */
+  /** Folder with `project.yaml`; null for a remote project or when only the workspace `AGENTS.md` is used. */
   dir: string | null;
   /** `name` from `project.yaml`; null without a manifest. */
   name: string | null;
+  /** Remote project (settings.json `project`): repository, project folder (absent: root), tag and the commit it resolved to. */
+  remote?: Pick<RemoteProject, "provider" | "repo" | "path" | "tag" | "commit">;
 }
 
 export interface Report {
