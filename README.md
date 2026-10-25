@@ -379,3 +379,21 @@ recorded fixture. To update:
 3. `npm run check`, then one real run per scenario.
 
 Docker and OpenShell: see `openshell/README.md`.
+
+## Commits and releases
+
+Commit to `main` with [Conventional Commits](https://www.conventionalcommits.org/), the area as
+scope: `feat(project): …`, `fix(tool-ref): …`, `docs: …`, `chore: …`.
+
+[release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`)
+keeps a release pull request open and updated on every push to `main`: the next version in
+`package.json` / `package-lock.json` and `.release-please-manifest.json`, and a new
+`CHANGELOG.md` section. Merging it releases: tag `vX.Y.Z` and a GitHub release. Below 1.0.0,
+`feat` bumps the minor version and a breaking change (`feat!:`) also bumps the minor
+(`bump-minor-pre-major`); `fix` bumps the patch. Other types (`docs`, `chore`, `ci`, …) don't
+make a release on their own.
+
+The workflow needs the repository secret `RELEASE_PLEASE_TOKEN`: a token with contents and pull
+request write access to this repository (pull requests opened with the default `GITHUB_TOKEN`
+don't trigger other workflows). Versions start at 0.1.0, the commit in `bootstrap-sha` in
+`release-please-config.json`.
