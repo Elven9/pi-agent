@@ -66,6 +66,8 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
     let block = "";
     /** Whether the last prompt got block B (false: no project, pi loads its own context files). */
     let applied = false;
+    /** A startup error in the TUI, printed on shutdown. */
+    let startupError: string | undefined;
 
     /** Block B goes into the prompt unless there is no project and pi loaded context files. */
     const usesBlock = (piContextFiles: number) => project !== undefined || piContextFiles === 0;
@@ -148,12 +150,21 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
       } catch (err) {
         project = undefined;
         updateTools();
-        // Startup entries are not streamed in --mode json, so also tell stderr.
+        // Startup entries are not streamed in --mode json, so also tell stderr. The TUI would
+        // paint over a line written now, so there it is printed once the TUI has stopped.
         const message = (err as Error).message;
-        console.error(`[pi-agent] ${message}`);
+        if (ctx.mode === "tui") startupError = message;
+        else console.error(`[pi-agent] ${message}`);
         pi.appendEntry(ENTRY.error, { message });
         ctx.shutdown();
       }
+    });
+
+    // Interactive quit stops the TUI before emitting session_shutdown.
+    pi.on("session_shutdown", () => {
+      if (startupError === undefined) return;
+      console.error(`[pi-agent] ${startupError}`);
+      startupError = undefined;
     });
 
     // Set on every prompt (pi rebuilds the options from its base each time); the content never
