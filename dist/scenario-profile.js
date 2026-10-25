@@ -50,7 +50,7 @@ var codeWriter = defineScenario({
 import { Type as Type2 } from "typebox";
 
 // src/shared/scenarios/prompts/demo.md
-var demo_default = "You are a test agent working in the current directory.\n";
+var demo_default = "You are a test agent working in the current directory.\n\nPipeline test line.\nSecond pipeline test line.\n";
 
 // src/shared/scenarios/demo.ts
 var demo = defineScenario({
