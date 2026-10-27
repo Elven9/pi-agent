@@ -43,7 +43,7 @@ The scenario's prompt replaces pi's default preamble (appended prompts, context 
 and project context still follow). Built-in tools are exactly the scenario's; tools from other
 extensions (MCP, personal) stay. Every scenario lists `codemode`; with `"codemode": { "mode":
 "only" }` in `settings.json` the model writes scripts that call the scenario's tools. The
-scenario's `<rules>` has the extension tools' guidelines and codemode's (other built-in tools'
+scenario's `<rules>` has the scenario's own `rules` (if it sets any), then the extension tools' guidelines and codemode's (other built-in tools'
 rules and those of tools only scripts call stay out). Skills of other scenarios (`skills/<other>/`) are left out of
 the prompt; shared, grouped and skills from outside this package stay. There is no
 `submit_result` and no instruction to call it: both come from the runner extension. Without

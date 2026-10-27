@@ -33,8 +33,8 @@ function real(path: string): string {
  * - system prompt: the scenario's prompt replaces pi's default preamble (`customPrompt`, as
  *   `--system-prompt` would); appended prompts, context files, skills, cwd and extension
  *   sections (project context) still follow it,
- * - rules: pi drops its `<rules>` section with a custom prompt; a `<rules>` section with only
- *   the extension tools' `promptGuidelines` (and global ones) is added back, so extensions such
+ * - rules: pi drops its `<rules>` section with a custom prompt; a `<rules>` section with the
+ *   scenario's own `rules` first, then only the extension tools' `promptGuidelines` (and global ones) is added back, so extensions such
  *   as tool-ref can give guidance in every scenario. Built-in tool rules stay out, except
  *   codemode's; hidden tools' rules too (with `codemode.mode: "only"` they are in codemode's
  *   description),
@@ -133,6 +133,7 @@ export default function scenarioProfile(
     // A custom section, so it follows <cwd>. Set before the project extension adds its
     // sections (it loads after this one), so it stays in cache block A.
     const rules = scenarioRules(
+      scenario.rules ?? [],
       pi.getActiveTools(),
       pi.getAllTools(),
       options.toolGuidelines,

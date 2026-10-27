@@ -30,13 +30,23 @@ export interface Scenario<TDetail extends TObject = TObject> {
    * ExternalSkillsConfig.
    */
   externalSkills?: ExternalSkillsConfig;
+  /**
+   * Short, always-on rules for this scenario, in order. They open the `<rules>` section
+   * (before the extension tools' guidelines), one bullet each, like a project's `rules:`.
+   * Leading/trailing whitespace is trimmed; empty rules are an error.
+   */
+  rules?: string[];
 }
 
 /**
  * Keeps the detail schema's type and trims the system prompt (Markdown files end with a newline).
- * Throws on an invalid `externalSkills` (an empty or duplicate name).
+ * Throws on an invalid `externalSkills` (an empty or duplicate name) or an empty rule.
  */
 export function defineScenario<TDetail extends TObject>(scenario: Scenario<TDetail>): Scenario<TDetail> {
   validateExternalSkills(scenario.name, scenario.externalSkills);
-  return { ...scenario, systemPrompt: scenario.systemPrompt.trim() };
+  const rules = scenario.rules?.map((r) => r.trim());
+  if (rules?.some((r) => r === "")) {
+    throw new Error(`Scenario "${scenario.name}": rules must not be empty`);
+  }
+  return { ...scenario, systemPrompt: scenario.systemPrompt.trim(), ...(rules && { rules }) };
 }
