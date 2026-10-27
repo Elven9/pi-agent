@@ -3,8 +3,33 @@ const require = __piAgentCreateRequire(import.meta.url);
 
 // src/scenario-profile/index.ts
 import { realpathSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
+
+// src/shared/external-skills.ts
+import { homedir } from "node:os";
+import { join } from "node:path";
+function validateExternalSkills(scenario, config) {
+  const names = config?.include ?? [];
+  const dup = names.find((n, i) => names.indexOf(n) !== i);
+  if (dup !== void 0) throw new Error(`scenario "${scenario}": external skill "${dup}" is listed twice in include`);
+  if (names.some((n) => n.trim() === "")) throw new Error(`scenario "${scenario}": empty external skill name in include`);
+}
+function externalSkillRoots(env = process.env, home = homedir()) {
+  const raw = env.PI_CODING_AGENT_DIR;
+  const agentDir = raw ? raw === "~" ? home : raw.startsWith("~/") ? join(home, raw.slice(2)) : raw : join(home, ".pi", "agent");
+  return [join(agentDir, "skills"), join(home, ".agents", "skills")];
+}
+function findExternalSkills(names, roots, scanRoot) {
+  if (names.length === 0) return [];
+  const wanted = new Set(names);
+  const found = /* @__PURE__ */ new Map();
+  for (const root of roots) {
+    for (const skill of scanRoot(root)) if (wanted.has(skill.name) && !found.has(skill.name)) found.set(skill.name, skill);
+  }
+  return names.flatMap((n) => found.get(n) ?? []);
+}
 
 // src/shared/protocol.ts
 var SCENARIO_FLAG = "scenario";
@@ -29,6 +54,7 @@ var code_writer_default = "You write code in the repository in the current direc
 
 // src/shared/scenarios/types.ts
 function defineScenario(scenario) {
+  validateExternalSkills(scenario.name, scenario.externalSkills);
   return { ...scenario, systemPrompt: scenario.systemPrompt.trim() };
 }
 
@@ -168,9 +194,13 @@ function scenarioRules(active, all, toolGuidelines, promptGuidelines, hiddenTool
   promptGuidelines.forEach(add);
   return rules.size > 0 ? [...rules].map((r) => `- ${r}`).join("\n") : void 0;
 }
-function keepSkill(baseDir, skillsDir, scenario, knownScenarios) {
+function isPackageSkill(baseDir, skillsDir) {
   const rel = relative(skillsDir, baseDir);
-  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return true;
+  return !(rel === "" || rel.startsWith("..") || isAbsolute(rel));
+}
+function keepSkill(baseDir, skillsDir, scenario, knownScenarios) {
+  if (!isPackageSkill(baseDir, skillsDir)) return true;
+  const rel = relative(skillsDir, baseDir);
   const top = rel.split(sep)[0];
   return top === scenario || !knownScenarios.includes(top);
 }
@@ -178,7 +208,7 @@ function keepSkill(baseDir, skillsDir, scenario, knownScenarios) {
 // src/scenario-profile/index.ts
 function defaultSkillsDir() {
   const here = dirname(fileURLToPath(import.meta.url));
-  return basename(here) === "dist" ? join(here, "..", "skills") : join(here, "..", "..", "skills");
+  return basename(here) === "dist" ? join2(here, "..", "skills") : join2(here, "..", "..", "skills");
 }
 function real(path) {
   try {
@@ -187,7 +217,16 @@ function real(path) {
     return path;
   }
 }
-function scenarioProfile(pi, skillsDir = defaultSkillsDir()) {
+function loadIncluded(names, roots) {
+  return findExternalSkills(names, roots, (root) => {
+    try {
+      return loadSkillsFromDir({ dir: root, source: "user" }).skills;
+    } catch {
+      return [];
+    }
+  });
+}
+function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = externalSkillRoots()) {
   pi.registerFlag(SCENARIO_FLAG, {
     type: "string",
     description: "pi-agent scenario: use its system prompt, tools and skills"
@@ -195,6 +234,8 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir()) {
   let scenario;
   const root = real(skillsDir);
   const kept = /* @__PURE__ */ new Map();
+  let included = [];
+  let includedNames = /* @__PURE__ */ new Set();
   let started = false;
   let projectLoadedFirst = false;
   pi.events.on(PROJECT_CHANNEL, () => {
@@ -221,6 +262,8 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir()) {
       fail(err.message);
       return;
     }
+    included = loadIncluded(scenario.externalSkills?.include ?? [], externalRoots);
+    includedNames = new Set(scenario.externalSkills?.include ?? []);
     pi.events.emit(SCENARIO_CHANNEL, { name });
     pi.setActiveTools(scenarioActiveTools(scenario.tools, pi.getActiveTools(), pi.getAllTools()));
   });
@@ -240,9 +283,15 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir()) {
     const name = scenario.name;
     options.skills = options.skills.filter((s) => {
       let keep = kept.get(s.baseDir);
-      if (keep === void 0) kept.set(s.baseDir, keep = keepSkill(real(s.baseDir), root, name, known));
+      if (keep === void 0) {
+        const dir = real(s.baseDir);
+        keep = isPackageSkill(dir, root) ? keepSkill(dir, root, name, known) : includedNames.has(s.name);
+        kept.set(s.baseDir, keep);
+      }
       return keep;
     });
+    const present = new Set(options.skills.map((s) => s.name));
+    for (const s of included) if (!present.has(s.name)) options.skills.push(s);
   });
 }
 export {
