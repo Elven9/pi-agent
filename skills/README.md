@@ -19,3 +19,18 @@ this README) are ignored.
 
 Sandbox runs load the shared skills plus the scenario's, nothing else (`src/wrapper/skills.ts`).
 Personal pi loads all of them through the package manifest (`package.json` → `pi.skills`).
+
+## External skills
+
+Skills installed on the machine outside this package (`<agent dir>/skills`, `~/.agents/skills`)
+are excluded by default under a scenario, in sandbox runs and in personal pi with `--scenario`.
+A scenario opts in by skill name:
+
+```ts
+defineScenario({ name: "code-writer", /* … */ externalSkills: { include: ["agent-browser"] } });
+```
+
+Included skills are loaded when installed (sandbox runs: `--skill`; personal pi: kept in the
+prompt, or added if pi's settings turned them off); not installed ones are ignored. Without
+`--scenario`, personal pi loads whatever pi's settings say. This package's own skills are not
+affected (`src/shared/external-skills.ts`).

@@ -8,6 +8,8 @@
    the `registry` list).
 3. If it needs its own skills, put them in `skills/<name>/<skill>/SKILL.md`; they are loaded
    automatically, together with the shared `skills/<skill>/`. Skill folder names must be unique.
+   Skills installed outside this package (e.g. `~/.agents/skills/agent-browser`) are excluded
+   unless listed by name in `externalSkills.include` (see `skills/README.md`).
 4. When changing an existing scenario's `detailSchema`, bump the version in `detailKind`
    (`<name>/v2`).
 5. Add or update tests next to the code (`*.test.ts`).

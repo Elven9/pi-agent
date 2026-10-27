@@ -1,10 +1,11 @@
 import { realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { loadSkillsFromDir, type ExtensionAPI, type Skill } from "@earendil-works/pi-coding-agent";
+import { externalSkillRoots, findExternalSkills } from "../shared/external-skills.ts";
 import { ENTRY, PROJECT_CHANNEL, SCENARIO_CHANNEL, SCENARIO_FLAG, type ScenarioSelected } from "../shared/protocol.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
-import { keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
+import { isPackageSkill, keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
 
 /**
  * This package's skills folder. Bundled: dist/scenario-profile.js -> ../skills. From source
@@ -39,6 +40,11 @@ function real(path: string): string {
  *   description),
  * - tools: built-in tools are exactly the scenario's; tools from extensions stay,
  * - skills: other scenarios' skills (`skills/<other scenario>/`) are left out of the prompt.
+ *   External skills (not from this package, e.g. ~/.agents/skills or other pi packages) are left
+ *   out unless the scenario includes them (`externalSkills.include`); included ones are added
+ *   (after pi's, in include order) when installed and not already there, e.g. turned off in
+ *   pi's settings. Added ones are in the prompt only; pi
+ *   has no `/skill:<name>` command for them.
  *
  * `submit_result` and the result format stay with the runner extension (src/extension/). This
  * extension owns the `--scenario` flag and tells the runner on SCENARIO_CHANNEL.
@@ -50,7 +56,22 @@ function real(path: string): string {
  * session_start ran, it loaded first. That is an error (entry + shutdown), like an unknown
  * scenario.
  */
-export default function scenarioProfile(pi: ExtensionAPI, skillsDir: string = defaultSkillsDir()) {
+/** Included external skills, found with pi's own loader; not installed ones are left out. */
+function loadIncluded(names: readonly string[], roots: readonly string[]): Skill[] {
+  return findExternalSkills(names, roots, (root) => {
+    try {
+      return loadSkillsFromDir({ dir: root, source: "user" }).skills;
+    } catch {
+      return [];
+    }
+  });
+}
+
+export default function scenarioProfile(
+  pi: ExtensionAPI,
+  skillsDir: string = defaultSkillsDir(),
+  externalRoots: readonly string[] = externalSkillRoots(),
+) {
   pi.registerFlag(SCENARIO_FLAG, {
     type: "string",
     description: "pi-agent scenario: use its system prompt, tools and skills",
@@ -60,6 +81,9 @@ export default function scenarioProfile(pi: ExtensionAPI, skillsDir: string = de
   const root = real(skillsDir);
   /** Skill folder -> kept; skills don't move within a session. */
   const kept = new Map<string, boolean>();
+  /** The scenario's included external skills that are installed (found at session start). */
+  let included: Skill[] = [];
+  let includedNames = new Set<string>();
 
   /** This extension's session_start has run (later project announcements are expected). */
   let started = false;
@@ -94,6 +118,8 @@ export default function scenarioProfile(pi: ExtensionAPI, skillsDir: string = de
       return;
     }
     // Synchronous: the runner registers submit_result before the tools are set below.
+    included = loadIncluded(scenario.externalSkills?.include ?? [], externalRoots);
+    includedNames = new Set(scenario.externalSkills?.include ?? []);
     pi.events.emit(SCENARIO_CHANNEL, { name } satisfies ScenarioSelected);
     pi.setActiveTools(scenarioActiveTools(scenario.tools, pi.getActiveTools(), pi.getAllTools()));
   });
@@ -118,8 +144,14 @@ export default function scenarioProfile(pi: ExtensionAPI, skillsDir: string = de
     const name = scenario.name;
     options.skills = options.skills.filter((s) => {
       let keep = kept.get(s.baseDir);
-      if (keep === undefined) kept.set(s.baseDir, (keep = keepSkill(real(s.baseDir), root, name, known)));
+      if (keep === undefined) {
+        const dir = real(s.baseDir);
+        keep = isPackageSkill(dir, root) ? keepSkill(dir, root, name, known) : includedNames.has(s.name);
+        kept.set(s.baseDir, keep);
+      }
       return keep;
     });
+    const present = new Set(options.skills.map((s) => s.name));
+    for (const s of included) if (!present.has(s.name)) options.skills.push(s);
   });
 }

@@ -22,7 +22,7 @@ export interface PiCommandOptions {
   projectDir?: string;
   /** Remote project (from settings.json): the agent reads its files with project_read. */
   projectRead?: boolean;
-  /** Skill directories to load (absolute; from resolveSkills: shared, then the scenario's). */
+  /** Skill directories to load (absolute; shared, the scenario's, then its included external skills). */
   skillPaths: string[];
   sessionDir: string;
   /** Previous session file to fork from. */

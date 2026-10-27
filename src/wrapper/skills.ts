@@ -1,5 +1,8 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { parse as parseYaml } from "yaml";
+import { externalSkillRoots, findExternalSkills } from "../shared/external-skills.ts";
 
 /** Marks a skill directory (Agent Skills spec). */
 export const SKILL_FILE = "SKILL.md";
@@ -85,6 +88,85 @@ export async function resolveSkills(
     seen.set(name, dir);
   }
   return all;
+}
+
+/**
+ * `packageSkills` (from resolveSkills) followed by the scenario's included external skills
+ * that are installed (`include` order). An external skill named like one of this package's
+ * skills is left out: pi would keep the first anyway. Other external skills need no handling
+ * here: the run (`-ns`) loads no external skill that is not included.
+ */
+export function withExternalSkills(
+  packageSkills: readonly string[],
+  include: readonly string[] = [],
+  roots: readonly string[] = externalSkillRoots(),
+): string[] {
+  const own = new Set(packageSkills.map((dir) => basename(dir)));
+  const external = findExternalSkills(include.filter((n) => !own.has(n)), roots, (root) => scanSkillDirs(root));
+  return [...packageSkills, ...external.map((s) => s.baseDir)];
+}
+
+/** An installed skill folder found by scanSkillDirs. */
+export interface InstalledSkill {
+  name: string;
+  /** Folder with SKILL.md. */
+  baseDir: string;
+  filePath: string;
+}
+
+function stats(path: string) {
+  try {
+    return statSync(path);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Skill name like pi: frontmatter `name`, else the folder name. Undefined when pi would not load it. */
+function skillName(filePath: string): string | undefined {
+  let text: string;
+  try {
+    text = readFileSync(filePath, "utf8");
+  } catch {
+    return undefined;
+  }
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  let meta: unknown = {};
+  if (match) {
+    try {
+      meta = parseYaml(match[1]) ?? {};
+    } catch {
+      return undefined;
+    }
+  }
+  const fm = (typeof meta === "object" && meta !== null ? meta : {}) as Record<string, unknown>;
+  if (typeof fm.description !== "string" || fm.description.trim() === "") return undefined;
+  return typeof fm.name === "string" && fm.name !== "" ? fm.name : basename(filePath.slice(0, -SKILL_FILE.length - 1));
+}
+
+/**
+ * Skill folders under `dir`, like pi's scan: a folder with SKILL.md is a skill (no deeper),
+ * otherwise its subfolders are searched; dot folders and node_modules are skipped, symlinks
+ * followed. Sorted by folder name. Standalone \`.md\` skills and .gitignore rules are not supported.
+ */
+export function scanSkillDirs(dir: string, out: InstalledSkill[] = []): InstalledSkill[] {
+  const file = join(dir, SKILL_FILE);
+  if (stats(file)?.isFile()) {
+    const name = skillName(file);
+    if (name !== undefined) out.push({ name, baseDir: dir, filePath: file });
+    return out;
+  }
+  let names: string[];
+  try {
+    names = readdirSync(dir).sort();
+  } catch {
+    return out;
+  }
+  for (const n of names) {
+    if (n.startsWith(".") || n === "node_modules") continue;
+    if (stats(join(dir, n))?.isDirectory()) scanSkillDirs(join(dir, n), out);
+  }
+  return out;
 }
 
 /** Subdirectories of a group or scenario folder; each must be a skill. */

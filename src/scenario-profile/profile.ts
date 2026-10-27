@@ -58,6 +58,12 @@ export function scenarioRules(
   return rules.size > 0 ? [...rules].map((r) => `- ${r}`).join("\n") : undefined;
 }
 
+/** Whether a skill folder is inside this package's skills dir (strictly; the dir itself is not). */
+export function isPackageSkill(baseDir: string, skillsDir: string): boolean {
+  const rel = relative(skillsDir, baseDir);
+  return !(rel === "" || rel.startsWith("..") || isAbsolute(rel));
+}
+
 /**
  * Whether a skill stays in the prompt for `scenario`. Only this package's scenario skills
  * (`<skillsDir>/<other scenario>/<skill>/`) are dropped; shared and grouped skills, the
@@ -65,8 +71,8 @@ export function scenarioRules(
  * Same selection as the wrapper's resolveSkills, without its layout checks.
  */
 export function keepSkill(baseDir: string, skillsDir: string, scenario: string, knownScenarios: readonly string[]): boolean {
+  if (!isPackageSkill(baseDir, skillsDir)) return true;
   const rel = relative(skillsDir, baseDir);
-  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return true;
   const top = rel.split(sep)[0];
   return top === scenario || !knownScenarios.includes(top);
 }

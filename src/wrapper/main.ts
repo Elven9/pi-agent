@@ -11,7 +11,7 @@ import { loadTask } from "../shared/task.ts";
 import { writeReport } from "./report-file.ts";
 import { loadPreviousSession } from "./resume.ts";
 import { runTask, type RunOptions } from "./run.ts";
-import { resolveSkills } from "./skills.ts";
+import { resolveSkills, withExternalSkills } from "./skills.ts";
 
 const EXIT_OK = 0; // report.json written (whatever its status)
 const EXIT_CRASH = 1; // wrapper crashed; no reliable report
@@ -127,7 +127,10 @@ async function parseInput(argv: string[]): Promise<Omit<RunOptions, "signal" | "
   const resume = values.resume ? await loadPreviousSession(resolve(values.resume)) : undefined;
   const { project, warnings } = await resolveProject(values.project);
   const { rootDir, ...extensions } = locate();
-  const skillPaths = await resolveSkills(join(rootDir, "skills"), scenario.name, scenarioNames());
+  const skillPaths = withExternalSkills(
+    await resolveSkills(join(rootDir, "skills"), scenario.name, scenarioNames()),
+    scenario.externalSkills?.include,
+  );
   return {
     task, scenario, workdir, out, resume, project, warnings, skillPaths,
     piBin: process.env.PI_AGENT_PI_BIN || "pi",

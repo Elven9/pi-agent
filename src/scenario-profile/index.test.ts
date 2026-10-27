@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import scenarioProfile from "./index.ts";
@@ -13,7 +15,7 @@ const fromExt = (name: string) => ({ name, sourceInfo: { path: "/ext/index.js" }
 const skill = (baseDir: string) => ({ name: baseDir.split("/").pop(), baseDir });
 
 /** Minimal stand-in for the parts of ExtensionAPI the extension uses. */
-function fakePi(flags: Record<string, string | undefined>) {
+function fakePi(flags: Record<string, string | undefined>, externalRoots: string[] = []) {
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const entries: Array<{ customType: string; data: unknown }> = [];
   let active = ["read", "bash", "edit", "write", "my_tool"];
@@ -29,7 +31,7 @@ function fakePi(flags: Record<string, string | undefined>) {
     setActiveTools: (names: string[]) => void (active = names),
     appendEntry: (customType: string, data: unknown) => void entries.push({ customType, data }),
   } as unknown as ExtensionAPI;
-  scenarioProfile(pi, SKILLS);
+  scenarioProfile(pi, SKILLS, externalRoots);
   const ctx = { shutdown: () => (shutdown = true) };
   return {
     entries,
@@ -92,10 +94,40 @@ test("applies the scenario's prompt, tools and skills", () => {
     assert.equal(options.customPrompt, getScenario("work-request-triage").systemPrompt);
     assert.deepEqual(
       options.skills.map((s) => s.name),
-      ["shared", "synology-nas", "triage-only", "personal"],
+      // "personal" is an external skill the scenario does not include.
+      ["shared", "synology-nas", "triage-only"],
     );
     // Only the extension tool's guideline; read's (built-in) stays out.
     assert.deepEqual(options.sections, { rules: "- Use my_tool for X" });
+  }
+});
+
+test("externalSkills: only included external skills stay; installed missing ones are added once", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-agent-ext-"));
+  for (const name of ["agent-browser", "extra"]) {
+    await mkdir(join(root, name));
+    await writeFile(join(root, name, "SKILL.md"), `---\nname: ${name}\ndescription: The ${name} skill\n---\n`);
+  }
+  const demo = getScenario("demo");
+  const saved = demo.externalSkills;
+  demo.externalSkills = { include: ["agent-browser", "not-installed", "extra", "shared"] };
+  try {
+    const pi = fakePi({ scenario: "demo" }, [root]);
+    pi.emit("session_start");
+    for (let i = 0; i < 2; i++) {
+      const options = promptOptions();
+      // pi already loaded agent-browser (e.g. from ~/.agents/skills): kept, not added twice.
+      options.skills.push(skill(join(root, "agent-browser")));
+      pi.emit("before_agent_start", { systemPromptOptions: options });
+      assert.deepEqual(
+        options.skills.map((s) => s.name),
+        // "shared" is this package's skill (kept as is); "personal" is not included; "extra" is added.
+        ["shared", "synology-nas", "demo-only", "agent-browser", "extra"],
+      );
+      assert.equal((options.skills.at(-1) as { baseDir: string }).baseDir, join(root, "extra"));
+    }
+  } finally {
+    demo.externalSkills = saved;
   }
 });
 
