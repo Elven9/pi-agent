@@ -60,6 +60,21 @@ export function scenarioRules(
   return rules.size > 0 ? [...rules].map((r) => `- ${r}`).join("\n") : undefined;
 }
 
+/**
+ * Appends the global rules (trimmed) to the run's `promptGuidelines` in place, skipping ones
+ * already there, so a reused options object never gets them twice.
+ */
+export function addGlobalRules(promptGuidelines: string[], globalRules: readonly string[]): void {
+  const present = new Set(promptGuidelines.map((g) => g.trim()));
+  for (const rule of globalRules) {
+    const r = rule.trim();
+    if (r && !present.has(r)) {
+      promptGuidelines.push(r);
+      present.add(r);
+    }
+  }
+}
+
 /** Whether a skill folder is inside this package's skills dir (strictly; the dir itself is not). */
 export function isPackageSkill(baseDir: string, skillsDir: string): boolean {
   const rel = relative(skillsDir, baseDir);

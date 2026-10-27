@@ -47,7 +47,8 @@ scenario's `<rules>` has the scenario's own `rules` (if it sets any), then the e
 rules and those of tools only scripts call stay out). Skills of other scenarios (`skills/<other>/`) are left out of
 the prompt; shared, grouped and skills from outside this package stay. There is no
 `submit_result` and no instruction to call it: both come from the runner extension. Without
-`--scenario` the extension does nothing.
+`--scenario` the extension only adds the global rules (`src/scenario-profile/global-rules.ts`)
+to pi's `<rules>`; with a scenario they close the scenario's `<rules>`.
 
 ```sh
 pi --project ~/path/to/project-folder   # project.yaml + workspace AGENTS.md; pi's context files off
