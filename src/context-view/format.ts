@@ -11,9 +11,9 @@ export interface ContextView {
   project?: { name: string; dir: string };
   /** Active tools in order, with whether pi provides them. */
   tools: Array<{ name: string; builtin: boolean }>;
-  /** pi's system prompt: the effective one after a prompt ran, pi's base one before. */
+  /** The model's system prompt as recorded in the session; pi's base one before the first prompt. */
   systemPrompt: string;
-  /** False before the first prompt: extensions have not changed the prompt yet. */
+  /** False before the first prompt: nothing recorded, `systemPrompt` is pi's base prompt. */
   built: boolean;
   /** Block B (project sections) as in the prompt; "" when there is none. */
   blockB: string;
@@ -46,7 +46,7 @@ export function formatContextView(v: ContextView): string {
       "a prompt starts; send a message, then run /context again for the effective prompt.",
     );
   }
-  const title = v.built ? "system prompt" : "system prompt (base)";
+  const title = v.built ? "system prompt (last sent)" : "system prompt (base)";
   lines.push("", rule(b ? `${title} · block A (shared)` : title), a);
   if (b) lines.push(rule("block B (project)"), b);
   lines.push(rule("end"));
