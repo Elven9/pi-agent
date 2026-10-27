@@ -12,6 +12,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
+| `src/activation-hint/` | pi extension (personal pi only): a startup notification when a scenario or project is active |
 | `src/tool-ref/` | pi extension: a handle (`[tool-ref #N]`) on every tool result, `tool_ref_get` / `tool_ref_grep` to look calls up (runner and personal pi) |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
 | `examples/` | Example task file and project folder (`project/`: `project.yaml`, a workflow, a doc) |
@@ -28,7 +29,7 @@ pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /r
 ```
 
 The manifest exposes `skills/`, `prompts/*.md` and these extensions: project context
-(`src/project/`), context view (`src/context-view/`), session metrics (`src/metrics/`), session
+(`src/project/`), activation hint (`src/activation-hint/`, after project), context view (`src/context-view/`), session metrics (`src/metrics/`), session
 upload (`src/session-upload/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
 and the scenario profile, loaded from `dist/scenario-profile.js` because
 scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`
