@@ -46,6 +46,12 @@ export interface ProjectAnnounced {
   project?: { name: string; dir: string };
   /** Block B as it is in the system prompt; "" when not (yet) applied. */
   block: string;
+  /**
+   * Names of the prompt sections block B is made of (keys of pi's `SystemMessage.sections`),
+   * announced also before a prompt applied them, so a recorded prompt (resumed session) can be
+   * split. Optional: older announcements have none.
+   */
+  sections?: string[];
 }
 
 /**

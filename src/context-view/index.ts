@@ -1,4 +1,4 @@
-import { getCurrentSystemPrompt } from "@earendil-works/pi-ai";
+import { getCurrentSystemMessage, getSystemMessageText } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   PROJECT_CHANNEL,
@@ -7,7 +7,8 @@ import {
   type ScenarioSelected,
 } from "../shared/protocol.ts";
 import { isBuiltinTool } from "../scenario-profile/profile.ts";
-import { formatContextView } from "./format.ts";
+import { formatContextView, type ContextView, type PromptSection } from "./format.ts";
+import { ContextViewer, VIEWER_OVERLAY } from "./viewer.ts";
 
 /** Session entries as far as this extension reads them. */
 type BranchEntry = { type: string; message?: { role: string } };
@@ -15,18 +16,30 @@ type BranchEntry = { type: string; message?: { role: string } };
 /**
  * The system prompt the model has on the current branch, replayed from the session: pi
  * records the prompt as a system message when a run starts (sections, later patched by name).
- * Undefined before the first prompt (nothing recorded yet).
+ * `text` is the prompt as sent; `sections` are its non-empty parts in order (leading
+ * `content` first, then pi's named sections), which joined by "\n\n" are `text`. Undefined
+ * before the first prompt (nothing recorded yet).
  */
-export function sessionSystemPrompt(branch: readonly BranchEntry[]): string | undefined {
+export function sessionSystemPrompt(branch: readonly BranchEntry[]): { text: string; sections: PromptSection[] } | undefined {
   const messages = branch.flatMap((e) => (e.type === "message" && e.message ? [e.message] : []));
   if (!messages.some((m) => m.role === "system")) return undefined;
-  return getCurrentSystemPrompt(messages);
+  const current = getCurrentSystemMessage(messages);
+  if (!current) return undefined;
+  const content = typeof current.content === "string" ? current.content : current.content.map((c) => c.text).join("\n\n");
+  const sections = [
+    ...(content ? [{ name: "content", text: content }] : []),
+    ...Object.entries(current.sections ?? {}).flatMap(([name, text]) => (text ? [{ name, text }] : [])),
+  ];
+  return { text: getSystemMessageText(current), sections };
 }
 
 /**
  * Context view extension: `/context` shows what the session runs with: scenario, project,
  * active tools and the full system prompt (split at block B when a project adds one). Works in
  * every session; without `--scenario` and `--project` it shows pi's default setup.
+ *
+ * In the interactive UI the command opens a scrollable panel (like /ref) with the prompt split
+ * into its sections and syntax highlighted; other modes get the same as a plain notification.
  *
  * The scenario and project extensions announce themselves on SCENARIO_CHANNEL and
  * PROJECT_CHANNEL (pi's getFlag only reads an extension's own flags).
@@ -51,18 +64,28 @@ export default function contextView(pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       const all = new Map(pi.getAllTools().map((t) => [t.name, t]));
       const sent = sessionSystemPrompt(ctx.sessionManager.getBranch() as readonly BranchEntry[]);
-      const text = formatContextView({
+      const view: ContextView = {
         scenario,
         project: project.project,
         tools: pi.getActiveTools().map((name) => {
           const tool = all.get(name);
           return { name, builtin: tool ? isBuiltinTool(tool) : false };
         }),
-        systemPrompt: sent ?? ctx.getSystemPrompt(),
+        systemPrompt: sent?.text ?? ctx.getSystemPrompt(),
         built: sent !== undefined,
         blockB: project.block,
+        sections: sent?.sections,
+        blockBSections: project.sections,
+      };
+      // Only the interactive UI can float a panel; other modes keep the notification.
+      if (ctx.mode !== "tui") {
+        ctx.ui.notify(formatContextView(view), "info");
+        return;
+      }
+      await ctx.ui.custom<void>((tui, theme, _keybindings, done) => new ContextViewer(tui, theme, view, () => done()), {
+        overlay: true,
+        overlayOptions: VIEWER_OVERLAY,
       });
-      ctx.ui.notify(text, "info");
     },
   });
 }

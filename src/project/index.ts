@@ -78,6 +78,7 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
       pi.events.emit(PROJECT_CHANNEL, {
         project: project && { name: project.manifest.name, dir: project.source.label },
         block: applied ? block : "",
+        sections: Object.keys(sections),
       } satisfies ProjectAnnounced);
 
     /**

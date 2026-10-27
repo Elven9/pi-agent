@@ -97,7 +97,11 @@ test("adds the project sections after pi's own, the same on every prompt", async
   assert.deepEqual(promptSections(pi), first);
 
   // Announced for /context: at session start (not applied yet), then on each prompt.
-  assert.deepEqual(pi.announced[0], { project: { name: "demo", dir: project }, block: "" });
+  const atStart = pi.announced[0] as { sections: string[] };
+  assert.deepEqual(atStart, { project: { name: "demo", dir: project }, block: "", sections: atStart.sections });
+  // Block B's section names are announced before any prompt (for /context in resumed sessions).
+  assert.equal(atStart.sections[0], "project");
+  assert.ok(atStart.sections.includes("project_rules"));
   assert.match((pi.announced.at(-1) as { block: string }).block, /^<project>\nname: demo\n<\/project>\n\n<project_rules>/);
 
   await pi.command("project");
@@ -134,7 +138,8 @@ test("without --project, pi's own context files win and nothing is added or spli
   await pi.command("project");
   assert.match(pi.notices[0], /^No project context: no project, pi loads its own context files \(1\)/);
   const options = promptOptions(pi, [PI_AGENTS_MD]);
-  assert.deepEqual(pi.announced.at(-1), { project: undefined, block: "" });
+  const last = pi.announced.at(-1) as { sections: string[] };
+  assert.deepEqual(last, { project: undefined, block: "", sections: last.sections });
   assert.deepEqual(options.contextFiles, [PI_AGENTS_MD]);
   assert.deepEqual(options.sections, { cwd: "/w" });
   const request = payload(`prompt\n\n<agents_md>\npath: ${join(workspace, "AGENTS.md")}\nUse pnpm.\n</agents_md>`);
@@ -204,7 +209,9 @@ test("settings.json project: loads project.yaml from the repo without --project"
     "Read every doc whose condition applies with the project_read tool; a task can need several docs on different topics:\n- docs/a.md: Always.",
   );
   assert.ok(pi.active.includes(PROJECT_READ));
-  assert.deepEqual(pi.announced[0], { project: { name: "remote-demo", dir: "https://github.com/acme/proj@v1.0.0" }, block: "" });
+  const first = pi.announced[0] as { sections: string[] };
+  assert.deepEqual(first, { project: { name: "remote-demo", dir: "https://github.com/acme/proj@v1.0.0" }, block: "", sections: first.sections });
+  assert.equal(first.sections[0], "project");
   await pi.command("project");
   assert.match(pi.notices[0], /^Project: remote-demo \(https:\/\/github\.com\/acme\/proj@v1\.0\.0 = 0123456789ab\)/);
 

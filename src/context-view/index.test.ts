@@ -113,11 +113,22 @@ test("sessionSystemPrompt replays pi's system messages: sections patched by name
   const msg = (m: object) => ({ type: "message", message: { role: "system", content: "", timestamp: 0, ...m } });
   assert.equal(sessionSystemPrompt([]), undefined);
   assert.equal(sessionSystemPrompt([{ type: "message", message: { role: "user" } }, { type: "custom" }]), undefined);
-  const text = sessionSystemPrompt([
+  const { text, sections } = sessionSystemPrompt([
     msg({ sections: { preamble: "PRE", skills: "<name>agent-browser</name>", cwd: "<cwd>/w</cwd>" } }),
     { type: "message", message: { role: "user", content: "hi", timestamp: 0 } },
     msg({ sections: { skills: "<name>golang</name>", cwd: null } }),
   ])!;
-  assert.match(text, /PRE[\s\S]*<name>golang<\/name>/);
-  assert.doesNotMatch(text, /agent-browser|<cwd>/);
+  assert.equal(text, "PRE\n\n<name>golang</name>");
+  assert.deepEqual(sections, [
+    { name: "preamble", text: "PRE" },
+    { name: "skills", text: "<name>golang</name>" },
+  ]);
+  // Leading content (a plain prompt) comes first, as its own part.
+  assert.deepEqual(sessionSystemPrompt([msg({ content: "BASE", sections: { cwd: "C" } })]), {
+    text: "BASE\n\nC",
+    sections: [
+      { name: "content", text: "BASE" },
+      { name: "cwd", text: "C" },
+    ],
+  });
 });
