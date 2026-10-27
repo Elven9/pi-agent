@@ -1,6 +1,6 @@
 {
   "name": "pi-agent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "pi resources (skills, prompts) and a sandbox runner: stock pi CLI + one extension + a wrapper that writes report.json",
   "type": "module",
