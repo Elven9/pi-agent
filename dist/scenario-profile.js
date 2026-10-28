@@ -55,7 +55,11 @@ var code_writer_default = "You write code in the repository in the current direc
 // src/shared/scenarios/types.ts
 function defineScenario(scenario) {
   validateExternalSkills(scenario.name, scenario.externalSkills);
-  return { ...scenario, systemPrompt: scenario.systemPrompt.trim() };
+  const rules = scenario.rules?.map((r) => r.trim());
+  if (rules?.some((r) => r === "")) {
+    throw new Error(`Scenario "${scenario.name}": rules must not be empty`);
+  }
+  return { ...scenario, systemPrompt: scenario.systemPrompt.trim(), ...rules && { rules } };
 }
 
 // src/shared/scenarios/code-writer.ts
@@ -171,6 +175,11 @@ function getScenario(name) {
   return scenario;
 }
 
+// src/scenario-profile/global-rules.ts
+var GLOBAL_RULES = [
+  "When searching for text or files, prefer using rg or rg --files respectively because rg is much faster than alternatives like grep. (If the rg command is not found, then use alternatives.)"
+];
+
 // src/scenario-profile/profile.ts
 import { isAbsolute, relative, sep } from "node:path";
 var BUILTIN_PREFIX = "builtin:";
@@ -183,16 +192,27 @@ function scenarioActiveTools(scenarioTools, active, all) {
   const fromExtensions = active.filter((name) => !builtin.has(name) && !scenarioTools.includes(name));
   return [...scenarioTools, ...fromExtensions];
 }
-function scenarioRules(active, all, toolGuidelines, promptGuidelines, hiddenTools = []) {
+function scenarioRules(scenarioOwn, active, all, toolGuidelines, promptGuidelines, hiddenTools = []) {
   const skip = /* @__PURE__ */ new Set([...all.filter((t) => isBuiltinTool(t) && !BUILTIN_RULES_KEPT.has(t.name)).map((t) => t.name), ...hiddenTools]);
   const rules = /* @__PURE__ */ new Set();
   const add = (rule) => {
     const r = rule.trim();
     if (r) rules.add(r);
   };
+  scenarioOwn.forEach(add);
   for (const name of active) if (!skip.has(name)) (toolGuidelines[name] ?? []).forEach(add);
   promptGuidelines.forEach(add);
   return rules.size > 0 ? [...rules].map((r) => `- ${r}`).join("\n") : void 0;
+}
+function addGlobalRules(promptGuidelines, globalRules) {
+  const present = new Set(promptGuidelines.map((g) => g.trim()));
+  for (const rule of globalRules) {
+    const r = rule.trim();
+    if (r && !present.has(r)) {
+      promptGuidelines.push(r);
+      present.add(r);
+    }
+  }
 }
 function isPackageSkill(baseDir, skillsDir) {
   const rel = relative(skillsDir, baseDir);
@@ -226,7 +246,7 @@ function loadIncluded(names, roots) {
     }
   });
 }
-function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = externalSkillRoots()) {
+function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = externalSkillRoots(), globalRules = GLOBAL_RULES) {
   pi.registerFlag(SCENARIO_FLAG, {
     type: "string",
     description: "pi-agent scenario: use its system prompt, tools and skills"
@@ -268,10 +288,12 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
     pi.setActiveTools(scenarioActiveTools(scenario.tools, pi.getActiveTools(), pi.getAllTools()));
   });
   pi.on("before_agent_start", (event) => {
-    if (!scenario) return;
     const options = event.systemPromptOptions;
+    addGlobalRules(options.promptGuidelines, globalRules);
+    if (!scenario) return;
     options.customPrompt = scenario.systemPrompt;
     const rules = scenarioRules(
+      scenario.rules ?? [],
       pi.getActiveTools(),
       pi.getAllTools(),
       options.toolGuidelines,
