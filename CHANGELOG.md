@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/Elven9/pi-agent/compare/v0.3.0...v0.4.0) (2026-10-28)
+
+
+### Features
+
+* **scenario-profile:** global rules in &lt;rules&gt;, with or without a scenario ([f263133](https://github.com/Elven9/pi-agent/commit/f2631336486ab3d90f91cbd7cf08bf1da14134d2))
+* **scenario-profile:** scenarios can set their own rules, first in &lt;rules&gt; ([1ea0c16](https://github.com/Elven9/pi-agent/commit/1ea0c16fe26c495391ba7f36e419037bd6a16f38))
+
 ## [0.3.0](https://github.com/Elven9/pi-agent/compare/v0.2.0...v0.3.0) (2026-10-27)
 
 
