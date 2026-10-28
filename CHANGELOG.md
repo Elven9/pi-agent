@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/Elven9/pi-agent/compare/v0.2.0...v0.3.0) (2026-10-27)
+
+
+### Features
+
+* **activation-hint:** startup notification when a scenario or project is active ([01bc53e](https://github.com/Elven9/pi-agent/commit/01bc53e9cdec300452eafb4234ad9443f9f8b1ec))
+* **context-view:** /context opens a scrollable, highlighted panel split by prompt section ([5bd9520](https://github.com/Elven9/pi-agent/commit/5bd9520d1f4485750fb16cdbdcb42852a0ec0162))
+* **skills:** scenarios include external skills by name; others are excluded ([9b2aea9](https://github.com/Elven9/pi-agent/commit/9b2aea9aa106ea2b1e51d3565a40e8d5011e5fc2))
+
+
+### Bug Fixes
+
+* **context-view:** show the system prompt recorded in the session, not pi's base prompt ([42cfec1](https://github.com/Elven9/pi-agent/commit/42cfec1bf3124a831993c6c1d55098fe8e14afa4))
+
 ## [0.2.0](https://github.com/Elven9/pi-agent/compare/v0.1.0...v0.2.0) (2026-10-25)
 
 
