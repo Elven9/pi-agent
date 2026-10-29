@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CliError, parseRepo, projectFolder, projectPath, projectSetting, remoteSource, type CliRunner } from "./project-source.ts";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
+import {
+  CliError, parseRepo, projectFolder, projectPath, projectSetting, remoteSource, settingSource, type CliRunner,
+} from "./project-source.ts";
 import { loadProjectFrom, renderProjectSections } from "./project.ts";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -23,23 +28,45 @@ function table(answers: Record<string, string | Error>, calls: string[] = []): C
 test("projectSetting: absent, valid, and every kind of invalid", () => {
   assert.equal(projectSetting({}), undefined);
   assert.equal(projectSetting(undefined), undefined);
-  const ok = { repo: "https://github.com/acme/proj.git", provider: "github", tag: "v1" };
+  const ok = { repo: "https://github.com/acme/proj.git", type: "github", tag: "v1" };
   assert.deepEqual(projectSetting({ project: ok }), ok);
   assert.throws(() => projectSetting({ project: { ...ok, branch: "main" } }), /\/branch is not a known key/);
-  assert.throws(() => projectSetting({ project: { ...ok, provider: "bitbucket" } }), /\/provider/);
+  assert.throws(() => projectSetting({ project: { ...ok, type: "bitbucket" } }), /\/type must be one of github, gitlab, local \(is "bitbucket"\)/);
+  assert.throws(() => projectSetting({ project: { repo: ok.repo, tag: "v1" } }), /^Error: Invalid "project" in settings\.json:\n\/type must be one of github, gitlab, local \(is missing\)$/);
+  assert.throws(() => projectSetting({ project: "https://github.com/acme/proj" }), /\/ must be an object/);
+  // Keys of another type are unknown, not a confusing union error.
+  assert.throws(() => projectSetting({ project: { ...ok, dir: "x" } }), /:\n\/dir is not a known key$/);
   assert.throws(() => projectSetting({ project: { ...ok, repo: "acme/proj" } }), /\/repo must be a repository URL/);
   assert.throws(() => projectSetting({ project: { ...ok, repo: "ssh://git@github.com/acme/proj" } }), /http\(s\) URL/);
   assert.throws(() => projectSetting({ project: { ...ok, repo: "https://github.com/acme" } }), /<owner>\/<repo> for GitHub/);
   assert.throws(() => projectSetting({ project: { ...ok, repo: "https://x:y@github.com/acme/proj" } }), /credentials/);
 });
 
+test("projectSetting: local takes a dir only", () => {
+  assert.deepEqual(projectSetting({ project: { type: "local", dir: "../proj" } }), { type: "local", dir: "../proj" });
+  assert.throws(() => projectSetting({ project: { type: "local" } }), /:\n\/ must have required properties dir$/);
+  assert.throws(() => projectSetting({ project: { type: "local", dir: "" } }), /\/dir/);
+  assert.throws(() => projectSetting({ project: { type: "local", dir: "x", tag: "v1" } }), /:\n\/tag is not a known key$/);
+});
+
+test("settingSource: a relative local dir is resolved against cwd", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-agent-src-"));
+  await writeFile(join(dir, "project.yaml"), "version: 1\nname: here\n");
+  const source = await settingSource({ type: "local", dir: `../${basename(dir)}` }, join(dirname(dir), "elsewhere"));
+  assert.equal(source.kind, "local");
+  assert.equal(source.dir, dir);
+  assert.equal(await source.read("project.yaml"), "version: 1\nname: here\n");
+  const absolute = await settingSource({ type: "local", dir }, "/somewhere/else");
+  assert.equal(absolute.dir, dir);
+});
+
 test("parseRepo: host and path; GitLab allows subgroups", () => {
-  assert.deepEqual(parseRepo({ repo: "https://github.com/acme/proj.git/", provider: "github", tag: "v1" }), {
+  assert.deepEqual(parseRepo({ repo: "https://github.com/acme/proj.git/", type: "github", tag: "v1" }), {
     repo: "https://github.com/acme/proj",
     host: "github.com",
     repoPath: "acme/proj",
   });
-  assert.deepEqual(parseRepo({ repo: "https://gitlab.example.com:8443/g/sub/proj", provider: "gitlab", tag: "v1" }), {
+  assert.deepEqual(parseRepo({ repo: "https://gitlab.example.com:8443/g/sub/proj", type: "gitlab", tag: "v1" }), {
     repo: "https://gitlab.example.com:8443/g/sub/proj",
     host: "gitlab.example.com:8443",
     repoPath: "g/sub/proj",
@@ -66,7 +93,7 @@ test("GitHub: pins the tag to a commit, reads files at it, caches, handles direc
     },
     calls,
   );
-  const source = await remoteSource({ repo: "https://github.com/acme/proj", provider: "github", tag: "release/1" }, run);
+  const source = await remoteSource({ repo: "https://github.com/acme/proj", type: "github", tag: "release/1" }, run);
   assert.equal(source.kind, "remote");
   assert.equal(source.label, "https://github.com/acme/proj@release/1");
   assert.deepEqual(source.remote, {
@@ -87,14 +114,14 @@ test("GitHub: other failures throw (and are retried), a missing tag says so", as
     if (fail) throw new CliError("gh api failed: HTTP 401", "gh: Bad credentials (HTTP 401)");
     return JSON.stringify({ type: "file", encoding: "base64", content: b64("ok") });
   };
-  const source = await remoteSource({ repo: "https://github.com/acme/proj", provider: "github", tag: "v1" }, run);
+  const source = await remoteSource({ repo: "https://github.com/acme/proj", type: "github", tag: "v1" }, run);
   await assert.rejects(source.read("a.md"), /Cannot read a\.md from https:\/\/github\.com\/acme\/proj@v1: .*401/);
   fail = false;
   assert.equal(await source.read("a.md"), "ok");
 
   const noTag = table({ "gh repos/acme/proj/commits/refs/tags/v2 --jq .sha": new CliError("x", "gh: No commit found (HTTP 422)") });
   await assert.rejects(
-    remoteSource({ repo: "https://github.com/acme/proj", provider: "github", tag: "v2" }, noTag),
+    remoteSource({ repo: "https://github.com/acme/proj", type: "github", tag: "v2" }, noTag),
     /Cannot open project https:\/\/github\.com\/acme\/proj@v2 with gh \(logged in\? `gh auth status --hostname github\.com`\): tag v2 not found/,
   );
 });
@@ -109,7 +136,7 @@ test("GitLab: URL-encoded project and file paths, tag commit, base64 content", a
     }),
     [`glab ${project}/repository/files/wf%2Frelease.md?ref=${COMMIT}`]: JSON.stringify({ encoding: "base64", content: b64("1. Tag\n") }),
   });
-  const source = await remoteSource({ repo: "https://gitlab.example.com/g/sub/proj", provider: "gitlab", tag: "v1.2" }, run);
+  const source = await remoteSource({ repo: "https://gitlab.example.com/g/sub/proj", type: "gitlab", tag: "v1.2" }, run);
   const project_ = await loadProjectFrom(source);
   assert.equal(project_!.dir, undefined);
   assert.equal(await source.read("wf/release.md"), "1. Tag\n");
@@ -128,14 +155,14 @@ test("remote project: a listed file missing from the repo is reported", async ()
       type: "file", encoding: "base64", content: b64("version: 1\nname: x\ndocs:\n  - path: docs/gone.md\n    when: Never.\n"),
     }),
   });
-  const source = await remoteSource({ repo: "https://github.com/acme/proj", provider: "github", tag: "v1" }, run);
+  const source = await remoteSource({ repo: "https://github.com/acme/proj", type: "github", tag: "v1" }, run);
   await assert.rejects(loadProjectFrom(source), /Invalid project\.yaml in https:\/\/github\.com\/acme\/proj@v1:\n\/docs\/0\/path: docs\/gone\.md is not a file/);
-  const empty = await remoteSource({ repo: "https://github.com/acme/proj", provider: "github", tag: "v1" }, table({ "gh repos/acme/proj/commits/refs/tags/v1 --jq .sha": COMMIT }));
+  const empty = await remoteSource({ repo: "https://github.com/acme/proj", type: "github", tag: "v1" }, table({ "gh repos/acme/proj/commits/refs/tags/v1 --jq .sha": COMMIT }));
   await assert.rejects(loadProjectFrom(empty), /Cannot read project\.yaml in https:\/\/github\.com\/acme\/proj@v1: no such file/);
 });
 
 test("project folder (path): normalized, root by default, must stay inside the repo", () => {
-  const base = { repo: "https://github.com/acme/mono", provider: "github" as const, tag: "v1" };
+  const base = { repo: "https://github.com/acme/mono", type: "github" as const, tag: "v1" };
   assert.equal(projectFolder(base), undefined);
   assert.equal(projectFolder({ ...base, path: "." }), undefined);
   assert.equal(projectFolder({ ...base, path: "/" }), undefined);
@@ -157,7 +184,7 @@ test("project folder: every read (project.yaml, checks, project_read) is under i
     },
     calls,
   );
-  const source = await remoteSource({ repo: "https://github.com/acme/mono", provider: "github", tag: "v1", path: "projects/billing/" }, gh);
+  const source = await remoteSource({ repo: "https://github.com/acme/mono", type: "github", tag: "v1", path: "projects/billing/" }, gh);
   assert.equal(source.label, "https://github.com/acme/mono/projects/billing@v1");
   assert.equal(source.remote!.path, "projects/billing");
   const project = await loadProjectFrom(source);
@@ -169,6 +196,6 @@ test("project folder: every read (project.yaml, checks, project_read) is under i
     "glab projects/g%2Fmono/repository/tags/v1": JSON.stringify({ commit: { id: COMMIT } }),
     [`glab projects/g%2Fmono/repository/files/projects%2Fpay%2Fproject.yaml?ref=${COMMIT}`]: JSON.stringify({ encoding: "base64", content: b64("version: 1\nname: pay\n") }),
   });
-  const glSource = await remoteSource({ repo: "https://gitlab.example.com/g/mono", provider: "gitlab", tag: "v1", path: "projects/pay" }, gl);
+  const glSource = await remoteSource({ repo: "https://gitlab.example.com/g/mono", type: "gitlab", tag: "v1", path: "projects/pay" }, gl);
   assert.equal((await loadProjectFrom(glSource))!.manifest.name, "pay");
 });

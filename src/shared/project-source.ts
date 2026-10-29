@@ -1,36 +1,56 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { join, posix } from "node:path";
+import { join, posix, resolve } from "node:path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
 /**
- * Where a project's files come from (docs/project-context-design.md, "Remote project"): a local
- * folder (`--project <dir>`) or a GitHub/GitLab repository pinned to a tag (the `project` entry
- * in pi's settings.json), read through the logged-in `gh` / `glab` CLI. Every project file is
- * read through `ProjectSource.read`: `project.yaml`, the path checks, and the `project_read`
- * tool.
+ * Where a project's files come from (docs/project-context-design.md, "Project source"): a local
+ * folder (`--project <dir>`, `PI_AGENT_PROJECT`, or a `local` `project` entry in pi's
+ * settings.json) or a GitHub/GitLab repository pinned to a tag (a `github` / `gitlab` entry),
+ * read through the logged-in `gh` / `glab` CLI. Every project file is read through
+ * `ProjectSource.read`: `project.yaml`, the path checks, and the `project_read` tool.
  */
 
-/** Key of the remote project entry in pi's settings.json. */
+/** Key of the project entry in pi's settings.json. */
 export const PROJECT_SETTING = "project";
 
 const Line = Type.String({ minLength: 1, pattern: "^[^\\r\\n]+$" });
 
-export const ProjectSettingSchema = Type.Object(
+const remoteSchema = <T extends "github" | "gitlab">(type: T) =>
+  Type.Object(
+    {
+      type: Type.Literal(type),
+      /** Repository URL, e.g. https://github.com/owner/repo or https://gitlab.example.com/group/sub/repo. */
+      repo: Line,
+      /** Tag the project is pinned to. Resolved to a commit once per session. */
+      tag: Line,
+      /** Folder in the repository with `project.yaml` (default: the root). Several projects can share a repo. */
+      path: Type.Optional(Line),
+    },
+    { additionalProperties: false },
+  );
+
+const LocalSettingSchema = Type.Object(
   {
-    /** Repository URL, e.g. https://github.com/owner/repo or https://gitlab.example.com/group/sub/repo. */
-    repo: Line,
-    provider: Type.Union([Type.Literal("github"), Type.Literal("gitlab")]),
-    /** Tag the project is pinned to. Resolved to a commit once per session. */
-    tag: Line,
-    /** Folder in the repository with `project.yaml` (default: the root). Several projects can share a repo. */
-    path: Type.Optional(Line),
+    type: Type.Literal("local"),
+    /** Folder with `project.yaml`; a relative path is resolved against the working directory pi runs in. */
+    dir: Line,
   },
   { additionalProperties: false },
 );
-export type ProjectSetting = Static<typeof ProjectSettingSchema>;
-export type Provider = ProjectSetting["provider"];
+
+/** The `project` entry's schema for each `type`. `type` is checked first, then its own keys. */
+export const PROJECT_SETTING_SCHEMAS = {
+  github: remoteSchema("github"),
+  gitlab: remoteSchema("gitlab"),
+  local: LocalSettingSchema,
+};
+export type ProjectType = keyof typeof PROJECT_SETTING_SCHEMAS;
+export type LocalSetting = Static<typeof LocalSettingSchema>;
+export type RemoteSetting = Static<(typeof PROJECT_SETTING_SCHEMAS)["github" | "gitlab"]>;
+export type ProjectSetting = LocalSetting | RemoteSetting;
+export type Provider = RemoteSetting["type"];
 
 /** A remote project's coordinates, with the tag resolved to a commit. */
 export interface RemoteProject {
@@ -86,23 +106,45 @@ export function localSource(dir: string): ProjectSource {
   };
 }
 
-/** The `project` entry from pi's merged settings; undefined without one. Throws when invalid. */
+/**
+ * The `project` entry from pi's merged settings; undefined without one. Throws when invalid.
+ * `type` is checked first, so the errors are about the keys of that type only.
+ */
 export function projectSetting(settings: unknown): ProjectSetting | undefined {
   const raw = (settings as Record<string, unknown> | undefined)?.[PROJECT_SETTING];
   if (raw === undefined) return undefined;
-  if (!Value.Check(ProjectSettingSchema, raw)) {
-    const errors = Value.Errors(ProjectSettingSchema, raw)
+  const invalid = (errors: string[]) => new Error(`Invalid "${PROJECT_SETTING}" in settings.json:\n${errors.join("\n")}`);
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw invalid(["/ must be an object"]);
+  const type = (raw as { type?: unknown }).type;
+  if (typeof type !== "string" || !Object.hasOwn(PROJECT_SETTING_SCHEMAS, type)) {
+    const got = type === undefined ? "is missing" : `is ${JSON.stringify(type)}`;
+    throw invalid([`/type must be one of ${Object.keys(PROJECT_SETTING_SCHEMAS).join(", ")} (${got})`]);
+  }
+  const schema = PROJECT_SETTING_SCHEMAS[type as ProjectType];
+  if (!Value.Check(schema, raw)) {
+    const errors = Value.Errors(schema, raw)
       .filter((e) => e.keyword !== "additionalProperties")
       .map((e) => `${e.instancePath || "/"} ${e.message === "schema is false" ? "is not a known key" : e.message}`);
-    throw new Error(`Invalid "${PROJECT_SETTING}" in settings.json:\n${errors.join("\n")}`);
+    throw invalid(errors);
   }
-  parseRepo(raw);
-  projectFolder(raw);
-  return raw;
+  const setting = raw as ProjectSetting;
+  if (setting.type !== "local") {
+    parseRepo(setting);
+    projectFolder(setting);
+  }
+  return setting;
+}
+
+/**
+ * Source for a valid setting: a `local` folder (relative `dir` resolved against `cwd`, the
+ * working directory pi runs in) or the remote repository.
+ */
+export async function settingSource(setting: ProjectSetting, cwd: string, run: CliRunner = execCli): Promise<ProjectSource> {
+  return setting.type === "local" ? localSource(resolve(cwd, setting.dir)) : remoteSource(setting, run);
 }
 
 /** The setting's project folder, normalized; undefined for the repository root. */
-export function projectFolder(setting: ProjectSetting): string | undefined {
+export function projectFolder(setting: RemoteSetting): string | undefined {
   if (setting.path === undefined) return undefined;
   const path = setting.path.trim();
   if (path === "." || path === "/") return undefined;
@@ -114,7 +156,7 @@ export function projectFolder(setting: ProjectSetting): string | undefined {
 }
 
 /** Host and repository path from the setting's URL. */
-export function parseRepo(setting: ProjectSetting): { repo: string; host: string; repoPath: string } {
+export function parseRepo(setting: RemoteSetting): { repo: string; host: string; repoPath: string } {
   const bad = (why: string) => new Error(`Invalid "${PROJECT_SETTING}" in settings.json: /repo ${why}`);
   let url: URL;
   try {
@@ -127,7 +169,7 @@ export function parseRepo(setting: ProjectSetting): { repo: string; host: string
   const path = url.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
   const segments = path.split("/");
   if (path === "" || segments.some((s) => s === "")) throw bad("has no repository path");
-  if (setting.provider === "github" && segments.length !== 2) throw bad("must be https://<host>/<owner>/<repo> for GitHub");
+  if (setting.type === "github" && segments.length !== 2) throw bad("must be https://<host>/<owner>/<repo> for GitHub");
   return { repo: `https://${url.host}/${path}`, host: url.host, repoPath: path };
 }
 
@@ -229,10 +271,10 @@ function gitlabApi(run: CliRunner, host: string, repoPath: string): Api {
  * Remote project source: resolves the tag to a commit once (so a moved tag can't mix versions
  * within a session), then reads files at that commit. Reads are cached for the session.
  */
-export async function remoteSource(setting: ProjectSetting, run: CliRunner = execCli): Promise<ProjectSource> {
+export async function remoteSource(setting: RemoteSetting, run: CliRunner = execCli): Promise<ProjectSource> {
   const { repo, host, repoPath } = parseRepo(setting);
   const folder = projectFolder(setting);
-  const api = setting.provider === "github" ? githubApi(run, host, repoPath) : gitlabApi(run, host, repoPath);
+  const api = setting.type === "github" ? githubApi(run, host, repoPath) : gitlabApi(run, host, repoPath);
   const label = `${repo}${folder ? `/${folder}` : ""}@${setting.tag}`;
   let commit: string;
   try {
@@ -248,7 +290,7 @@ export async function remoteSource(setting: ProjectSetting, run: CliRunner = exe
   return {
     kind: "remote",
     label,
-    remote: { provider: setting.provider, repo, host, repoPath, ...(folder && { path: folder }), tag: setting.tag, commit },
+    remote: { provider: setting.type, repo, host, repoPath, ...(folder && { path: folder }), tag: setting.tag, commit },
     // `file` is relative to the project folder.
     read(file) {
       let content = cache.get(file);

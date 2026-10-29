@@ -243,24 +243,36 @@ TypeBox schema, strict:
 
 ### Wiring
 
-- `pi-agent run --project <dir>` (or `PI_AGENT_PROJECT`); the flag wins.
+- Order: `pi-agent run --project <dir>`, then `PI_AGENT_PROJECT` (when that folder has a
+  `project.yaml`), then the `project` entry in settings.json (see "Project source").
 - Image: `docker/pi-agent.sh` defaults `PI_AGENT_PROJECT=/project`. Locally there is no default.
 - The wrapper validates the manifest before starting pi and passes the folder to the extension
   with a pi flag.
   - Explicit `--project` with a missing or invalid manifest: exit 2 (bad input).
-  - Default `/project` without `project.yaml`: run without project sections, with a warning in
-    `report.json`.
+  - `PI_AGENT_PROJECT` without `project.yaml`: falls through to the settings entry; with no
+    entry either, run without project sections, with a warning in `report.json`.
+  - Settings entry: must open and have a valid manifest (exit 2 otherwise). A `local` one is
+    passed to pi as `--project`; for a remote one pi gets no flag and reads the same entry.
+  - The resolution is `src/wrapper/project-input.ts`.
   - Invalid manifest at the default path: exit 2.
 - `src/shared/project.ts`: schema, loading and rendering, used by both the wrapper and the
   extension. YAML via the `yaml` package, bundled into both builds.
 
-### Remote project
+### Project source
 
-The project can also come from a GitHub or GitLab repository pinned to a tag: the `project`
-entry in pi's `settings.json` (`repo` URL, `provider`, `tag`, and optionally `path`: the
-folder with `project.yaml`, so a repository can hold several projects sharing its tags; every
-read is under it and all project paths stay relative to it). `--project` wins over it; in
-the wrapper it wins over `PI_AGENT_PROJECT`. Every project file is read through one
+The `project` entry in pi's `settings.json` selects the project without a flag. `type` is read
+first and decides the allowed keys (errors name only that type's keys):
+
+- `local`: `dir`, the folder with `project.yaml`. A relative `dir` is resolved against the
+  working directory pi runs in (the extension's session cwd; the wrapper's `--workdir`), not
+  against settings.json: pi merges global and project settings, so the file an entry came from
+  is unknown. A missing or invalid manifest is an error, like `--project`.
+- `github` / `gitlab`: a repository pinned to a tag: `repo` URL, `tag`, and optionally
+  `path` (the folder with `project.yaml`, so a repository can hold several projects sharing
+  its tags; every read is under it and all project paths stay relative to it).
+
+`--project` wins over the entry; in the wrapper `PI_AGENT_PROJECT` does too (when it has a
+`project.yaml`). Every project file is read through one
 `ProjectSource` (`src/shared/project-source.ts`): a local folder, or the logged-in `gh` /
 `glab` CLI (`gh api repos/<o>/<r>/contents/<path>?ref=<commit>`,
 `glab api projects/<id>/repository/files/<path>?ref=<commit>`).
@@ -337,9 +349,11 @@ at all, and with what review, is part of that later design.
 - **Two extensions.** The runner (`dist/extension.js`) and the project extension
   (`dist/project.js`) are separate; the wrapper always loads both, because `AGENTS.md` is used
   even without a manifest.
-- **`--project` vs `PI_AGENT_PROJECT`.** The flag must point to a valid manifest (exit 2
-  otherwise). The env var is a default: no `project.yaml` there means no project context and a
-  warning; an invalid one is exit 2.
+- **`--project` vs `PI_AGENT_PROJECT` vs settings.** The flag must point to a valid manifest
+  (exit 2 otherwise). The env var is a default: no `project.yaml` there means it doesn't count
+  (the settings entry applies, else no project context and a warning); an invalid one is exit
+  2. It beats the settings entry only when it has a manifest, so the image's default
+  `/project` can't hide an entry when nothing is mounted.
 - **Split robustness.** The split looks for the exact rendered block B (preceded by pi's
   section separator) in the system text. If it isn't found (compaction summaries, a resumed
   session whose `AGENTS.md` changed so pi sent a delta, other APIs) or caching is off, the

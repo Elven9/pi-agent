@@ -12,7 +12,7 @@ import {
   type Project,
   type ProjectSections,
 } from "../shared/project.ts";
-import { execCli, projectPath, projectSetting, remoteSource, type CliRunner } from "../shared/project-source.ts";
+import { execCli, projectPath, projectSetting, settingSource, type CliRunner } from "../shared/project-source.ts";
 import { splitSystemPrompt } from "./cache-split.ts";
 
 /** project_read output limits, like pi's read tool. */
@@ -37,9 +37,11 @@ export interface ProjectContextOptions {
  * across sessions while the files don't change).
  *
  * The project comes from `--project <dir>` (a local folder) or, without the flag, from the
- * `project` entry in pi's settings.json: a GitHub/GitLab repository pinned to a tag, read with
- * the logged-in `gh` / `glab`. A remote project's workflows and docs are read with the
- * `project_read` tool, active only then.
+ * `project` entry in pi's settings.json: `type` `local` (a folder; a relative `dir` is
+ * resolved against the session cwd) or `github` / `gitlab` (a repository pinned to a tag, read
+ * with the logged-in `gh` / `glab`). A remote project's workflows and docs are read with the
+ * `project_read` tool, active only then. (`PI_AGENT_PROJECT` is the wrapper's: it passes the
+ * folder as `--project`.)
  *
  * pi places extension sections after skills and `<cwd>`, which is where block B belongs.
  * Must load after the scenario-profile extension (its `<rules>` section belongs in block A);
@@ -136,12 +138,12 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
     pi.on("session_start", async (_event, ctx) => {
       const dir = pi.getFlag(PROJECT_FLAG);
       try {
-        // The flag wins; otherwise the remote project from settings.json, if any.
+        // The flag wins; otherwise the project entry in settings.json, if any.
         if (typeof dir === "string" && dir !== "") {
           project = await loadProject(resolve(ctx.cwd, dir));
         } else {
           const setting = projectSetting(pi.getSettings());
-          project = setting ? await loadProjectFrom(await remoteSource(setting, run)) : undefined;
+          project = setting ? await loadProjectFrom(await settingSource(setting, ctx.cwd, run)) : undefined;
         }
         sections = renderProjectSections({ cwd: ctx.cwd, project, agentsMd: await readAgentsMd(ctx.cwd) });
         block = renderBlock(sections);

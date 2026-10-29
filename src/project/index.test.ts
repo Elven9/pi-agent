@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import projectContext, { createProjectContext } from "./index.ts";
 import { ENTRY, PROJECT_CHANNEL, PROJECT_READ } from "../shared/protocol.ts";
@@ -188,7 +188,7 @@ function fakeGh(files: Record<string, string>, calls: string[][] = []): CliRunne
   };
 }
 
-const SETTINGS = { project: { repo: "https://github.com/acme/proj", provider: "github", tag: "v1.0.0" } };
+const SETTINGS = { project: { repo: "https://github.com/acme/proj", type: "github", tag: "v1.0.0" } };
 const REMOTE_FILES = {
   "project.yaml": "version: 1\nname: remote-demo\ndocs:\n  - path: docs/a.md\n    when: Always.\n",
   "docs/a.md": "line 1\nline 2\nline 3\n",
@@ -238,10 +238,15 @@ test("--project wins over settings.json project (not even read)", async () => {
 });
 
 test("invalid settings.json project or a missing tag: error entry and shutdown", async () => {
-  const bad = fakePi({}, await tmp({}), [], { settings: { project: { repo: "x", provider: "github" } }, run: fakeGh({}) });
+  const bad = fakePi({}, await tmp({}), [], { settings: { project: { repo: "x", type: "github" } }, run: fakeGh({}) });
   await bad.emit("session_start");
   assert.equal(bad.shutdown, true);
   assert.match((bad.entries[0].data as { message: string }).message, /Invalid "project" in settings\.json:\n\/ must have required properties tag/);
+
+  const untyped = fakePi({}, await tmp({}), [], { settings: { project: { repo: "https://github.com/acme/proj", tag: "v1" } }, run: fakeGh({}) });
+  await untyped.emit("session_start");
+  assert.equal(untyped.shutdown, true);
+  assert.match((untyped.entries[0].data as { message: string }).message, /\/type must be one of github, gitlab, local \(is missing\)/);
 
   const settings = { project: { ...SETTINGS.project, tag: "v9" } };
   const missing = fakePi({}, await tmp({}), [], { settings, run: fakeGh(REMOTE_FILES) });
@@ -250,3 +255,37 @@ test("invalid settings.json project or a missing tag: error entry and shutdown",
   assert.match((missing.entries[0].data as { message: string }).message, /Cannot open project https:\/\/github\.com\/acme\/proj@v9 with gh .*tag v9 not found/);
 });
 
+// --- Local project (settings.json "project" with type "local") ---
+
+test("settings.json local project: dir resolved against the session cwd, no project_read", async () => {
+  const workspace = await tmp({});
+  const project = await tmp({ "project.yaml": "version: 1\nname: from-settings\n" });
+  const run: CliRunner = async () => assert.fail("gh must not run");
+  const settings = { project: { type: "local", dir: relative(workspace, project) } };
+  const pi = fakePi({}, workspace, [], { settings, run });
+  await pi.emit("session_start");
+  assert.equal(pi.shutdown, false);
+  assert.equal(promptSections(pi).project, "name: from-settings");
+  assert.equal((pi.announced[0] as { project: { dir: string } }).project.dir, project);
+  assert.ok(!pi.active.includes(PROJECT_READ));
+  assert.equal(pi.exposure(PROJECT_READ), "hidden");
+
+  // --project still wins.
+  const flagged = await tmp({ "project.yaml": "version: 1\nname: flag\n" });
+  const both = fakePi({ project: flagged }, workspace, [], { settings, run });
+  await both.emit("session_start");
+  assert.equal(promptSections(both).project, "name: flag");
+});
+
+test("settings.json local project: a missing or invalid project.yaml is an error", async () => {
+  for (const [files, message] of [
+    [{}, /Cannot read .*project\.yaml: no such file/],
+    [{ "project.yaml": "version: 1\nname: x\nbogus: 1\n" }, /Invalid .*project\.yaml:\n\/bogus is not a known key/],
+  ] as const) {
+    const dir = await tmp(files);
+    const pi = fakePi({}, await tmp({}), [], { settings: { project: { type: "local", dir } } });
+    await pi.emit("session_start");
+    assert.equal(pi.shutdown, true);
+    assert.match((pi.entries[0].data as { message: string }).message, message);
+  }
+});

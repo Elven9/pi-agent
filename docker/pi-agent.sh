@@ -10,8 +10,9 @@
 #   from the agent dir, so it is copied there.
 # - PI_AGENT_SETTINGS: settings.json for runs (compaction thresholds), copied the same way.
 # - PI_AGENT_PROJECT: default project folder (project.yaml + workflows/docs), mounted read-only.
-#   Without a project.yaml there the run continues without project context (with a warning);
-#   `pi-agent run --project <dir>` overrides it.
+#   Without a project.yaml there it doesn't count: the `project` entry in settings.json applies,
+#   else the run continues without project context (with a warning).
+#   `pi-agent run --project <dir>` overrides both.
 # - PI_OFFLINE etc.: the sandbox blocks pi.dev anyway; don't try.
 : "${NODE_ENV:=production}"
 : "${PI_CODING_AGENT_DIR:=/tmp/pi-agent}"

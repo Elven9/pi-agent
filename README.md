@@ -317,26 +317,46 @@ agent runs (for sandbox runs: in the image). The rendering is deterministic
 carries over between runs. Keep the folder at the same path on every run: paths are part of the
 text.
 
-#### Remote project (GitHub / GitLab)
+#### Project in settings.json (local folder, GitHub, GitLab)
 
-Instead of a folder, the project can live in a repository, pinned to a tag. Add a `project`
-entry to pi's `settings.json` (the agent dir's for `pi-agent run`; global or project settings
-for plain pi):
+Instead of passing `--project` every time, add a `project` entry to pi's `settings.json` (the
+agent dir's for `pi-agent run`; global or project settings for plain pi). `type` says where the
+project is, and each type has its own keys (any other key is an error):
+
+| `type` | Keys |
+|---|---|
+| `local` | `dir`: the folder with `project.yaml` |
+| `github`, `gitlab` | `repo` (URL), `tag`, optional `path` (folder in the repo with `project.yaml`) |
+
+```json
+"project": { "type": "local", "dir": "/Users/me/projects/billing" }
+```
 
 ```json
 "project": {
+  "type": "gitlab",
   "repo": "https://gitlab.example.com/group/sub/billing",
-  "provider": "gitlab",
   "tag": "v1.4.0",
   "path": "projects/billing"
 }
 ```
 
-`provider` is `github` or `gitlab`. `path` (optional, default the root) is the folder with
-`project.yaml`, so one repository can hold several projects, all pinned by the same tag;
-manifest paths and `project_read` paths are relative to it. With the entry,
-the project is on without `--project`; `--project` still wins over it (and in `pi-agent run`
-the entry wins over `PI_AGENT_PROJECT`). At session start the extension resolves the tag to
+**A relative `dir` is resolved against the current working directory**: the directory pi runs
+in (plain pi: where you start it; `pi-agent run`: `--workdir`), not the folder of
+settings.json. So `"dir": "."` means "the workspace itself has the `project.yaml`", and the
+same entry points to a different folder in each workspace. `~` is not expanded; use an
+absolute path for one fixed folder. The folder must have a valid `project.yaml` (a missing or
+invalid one is an error, as with `--project`).
+
+Which project is used: `--project` first, then (`pi-agent run` only) `PI_AGENT_PROJECT` when
+that folder has a `project.yaml`, then the settings entry. An empty `PI_AGENT_PROJECT` folder
+(like the image's default `/project` with nothing mounted) doesn't hide the entry.
+
+##### Remote project (GitHub / GitLab)
+
+The project can live in a repository, pinned to a tag. `path` (optional, default the root) is
+the folder with `project.yaml`, so one repository can hold several projects, all pinned by the
+same tag; manifest paths and `project_read` paths are relative to it. At session start the extension resolves the tag to
 a commit (GitHub: `refs/tags/<tag>`, so never a branch) and reads `project.yaml` and every
 listed workflow and doc at that commit, through the logged-in `gh` / `glab` CLI (`gh api`,
 `glab api` with `--hostname` from the URL, so GitHub Enterprise and self-hosted GitLab work).

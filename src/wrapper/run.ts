@@ -32,7 +32,7 @@ export interface RunOptions {
   workdir: string;
   out: string;
   resume?: PreviousSession;
-  /** Validated project manifest (`--project`, settings.json `project` or `PI_AGENT_PROJECT`). */
+  /** Validated project manifest (`--project`, `PI_AGENT_PROJECT` or settings.json `project`). */
   project?: Project;
   /** Warnings found while reading the input (e.g. no project.yaml at the default path). */
   warnings?: string[];
