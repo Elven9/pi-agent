@@ -8,8 +8,8 @@
 ## Goal
 
 Give each run its project's rules, commands, workflows and docs, written by the user in one
-manifest (`project.yaml`) and loaded by a pi extension, while keeping the prompt cache
-effective:
+manifest (`project.yaml`, commands in a justfile next to it) and loaded by a pi extension,
+while keeping the prompt cache effective:
 
 - The system prompt, append prompt and skills stay byte-stable, so their cached prefix is reused
   across projects.
@@ -112,6 +112,7 @@ scenario-specific sections.
 ```
 /project/                      mounted read-only; the agent cannot change its own instructions
   project.yaml
+  justfile                     commands, as just recipes (optional)
   workflows/release.md
   workflows/payments-change.md
   docs/architecture.md
@@ -131,13 +132,6 @@ description: Payment and invoicing backend (Node 22, Postgres).
 rules:
   - Never commit to main; work on the current branch.
   - Do not add dependencies without saying why in the result.
-
-# One-line invocations only; anything with more than one step is a workflow.
-# Key = the exact command (quote it if it contains ": "), value = what it does.
-commands:
-  npm ci: Install dependencies from the lockfile.
-  npm test: Run all unit tests.
-  npm test -- --grep <pattern>: Run only the tests matching a pattern.
 
 # General-purpose CLI tools the agent may use. Key = executable name, value = what it is for.
 # The agent learns each one from its own help (`<tool> docs`, `<tool> skill`, `<tool> -h`).
@@ -159,6 +153,32 @@ docs:
 ```
 
 `when` is written as a trigger: the condition under which the agent should read the file.
+
+### Commands: `justfile`
+
+Commands are not in the manifest (an old `commands` key is an error that says so). Listing
+exact commands in the prompt did not make the agent run them word for word; a `just` recipe
+does: the agent runs `just test` and the recipe holds the command.
+
+```just
+# Install dependencies from the lockfile.
+ci:
+    npm ci
+
+# Run the tests, or only those matching a pattern.
+test *args:
+    npm test -- {{args}}
+```
+
+The project's justfile and the workspace's (at the cwd root) are both optional. With both, a
+generated justfile in the temp folder imports the workspace's, then the project's; on a name
+clash the workspace's recipe wins (`just` keeps the earlier of two imports at the same depth;
+`set allow-duplicate-recipes` is added unless a file already sets it). `just` cannot read a
+Makefile, so make targets are wrapped in recipes. The extension sets `JUST_JUSTFILE` and
+`JUST_WORKING_DIRECTORY` in its process environment, which pi's bash tool copies for every
+command: `just <recipe>` then works from any folder and runs in the workspace. The recipe list
+comes from `just --dump --dump-format json`; the path of the generated file never appears in the
+prompt, so block B stays the same between runs.
 
 ### `AGENTS.md`
 
@@ -197,10 +217,9 @@ path: /sandbox/AGENTS.md
 </agents_md>
 
 <project_commands>
-Run from /sandbox:
-- `npm ci`: Install dependencies from the lockfile.
-- `npm test`: Run all unit tests.
-- `npm test -- --grep <pattern>`: Run only the tests matching a pattern.
+Run the project's commands with `just`, from any folder: recipes run in /sandbox. They come from /project/justfile. Use a recipe instead of typing its commands yourself; `just --usage <recipe>` shows its arguments and `just --show <recipe>` what it runs:
+- `just ci`: Install dependencies from the lockfile.
+- `just test [<args>]...`: Run the tests, or only those matching a pattern.
 </project_commands>
 
 <project_cli_tools>
@@ -222,7 +241,8 @@ Read every doc whose condition applies; a task can need several docs on differen
 
 Rules for byte-identical output:
 
-- Keep the manifest's order everywhere (lists and `commands` keys); never sort.
+- Keep the manifest's order everywhere; never sort. (Recipes are listed sorted by name, as
+  `just -l` does.)
 - Line endings become `\n`, trailing whitespace is trimmed, file content ends with exactly one
   newline. File content is otherwise included as written.
 - No generated values in the text: no timestamps, sizes, hashes or counts.
@@ -234,10 +254,11 @@ Rules for byte-identical output:
 
 TypeBox schema, strict:
 
-- `version: 1`; `name` required; `description`, `rules`, `commands`, `cli_tools`, `workflows`,
+- `version: 1`; `name` required; `description`, `rules`, `cli_tools`, `workflows`,
   `docs` optional.
 - Unknown keys are errors (a typo must not silently do nothing).
-- Command keys and descriptions are single lines; `cli_tools` keys are one word (an executable).
+- `cli_tools` keys are one word (an executable).
+- Justfiles must parse (`just --dump`) and merge; `just` must be installed when there is one.
 - Every `workflows`/`docs` path must exist inside the project folder; no file listed twice.
 - Warning (not error) when block B is over about 8k tokens: it is paid on every turn.
 
@@ -325,7 +346,8 @@ first and decides the allowed keys (errors name only that type's keys):
   `AGENTS.md` at the workspace root.
 - **No scoped instructions.** Nothing is attached to tool results; area-specific guidance is a
   workflow.
-- **Commands are one-liners** with a description; multi-step procedures are workflows.
+- **Commands are just recipes** (project and workspace justfiles, merged); multi-step
+  procedures the agent must follow with judgment are workflows.
 - **Scenarios** choose the system prompt and skills only; projects don't vary by scenario.
 - **Cache retention: 5 minutes** (pi's default). No 1-hour option planned.
 - **No memory** for now.

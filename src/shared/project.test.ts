@@ -29,10 +29,6 @@ description: |
 rules:
   - Never commit to main; work on the current branch.
   - "Do not add dependencies\\nwithout saying why."
-commands:
-  npm test: Run all unit tests.
-  npm ci: Install dependencies from the lockfile.
-  "npm test -- --grep <pattern>": Run only the tests matching a pattern.
 cli_tools:
   synotool: Synology internal tooling (chat, deploy).
   gh: GitHub pull requests and issues.
@@ -43,6 +39,17 @@ docs:
   - path: docs/architecture.md
     when: Before changing module boundaries.
 `;
+
+const JUST = {
+  sources: ["/sandbox/justfile", "/project/justfile"],
+  justfile: "/tmp/x/justfile",
+  workdir: "/sandbox",
+  recipes: [
+    { name: "test", usage: "[args]...", doc: "Run all unit tests." },
+    { name: "ci", usage: "" },
+    { name: "db::migrate", usage: "<name>", doc: "Create a migration." },
+  ],
+};
 
 const projectFiles = {
   "project.yaml": MANIFEST,
@@ -56,6 +63,7 @@ test("renders block B in the documented order, keeping the manifest's order", as
     cwd: "/sandbox",
     project: { ...project!, dir: "/project" },
     agentsMd: { path: "/sandbox/AGENTS.md", content: "\n# Agents\r\nUse pnpm.   \n\n\n" },
+    just: JUST,
   });
   assert.equal(
     renderBlock(sections),
@@ -77,10 +85,10 @@ Use pnpm.
 </agents_md>
 
 <project_commands>
-Run from /sandbox:
-- \`npm test\`: Run all unit tests.
-- \`npm ci\`: Install dependencies from the lockfile.
-- \`npm test -- --grep <pattern>\`: Run only the tests matching a pattern.
+Run the project's commands with \`just\`, from any folder: recipes run in /sandbox. They come from /sandbox/justfile and /project/justfile. Use a recipe instead of typing its commands yourself; \`just --usage <recipe>\` shows its arguments and \`just --show <recipe>\` what it runs:
+- \`just test [args]...\`: Run all unit tests.
+- \`just ci\`
+- \`just db::migrate <name>\`: Create a migration.
 </project_commands>
 
 <project_cli_tools>
@@ -103,7 +111,7 @@ Read every doc whose condition applies; a task can need several docs on differen
 
 test("rendering is byte-identical across loads; the hash tracks content", async () => {
   const dir = await folder(projectFiles);
-  const render = async () => renderProjectSections({ cwd: "/w", project: await loadProject(dir) });
+  const render = async () => renderProjectSections({ cwd: "/w", project: await loadProject(dir), just: { ...JUST, workdir: "/w" } });
   const a = describeBlock(await render());
   assert.deepEqual(describeBlock(await render()), a);
   assert.deepEqual(a.sections, [
@@ -116,7 +124,7 @@ test("rendering is byte-identical across loads; the hash tracks content", async 
   ]);
   assert.match(a.sha256, /^[0-9a-f]{64}$/);
   assert.equal(a.approxTokens, Math.ceil(a.chars / 4));
-  const other = describeBlock(renderProjectSections({ cwd: "/other", project: await loadProject(dir) }));
+  const other = describeBlock(renderProjectSections({ cwd: "/other", project: await loadProject(dir), just: { ...JUST, workdir: "/other" } }));
   assert.notEqual(other.sha256, a.sha256);
 });
 
@@ -129,9 +137,9 @@ test("leaves out empty sections; AGENTS.md alone works without a manifest", asyn
   assert.equal(renderBlock({}), "");
 });
 
-test("commands containing backticks stay readable", async () => {
-  const p = await loadProject(await folder({ "project.yaml": "version: 1\nname: x\ncommands:\n  'echo `date`': Print the date.\n" }));
-  assert.equal(renderProjectSections({ cwd: "/w", project: p }).project_commands, "Run from /w:\n- `` echo `date` ``: Print the date.");
+test("commands come from just alone, with or without a manifest; no recipes, no section", () => {
+  assert.deepEqual(Object.keys(renderProjectSections({ cwd: "/w", just: JUST })), ["project_commands"]);
+  assert.deepEqual(renderProjectSections({ cwd: "/w", just: { ...JUST, recipes: [] } }), {});
 });
 
 test("loadProject: missing file is an error unless optional", async () => {
@@ -152,8 +160,7 @@ test("loadProject reports every problem", async () => {
   assert.match(await invalid("version: [\n"), /Invalid .*project\.yaml: /);
   assert.match(await invalid("version: 2\nname: x\n"), /\/version/);
   assert.match(await invalid("version: 1\nname: x\ninstruction: [a]\n"), /\/instruction is not a known key$/);
-  assert.match(await invalid("version: 1\nname: x\ncommands:\n  a: \"two\\nlines\"\n"), /\/commands\/a/);
-  assert.match(await invalid("version: 1\nname: x\ncommands:\n  \"a\\nb\": x\n"), /must be a single non-empty line/);
+  assert.match(await invalid("version: 1\nname: x\ncommands:\n  a: b\n"), /\/commands is no longer supported: put the commands in a justfile/);
   assert.match(await invalid("version: 1\nname: x\ncli_tools:\n  synotool docs: x\n"), /\/cli_tools: tool "synotool docs" must be an executable name/);
   assert.match(await invalid("version: 1\nname: x\ncli_tools:\n  t: \"two\\nlines\"\n"), /\/cli_tools\/t/);
   assert.match(await invalid("version: 1\nname: x\nname: y\n"), /Invalid .*project\.yaml/); // duplicate key

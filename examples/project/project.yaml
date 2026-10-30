@@ -12,14 +12,9 @@ description: |
 rules:
   - Do not change the pinned pi version (package.json, Dockerfile) unless the task says so.
   - Keep report.json backward compatible; new fields are additive.
-  - Run `npm run check` before submitting a result that changes code.
+  - Run `just check` before submitting a result that changes code.
 
-# One-line invocations only: exact command -> what it does. Multi-step procedures are workflows.
-commands:
-  npm ci: Install dependencies from the lockfile.
-  npm run check: Typecheck, run all tests and build dist/.
-  npm test: Run the unit tests only.
-  "node --test src/shared/project.test.ts": Run one test file (any *.test.ts works).
+# Commands are not listed here: they are the recipes in ./justfile (run with `just <recipe>`).
 
 # Strictly step-by-step instructions for one specific task each. Read on demand.
 workflows:

@@ -4,12 +4,14 @@ import { join, normalize, resolve } from "node:path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { parse as parseYaml } from "yaml";
+import type { JustCommands } from "./just.ts";
 import { localSource, projectPath, type ProjectSource } from "./project-source.ts";
 import { PROJECT_READ } from "./protocol.ts";
 
 /**
  * Project context (docs/project-context-design.md): `project.yaml` in a read-only project
  * folder plus `AGENTS.md` at the workspace root, rendered into "block B" of the system prompt.
+ * Commands are `just` recipes from the project's and the workspace's justfiles (just.ts).
  *
  * The project files come from a `ProjectSource`: a local folder or a remote repository pinned to
  * a tag (project-source.ts). A remote project's workflows and docs are read with `project_read`.
@@ -43,8 +45,6 @@ export const ProjectManifestSchema = Type.Object(
     description: Type.Optional(Text),
     /** Short, always-on rules, in order. */
     rules: Type.Optional(Type.Array(Text)),
-    /** One-line invocations: exact command → what it does. */
-    commands: Type.Optional(Type.Record(Type.String(), Line)),
     /** General-purpose CLI tools: executable name → what it is for. Learned from its own help. */
     cli_tools: Type.Optional(Type.Record(Type.String(), Line)),
     /** Step-by-step instructions for one specific task each. Index only. */
@@ -87,11 +87,6 @@ export const SECTION = {
 /** Problems with the manifest that the schema can't express (paths, duplicates, keys). */
 async function manifestProblems(source: ProjectSource, m: ProjectManifest): Promise<string[]> {
   const problems: string[] = [];
-  for (const command of Object.keys(m.commands ?? {})) {
-    if (command.trim() === "" || /[\r\n]/.test(command)) {
-      problems.push(`/commands: command ${JSON.stringify(command)} must be a single non-empty line`);
-    }
-  }
   for (const tool of Object.keys(m.cli_tools ?? {})) {
     if (!/^\S+$/.test(tool)) {
       problems.push(`/cli_tools: tool ${JSON.stringify(tool)} must be an executable name (one word, no spaces)`);
@@ -145,12 +140,18 @@ export async function loadProjectFrom(source: ProjectSource, opts: { optional?: 
     // "must not have additional properties" on the parent. Keep one, naming the key.
     const errors = Value.Errors(ProjectManifestSchema, raw)
       .filter((e) => e.keyword !== "additionalProperties")
-      .map((e) => `${e.instancePath || "/"} ${e.message === "schema is false" ? "is not a known key" : e.message}`);
+      .map((e) => `${e.instancePath || "/"} ${e.message === "schema is false" ? unknownKey(e.instancePath) : e.message}`);
     throw new Error(`Invalid ${file}:\n${errors.join("\n")}`);
   }
   const problems = await manifestProblems(source, raw);
   if (problems.length) throw new Error(`Invalid ${file}:\n${problems.join("\n")}`);
   return { ...(source.dir !== undefined && { dir: source.dir }), manifest: raw, source };
+}
+
+function unknownKey(path: string): string {
+  return path === "/commands"
+    ? "is no longer supported: put the commands in a justfile next to project.yaml (README, Project commands)"
+    : "is not a known key";
 }
 
 /** Reads `<cwd>/AGENTS.md`; undefined if it is missing or blank. Nothing else is looked up. */
@@ -188,8 +189,14 @@ function code(command: string): string {
 /**
  * Block B sections, in prompt order. Keeps the manifest's order everywhere (never sorts) and
  * leaves out empty sections. No generated values (dates, sizes, counts) in the text.
+ * `just`: the recipes from `loadJustCommands` (with or without a project).
  */
-export function renderProjectSections(o: { cwd: string; project?: Project; agentsMd?: AgentsMd }): ProjectSections {
+export function renderProjectSections(o: {
+  cwd: string;
+  project?: Project;
+  agentsMd?: AgentsMd;
+  just?: JustCommands;
+}): ProjectSections {
   const sections: ProjectSections = {};
   const m = o.project?.manifest;
   // Local: absolute paths for the read tool. Remote: paths in the repository, for project_read.
@@ -201,14 +208,16 @@ export function renderProjectSections(o: { cwd: string; project?: Project; agent
     if (m.rules?.length) sections[SECTION.rules] = m.rules.map(item).join("\n");
   }
   if (o.agentsMd) sections[SECTION.agentsMd] = `path: ${o.agentsMd.path}\n${normalizeText(o.agentsMd.content)}`;
+  if (o.just?.recipes.length) {
+    sections[SECTION.commands] = [
+      `Run the project's commands with \`just\`, from any folder: recipes run in ${o.just.workdir}. They come from ${o.just.sources.join(" and ")}. Use a recipe instead of typing its commands yourself; \`just --usage <recipe>\` shows its arguments and \`just --show <recipe>\` what it runs:`,
+      ...o.just.recipes.map((r) => {
+        const command = code(["just", r.name, r.usage].filter(Boolean).join(" "));
+        return r.doc ? `- ${command}: ${normalizeText(r.doc).replaceAll("\n", " ")}` : `- ${command}`;
+      }),
+    ].join("\n");
+  }
   if (m) {
-    const commands = Object.entries(m.commands ?? {});
-    if (commands.length) {
-      sections[SECTION.commands] = [
-        `Run from ${o.cwd}:`,
-        ...commands.map(([command, what]) => `- ${code(command.trim())}: ${what.trim()}`),
-      ].join("\n");
-    }
     const tools = Object.entries(m.cli_tools ?? {});
     if (tools.length) {
       sections[SECTION.cliTools] = [

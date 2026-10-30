@@ -7,6 +7,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import projectContext, { createProjectContext } from "./index.ts";
 import { ENTRY, PROJECT_CHANNEL, PROJECT_READ } from "../shared/protocol.ts";
 import { CliError, type CliRunner } from "../shared/project-source.ts";
+import { execFileSync } from "node:child_process";
+
+const hasJust = (() => {
+  try {
+    execFileSync("just", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 type ContextFile = { path: string; content: string };
 
@@ -15,7 +25,7 @@ function fakePi(
   flags: Record<string, string | undefined>,
   cwd: string,
   piContextFiles: ContextFile[] = [],
-  o: { settings?: object; run?: CliRunner; active?: string[] } = {},
+  o: { settings?: object; run?: CliRunner; active?: string[]; env?: NodeJS.ProcessEnv } = {},
 ) {
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const tools = new Map<string, { exposure?: string; execute: (...args: any[]) => Promise<any> }>();
@@ -43,7 +53,7 @@ function fakePi(
     getSystemPromptOptions: () => ({ cwd, contextFiles: piContextFiles }),
     ui: { notify: (message: string) => void notices.push(message) },
   };
-  (o.run ? createProjectContext({ run: o.run }) : projectContext)(pi);
+  (o.run || o.env ? createProjectContext({ run: o.run, env: o.env }) : projectContext)(pi);
   return {
     get active() {
       return active;
@@ -107,6 +117,22 @@ test("adds the project sections after pi's own, the same on every prompt", async
   await pi.command("project");
   assert.match(pi.notices[0], /^Project: demo \(.*\); pi's context files are off\n  <project>  ~\d+ tokens\n/);
   assert.match(pi.notices[0], /Block B total: ~\d+ tokens$/);
+});
+
+test("justfiles: the commands section lists their recipes and just is pointed at them", { skip: hasJust ? false : "just is not installed" }, async () => {
+  const project = await tmp({ "project.yaml": "version: 1\nname: demo\n", justfile: "# Run the tests.\ntest:\n  npm test\n" });
+  const workspace = await tmp({});
+  const env: NodeJS.ProcessEnv = { JUST_JUSTFILE: "/mine" };
+  const pi = fakePi({ project }, workspace, [], { env });
+  await pi.emit("session_start");
+  assert.match(promptSections(pi).project_commands, /\n- `just test`: Run the tests\.$/);
+  assert.deepEqual(env, { JUST_JUSTFILE: join(project, "justfile"), JUST_WORKING_DIRECTORY: workspace });
+
+  // The next session start (here: with an invalid justfile) restores what was there before.
+  await writeFile(join(project, "justfile"), "oops");
+  await pi.emit("session_start");
+  assert.equal(pi.shutdown, true);
+  assert.deepEqual(env, { JUST_JUSTFILE: "/mine" });
 });
 
 test("without --project or AGENTS.md it adds nothing", async () => {

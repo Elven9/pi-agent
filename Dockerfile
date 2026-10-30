@@ -4,6 +4,8 @@
 # session parser and the test fixtures are tied to that pi version).
 ARG NODE_VERSION=26.10.0
 ARG PI_VERSION=1.4.0
+# just runs the project commands (justfile recipes, see README "Project commands").
+ARG JUST_VERSION=1.59.0
 
 # ---- build: bundle the wrapper and the extension ----
 FROM node:${NODE_VERSION}-bookworm-slim AS build
@@ -15,6 +17,21 @@ COPY src ./src
 # No source maps in the image: they embed the full TypeScript sources.
 RUN PI_AGENT_SOURCEMAP=0 npm run build
 
+# ---- just: release binary, checked against the release's SHA256SUMS ----
+FROM node:${NODE_VERSION}-bookworm-slim AS just
+ARG JUST_VERSION
+ARG TARGETARCH
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && case "${TARGETARCH:-amd64}" in amd64) arch=x86_64 ;; arm64) arch=aarch64 ;; *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; esac \
+ && file="just-${JUST_VERSION}-${arch}-unknown-linux-musl.tar.gz" \
+ && url="https://github.com/casey/just/releases/download/${JUST_VERSION}" \
+ && cd /tmp \
+ && curl -fsSLO "${url}/${file}" \
+ && curl -fsSL "${url}/SHA256SUMS" | grep "  ${file}\$" | sha256sum -c - \
+ && tar -xzf "${file}" just \
+ && install -m 755 just /usr/local/bin/just
+
 # ---- runtime: node + stock pi CLI + two bundled files ----
 FROM node:${NODE_VERSION}-bookworm-slim
 ARG PI_VERSION
@@ -24,6 +41,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends bash ca-certificates fd-find git ripgrep \
  && ln -s /usr/bin/fdfind /usr/local/bin/fd \
  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=just /usr/local/bin/just /usr/local/bin/just
 
 # pi installs its own dependencies (typebox included, which the extension uses).
 RUN npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}" \

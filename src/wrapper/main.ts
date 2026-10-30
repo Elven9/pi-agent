@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import { getScenario, scenarioNames } from "../shared/scenarios/index.ts";
 import { loadTask } from "../shared/task.ts";
 import { resolveProject } from "./project-input.ts";
+import { loadJustCommands } from "../shared/just.ts";
 import { writeReport } from "./report-file.ts";
 import { loadPreviousSession } from "./resume.ts";
 import { runTask, type RunOptions } from "./run.ts";
@@ -86,13 +87,15 @@ async function parseInput(argv: string[]): Promise<Omit<RunOptions, "signal" | "
   const scenario = getScenario(task.scenario);
   const resume = values.resume ? await loadPreviousSession(resolve(values.resume)) : undefined;
   const { project, warnings } = await resolveProject({ flag: values.project, workdir });
+  // Invalid justfiles are invalid input, like an invalid project.yaml.
+  const just = await loadJustCommands({ cwd: workdir, project });
   const { rootDir, ...extensions } = locate();
   const skillPaths = withExternalSkills(
     await resolveSkills(join(rootDir, "skills"), scenario.name, scenarioNames()),
     scenario.externalSkills?.include,
   );
   return {
-    task, scenario, workdir, out, resume, project, warnings, skillPaths,
+    task, scenario, workdir, out, resume, project, just, warnings, skillPaths,
     piBin: process.env.PI_AGENT_PI_BIN || "pi",
     ...extensions,
   };

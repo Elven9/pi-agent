@@ -7,6 +7,7 @@ import {
   renderProjectSections,
   type Project,
 } from "../shared/project.ts";
+import type { JustCommands } from "../shared/just.ts";
 import {
   REPORT_VERSION,
   type ProjectContextInfo,
@@ -34,6 +35,8 @@ export interface RunOptions {
   resume?: PreviousSession;
   /** Validated project manifest (`--project`, `PI_AGENT_PROJECT` or settings.json `project`). */
   project?: Project;
+  /** Recipes of the workspace's and the project's justfiles (`loadJustCommands`), if any. */
+  just?: JustCommands;
   /** Warnings found while reading the input (e.g. no project.yaml at the default path). */
   warnings?: string[];
   /** pi executable. */
@@ -74,8 +77,8 @@ async function findSessionFile(dir: string, id: string): Promise<string | null> 
  * Block B as the project extension will render it (same shared code and inputs), for the
  * report: its hash shows whether the cached project prefix changed between runs.
  */
-async function projectContext(project: Project | undefined, workdir: string): Promise<ProjectContextInfo | null> {
-  const sections = renderProjectSections({ cwd: workdir, project, agentsMd: await readAgentsMd(workdir) });
+async function projectContext(project: Project | undefined, workdir: string, just?: JustCommands): Promise<ProjectContextInfo | null> {
+  const sections = renderProjectSections({ cwd: workdir, project, agentsMd: await readAgentsMd(workdir), just });
   if (Object.keys(sections).length === 0) return null;
   const r = project?.source.remote;
   return {
@@ -116,7 +119,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
 
   await clearReport(out);
   if (resume) warnings.push(...checkResume(resume, workdir));
-  const context = await projectContext(o.project, workdir);
+  const context = await projectContext(o.project, workdir, o.just);
   if (context && context.approxTokens > PROJECT_TOKEN_WARNING) {
     warnings.push(
       `project context is ~${context.approxTokens} tokens (over ${PROJECT_TOKEN_WARNING}); it is re-read on every turn`,

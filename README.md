@@ -293,8 +293,6 @@ name: billing-service
 description: Payment and invoicing backend (Node 22, Postgres).
 rules:                       # short, always-on rules
   - Never commit to main; work on the current branch.
-commands:                    # one-line invocations only: exact command → what it does
-  npm test: Run all unit tests.
 cli_tools:                   # general-purpose tools: executable → what it is for
   synotool: Synology internal tooling (chat, deploy).
 workflows:                   # step-by-step instructions for one task each; read on demand
@@ -305,9 +303,10 @@ docs:                        # reference material; read on demand
     when: Before changing module boundaries.
 ```
 
-`examples/project/` is a complete example (for this repo), with a workflow and a doc. Paths
-are relative to the manifest's folder. Unknown keys, multi-line commands, tool names with
-spaces, and missing, duplicate or outside paths are errors. Sections in the prompt, in order:
+`examples/project/` is a complete example (for this repo), with a justfile, a workflow and a
+doc. Paths are relative to the manifest's folder. Unknown keys (including the old `commands`,
+see "Project commands"), tool names with spaces, and missing, duplicate or outside paths are
+errors. Sections in the prompt, in order:
 `<project>`, `<project_rules>`, `<agents_md>`, `<project_commands>`, `<project_cli_tools>`,
 `<project_workflows>`, `<project_docs>`; workflows and docs are listed as `path: when`, not
 included. `<project_cli_tools>` tells the agent to learn each tool from its own help (`<tool>
@@ -316,6 +315,39 @@ agent runs (for sandbox runs: in the image). The rendering is deterministic
 (manifest order, normalized text), so the same files give the same bytes and the cached prefix
 carries over between runs. Keep the folder at the same path on every run: paths are part of the
 text.
+
+#### Project commands
+
+Commands are [`just`](https://github.com/casey/just) recipes, not prompt text: the agent runs
+`just <recipe>` instead of retyping a command and getting it slightly wrong. There are two
+sources, both optional:
+
+- the justfile next to `project.yaml` (any name `just` accepts: `justfile`, `Justfile`,
+  `.justfile`; a remote project's must be called `justfile` and be self-contained, since its
+  imports and modules are not fetched);
+- the justfile at the root of the workspace (the cwd).
+
+With both, they are merged: a generated justfile in the temp folder imports the workspace's
+first, then the project's, so the workspace's recipe wins when both have one with the same name
+(`set allow-duplicate-recipes` is added for that). Settings both files set differently (e.g.
+`shell`) can't be merged and stop the run. The extension sets `JUST_JUSTFILE` (the one file or
+the generated one) and `JUST_WORKING_DIRECTORY` (the workspace) in pi's environment, so a plain
+`just <recipe>` works from any folder and every recipe runs in the workspace. With only one
+justfile it is used as is (`justfile_directory()` is then right; in a merge it is the temp
+folder).
+
+`<project_commands>` lists the public recipes (sorted, then submodules as `module::recipe`) with
+their arguments and doc comment:
+
+```
+- `just check`: Typecheck, run all tests and build dist/.
+- `just test-file <file>`: Run one test file, e.g. src/shared/project.test.ts.
+```
+
+Arguments are shown as `<required>`, `[<optional>]` and `...` for variadic ones; `just --usage
+<recipe>` has the details. The section works with or without `project.yaml`. An invalid
+justfile, or a justfile without `just` installed, is an error (the wrapper exits 2). The image
+includes `just` (`JUST_VERSION` in the Dockerfile).
 
 #### Project in settings.json (local folder, GitHub, GitLab)
 

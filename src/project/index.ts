@@ -12,6 +12,7 @@ import {
   type Project,
   type ProjectSections,
 } from "../shared/project.ts";
+import { justEnv, loadJustCommands } from "../shared/just.ts";
 import { execCli, projectPath, projectSetting, settingSource, type CliRunner } from "../shared/project-source.ts";
 import { splitSystemPrompt } from "./cache-split.ts";
 
@@ -26,8 +27,10 @@ const READ_PARAMETERS = Type.Object({
 });
 
 export interface ProjectContextOptions {
-  /** Runs gh/glab (tests replace it). */
+  /** Runs gh/glab and just (tests replace it). */
   run?: CliRunner;
+  /** Environment the agent's commands inherit (default: process.env, which pi's bash tool copies). */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -43,6 +46,10 @@ export interface ProjectContextOptions {
  * `project_read` tool, active only then. (`PI_AGENT_PROJECT` is the wrapper's: it passes the
  * folder as `--project`.)
  *
+ * Commands: the recipes of the workspace's and the project's justfiles, merged (shared/just.ts).
+ * `JUST_JUSTFILE` and `JUST_WORKING_DIRECTORY` are set in this process's environment, which
+ * pi's bash tool passes on, so a plain `just <recipe>` runs them in the workspace.
+ *
  * pi places extension sections after skills and `<cwd>`, which is where block B belongs.
  * Must load after the scenario-profile extension (its `<rules>` section belongs in block A);
  * scenario-profile checks this from the announcement sent at session start.
@@ -57,6 +64,14 @@ export interface ProjectContextOptions {
  */
 export function createProjectContext(options: ProjectContextOptions = {}) {
   const run = options.run ?? execCli;
+  const env = options.env ?? process.env;
+  /** JUST_* variables this extension set, restored at the next session start. */
+  let saved: Record<string, string | undefined> | undefined;
+  const setJustEnv = (vars: Record<string, string> | undefined) => {
+    if (saved) for (const [k, v] of Object.entries(saved)) v === undefined ? delete env[k] : (env[k] = v);
+    saved = vars && Object.fromEntries(Object.keys(vars).map((k) => [k, env[k]]));
+    if (vars) Object.assign(env, vars);
+  };
   return function projectContext(pi: ExtensionAPI) {
     pi.registerFlag(PROJECT_FLAG, {
       type: "string",
@@ -145,13 +160,16 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
           const setting = projectSetting(pi.getSettings());
           project = setting ? await loadProjectFrom(await settingSource(setting, ctx.cwd, run)) : undefined;
         }
-        sections = renderProjectSections({ cwd: ctx.cwd, project, agentsMd: await readAgentsMd(ctx.cwd) });
+        const just = await loadJustCommands({ cwd: ctx.cwd, project, run });
+        setJustEnv(just && justEnv(just));
+        sections = renderProjectSections({ cwd: ctx.cwd, project, agentsMd: await readAgentsMd(ctx.cwd), just });
         block = renderBlock(sections);
         applied = false;
         updateTools();
         announce();
       } catch (err) {
         project = undefined;
+        setJustEnv(undefined);
         updateTools();
         // Startup entries are not streamed in --mode json, so also tell stderr. The TUI would
         // paint over a line written now, so there it is printed once the TUI has stopped.

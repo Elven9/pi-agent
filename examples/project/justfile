@@ -1,0 +1,24 @@
+# Example project commands for this repo (pi-agent). The project extension lists these recipes in
+# <project_commands> and points `just` at this file, merged with the workspace's own justfile if
+# it has one (the workspace's recipes win on a name clash). Recipes run in the workspace (cwd).
+# A recipe's doc comment (the line above it) is its description in the prompt.
+
+# Install dependencies from the lockfile.
+install:
+    npm ci
+
+# Typecheck, run all tests and build dist/.
+check:
+    npm run check
+
+# Run the unit tests only.
+test:
+    npm test
+
+# Run one test file, e.g. src/shared/project.test.ts.
+test-file file:
+    node --import ./scripts/md-loader.mjs --test {{quote(file)}}
+
+# Typecheck only.
+typecheck:
+    npm run typecheck
