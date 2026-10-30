@@ -1,0 +1,7 @@
+{
+  "taskId": "the-sculptor-example-001",
+  "scenario": "the-sculptor",
+  "prompt": "We want scenarios to share a common set of rules without repeating them in every prompt. Look at how scenarios and global rules work in this repo and propose viable designs.",
+  "model": "cpa/claude-haiku-4-5-20251001",
+  "thinkingLevel": "low"
+}
