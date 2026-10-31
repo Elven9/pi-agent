@@ -92,6 +92,8 @@ export const ENTRY = {
   metrics: "pi-agent.metrics",
   /** `custom` entry with `{ message }` when an extension cannot run (scenario, project, load order). */
   error: "pi-agent.error",
+  /** `custom` entry with `TagsEntry` data (tags extension); the last one in the file is the session's tags. */
+  tags: "pi-agent.tags",
 } as const;
 
 /** `pi.events` channel: the metrics extension appends a `pi-agent.metrics` entry now (if changed). */
