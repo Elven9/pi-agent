@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { FooterComponent, type ExtensionAPI, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { ENTRY } from "../shared/protocol.ts";
 import {
   currentTags,
@@ -12,7 +13,7 @@ import {
   type TagsEntry,
 } from "../shared/tags.ts";
 
-/** Footer status key. */
+/** Status key, outside the TUI (RPC); the TUI shows the tags in the footer's cwd line. */
 const STATUS = "tags";
 const CLEAR = "--clear";
 /** Completion reads the tags of at most this many session files (newest first). */
@@ -29,7 +30,7 @@ const same = (a: string[] | undefined, b: string[]) => a !== undefined && a.leng
  *   tags. Not applied again on /new, /resume, /fork or /reload: those keep their session's tags.
  * - `/tags` shows them, `/tags a,b` replaces them, `/tags --clear` clears them; completion
  *   offers tags used before in this session folder.
- * - The footer shows the current tags.
+ * - The footer shows the current tags left of the cwd, dimmed like the rest of the footer.
  *
  * An entry is only written when the list changes. An invalid `--tags` is an error entry and
  * shuts pi down, like the other extensions' startup errors.
@@ -48,8 +49,33 @@ export default function sessionTags(pi: ExtensionAPI) {
     description: "Comma-separated session tags (a-z 0-9 . _ : / -), recorded in the session file; /tags changes them",
   });
 
+  /** Whether our footer is installed (only while there are tags). */
+  let footer = false;
   const showStatus = (ctx: ExtensionContext) => {
-    if (ctx.hasUI) ctx.ui.setStatus(STATUS, tags?.length ? `tags: ${tags.join(",")}` : undefined);
+    if (ctx.mode !== "tui") {
+      if (ctx.hasUI) ctx.ui.setStatus(STATUS, tags?.length ? `tags: ${tags.join(",")}` : undefined);
+      return;
+    }
+    if (!tags?.length) {
+      if (footer) ctx.ui.setFooter(undefined);
+      footer = false;
+      return;
+    }
+    if (footer) return; // it reads `tags` on every render
+    footer = true;
+    ctx.ui.setFooter((tui, theme, footerData) => {
+      const inner = new FooterComponent(footerSession(pi, ctx) as never, footerData);
+      inner.setAutoCompactEnabled((pi.getSettings() as { compaction?: { enabled?: boolean } }).compaction?.enabled !== false);
+      const unsubscribe = footerData.onBranchChange(() => tui.requestRender());
+      return {
+        render: (width: number) => withTags(inner.render(width), tags ?? [], theme, width),
+        invalidate: () => inner.invalidate(),
+        dispose: () => {
+          unsubscribe();
+          inner.dispose();
+        },
+      };
+    });
   };
 
   /** Records `next` unless it is the current list. Returns whether it wrote an entry. */
@@ -62,6 +88,8 @@ export default function sessionTags(pi: ExtensionAPI) {
   };
 
   pi.on("session_start", (event, ctx) => {
+    // A new session may come with a new UI context: install the footer again.
+    footer = false;
     const entries = ctx.sessionManager.getEntries();
     tags = currentTags(entries);
     ownHistory = [...new Set(tagHistory(entries).flat())];
@@ -136,4 +164,33 @@ export default function sessionTags(pi: ExtensionAPI) {
       ctx.ui.notify(next.length ? `Tags: ${next.join(", ")}` : "Tags cleared", "info");
     },
   });
+}
+
+/**
+ * pi's own footer, fed from the extension context: pi does not hand the built-in footer to
+ * `setFooter`, so this builds the same component. What the context can't tell: a virtual
+ * model's routed target (not shown), and subscription use, taken as OAuth.
+ */
+function footerSession(pi: ExtensionAPI, ctx: ExtensionContext) {
+  return {
+    get state() {
+      return { model: ctx.model, thinkingLevel: pi.getThinkingLevel() };
+    },
+    get model() {
+      return ctx.model;
+    },
+    routedModel: undefined,
+    get sessionManager() {
+      return ctx.sessionManager;
+    },
+    getContextUsage: () => ctx.getContextUsage(),
+    modelRuntime: { isUsingSubscription: () => (ctx.model ? ctx.modelRegistry.isUsingOAuth(ctx.model) : false) },
+  };
+}
+
+/** The footer's lines with the tags left of the cwd (its first line), dimmed like it. */
+export function withTags(lines: string[], tags: string[], theme: Pick<Theme, "fg">, width: number): string[] {
+  if (!tags.length || lines.length === 0) return lines;
+  const first = truncateToWidth(theme.fg("dim", `[${tags.join(",")}] `) + lines[0], width, theme.fg("dim", "..."));
+  return [first, ...lines.slice(1)];
 }

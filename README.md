@@ -95,7 +95,9 @@ pi --tags bug,ui            # at startup (also with -c / --session): replaces th
 
 - `/tags` shows the tags, `/tags a,b` replaces them, `/tags --clear` clears them. Completion
   offers tags used before in this session and the other sessions in its folder.
-- The footer shows the current tags.
+- The footer shows the current tags left of the cwd (`[bug,ui] ~/repo (main)`), in the footer's
+  own dim color. It is pi's footer with that prefix, installed only while there are tags (a
+  virtual model's routed target is not shown then).
 - Each change appends a `pi-agent.tags` custom entry with the whole list
   (`{ "version": 1, "tags": [...], "source": "flag" | "command" }`); the **last entry in the
   file** is the session's tags (the whole session, not per branch). Nothing is written when the
