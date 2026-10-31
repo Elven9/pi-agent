@@ -1,4 +1,5 @@
 import { PROJECT_FLAG, PROJECT_READ, SCENARIO_FLAG, SUBMIT_RESULT } from "../shared/protocol.ts";
+import { TAGS_FLAG } from "../shared/tags.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
 import { TOOL_REF_TOOLS } from "../shared/tool-ref.ts";
 import type { Task } from "../shared/task.ts";
@@ -16,6 +17,8 @@ export interface PiCommandOptions {
   projectExtensionPath: string;
   /** Bundled metrics extension (dist/metrics.js): writes pi-agent.metrics entries. */
   metricsExtensionPath: string;
+  /** Bundled tags extension (dist/tags.js): records the task's tags in the session file. */
+  tagsExtensionPath: string;
   /** Bundled tool-ref extension (dist/tool-ref.js): tool-call handles. Loaded last (see its load-order check). */
   toolRefExtensionPath: string;
   /** Folder with a validated project.yaml (local project). */
@@ -32,7 +35,7 @@ export interface PiCommandOptions {
 /**
  * pi CLI arguments for one scenario run. Loads nothing implicitly: no discovered extensions,
  * skills, prompt templates, context files, themes, MCP or project config (the workdir is not
- * trusted). Only the runner, scenario profile, project, metrics and tool-ref extensions (tool-ref
+ * trusted). Only the runner, scenario profile, project, metrics, tags and tool-ref extensions (tool-ref
  * last: no later extension may replace tool results and drop its trailers), the given skills
  * and the scenario's tools. The system prompt comes from the scenario profile extension (`--scenario`),
  * which also applies the tools and skills in-process; `--tools` and `--skill` stay as the hard
@@ -49,7 +52,7 @@ export function piArgs(o: PiCommandOptions): string[] {
     ...(scenario.tools.includes(CODEMODE) ? ["-e", `builtin:${CODEMODE}`] : []),
     "-e", o.extensionPath, "-e", o.scenarioProfileExtensionPath,
     "-e", o.projectExtensionPath, "-e", o.metricsExtensionPath,
-    "-e", o.toolRefExtensionPath,
+    "-e", o.tagsExtensionPath, "-e", o.toolRefExtensionPath,
     "--no-mcp",
     "-ns", ...o.skillPaths.flatMap((p) => ["--skill", p]),
     "-np",
@@ -64,6 +67,7 @@ export function piArgs(o: PiCommandOptions): string[] {
     ...(task.thinkingLevel ? ["--thinking", task.thinkingLevel] : []),
     `--${SCENARIO_FLAG}`, scenario.name,
     ...(o.projectDir ? [`--${PROJECT_FLAG}`, o.projectDir] : []),
+    ...(task.tags?.length ? [`--${TAGS_FLAG}`, task.tags.join(",")] : []),
     "--", task.prompt,
   ];
 }

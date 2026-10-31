@@ -47,6 +47,8 @@ export interface RunOptions {
   projectExtensionPath: string;
   /** Bundled metrics extension (dist/metrics.js). */
   metricsExtensionPath: string;
+  /** Bundled tags extension (dist/tags.js). */
+  tagsExtensionPath: string;
   /** Bundled tool-ref extension (dist/tool-ref.js). */
   toolRefExtensionPath: string;
   /** Skill directories to load (absolute), see resolveSkills. */
@@ -136,6 +138,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
     scenarioProfileExtensionPath: o.scenarioProfileExtensionPath,
     projectExtensionPath: o.projectExtensionPath,
     metricsExtensionPath: o.metricsExtensionPath,
+    tagsExtensionPath: o.tagsExtensionPath,
     toolRefExtensionPath: o.toolRefExtensionPath,
     projectDir: o.project?.dir,
     projectRead: o.project?.source.kind === "remote",

@@ -177,12 +177,13 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 ### How a run works
 
 ```
-pi-agent run ──spawn──▶ pi --mode json -ne -e builtin:codemode -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/tool-ref.js
-     ▲                    │    --scenario <name> [--project <dir>] … -- <prompt>
+pi-agent run ──spawn──▶ pi --mode json -ne -e builtin:codemode -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/tags.js -e dist/tool-ref.js
+     ▲                    │    --scenario <name> [--project <dir>] [--tags <a,b>] … -- <prompt>
      │                    │  scenario-profile: owns --scenario; system prompt, tools, skills
      │                    │  extension: submit_result + instruction, nudge once
      │                    │  project:   project sections in the system prompt, cache split
      │                    │  metrics:   pi-agent.metrics entry at every settle
+     │                    │  tags:      pi-agent.tags entry with the task's tags
      │                    │  tool-ref:  [tool-ref #N] on every tool result, tool_ref_get/grep (last)
      └──── JSONL events ──┘  (stdout, read continuously; split on LF only)
 ```
@@ -231,9 +232,14 @@ starts over after a resume.
   "scenario": "demo",               // registered scenario name
   "prompt": "…",
   "model": "cpa/claude-sonnet-5-5", // optional, "provider/id"; default from pi settings
-  "thinkingLevel": "medium"         // optional: off | minimal | low | medium | high | xhigh | max
+  "thinkingLevel": "medium",        // optional: off | minimal | low | medium | high | xhigh | max
+  "tags": ["bug", "ui"]             // optional session tags (see "Session tags"), passed as --tags
 }
 ```
+
+`tags` are normalized like `--tags` (lowercased, duplicates dropped); an invalid tag is invalid
+input (exit 2). They go into the session file only, not `report.json`. A resumed run without
+`tags` keeps the previous session's tags; with `tags`, they replace them.
 
 ### Outputs
 
