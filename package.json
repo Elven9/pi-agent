@@ -21,6 +21,7 @@
       "./src/context-view/index.ts",
       "./src/metrics/index.ts",
       "./src/session-upload/index.ts",
+      "./src/tags/index.ts",
       "./src/tool-ref/index.ts"
     ],
     "skills": [

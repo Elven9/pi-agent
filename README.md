@@ -11,6 +11,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/scenario-profile/` | pi extension: `--scenario <name>` applies the scenario's system prompt, tools and skills (runner and personal pi) |
 | `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
+| `src/tags/` | pi extension: session tags (`--tags`, `/tags`) as `pi-agent.tags` entries in the session file (runner and personal pi) |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
 | `src/activation-hint/` | pi extension (personal pi only): a startup notification when a scenario or project is active |
 | `src/tool-ref/` | pi extension: a handle (`[tool-ref #N]`) on every tool result, `tool_ref_get` / `tool_ref_grep` to look calls up (runner and personal pi) |
@@ -30,7 +31,7 @@ pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /r
 
 The manifest exposes `skills/`, `prompts/*.md` and these extensions: project context
 (`src/project/`), activation hint (`src/activation-hint/`, after project), context view (`src/context-view/`), session metrics (`src/metrics/`), session
-upload (`src/session-upload/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
+upload (`src/session-upload/`), session tags (`src/tags/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
 and the scenario profile, loaded from `dist/scenario-profile.js` because
 scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`
 after cloning and after changing a scenario. Not the runner extension.
@@ -81,6 +82,27 @@ notification), and on `/quit`, `/new`, `/resume` and `/fork` for the session bei
 appends its latest totals, so the file ends with them. A session with no file yet is skipped;
 the timeout is 15 s, no retry. A crashed session is not uploaded; its file stays on disk.
 Sandbox runs never load it (`-ne`): the orchestrator uploads the session and report.
+
+### Session tags
+
+Tags are metadata for a session, recorded in its file for whoever reads it later (the model
+never sees them). A tag is a simple string: lowercased, `a-z 0-9 . _ : / -`, up to 64
+characters.
+
+```sh
+pi --tags bug,ui            # at startup (also with -c / --session): replaces the session's tags
+```
+
+- `/tags` shows the tags, `/tags a,b` replaces them, `/tags --clear` clears them. Completion
+  offers tags used before in this session and the other sessions in its folder.
+- The footer shows the current tags.
+- Each change appends a `pi-agent.tags` custom entry with the whole list
+  (`{ "version": 1, "tags": [...], "source": "flag" | "command" }`); the **last entry in the
+  file** is the session's tags (the whole session, not per branch). Nothing is written when the
+  list does not change. `src/shared/tags.ts` reads them (`currentTags`, `sessionFileTags`).
+- `--tags` only applies at startup; `/new`, `/resume`, `/fork` and `/reload` keep the
+  tags of the session they open. `--tags` cannot be repeated (pi keeps the last one): use one
+  comma-separated list. An invalid `--tags` stops pi with an error.
 
 ### Tool references
 
