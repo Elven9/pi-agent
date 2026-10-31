@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.0](https://github.com/Elven9/pi-agent/compare/v0.4.0...v0.5.0) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **project:** the "commands" key of project.yaml is removed (it is now an error); move the commands to recipes in a justfile next to project.yaml.
+* **project:** "provider" is replaced by "type" in the settings.json "project" entry, and PI_AGENT_PROJECT with a project.yaml now wins over the entry.
+
+### Features
+
+* **project:** project commands are just recipes from the project and workspace justfiles ([f663bed](https://github.com/Elven9/pi-agent/commit/f663bed23e20e6bafa1467a0fb5ef40cb512b742))
+* **project:** typed project entry in settings.json, with local folders ([0d5ff8f](https://github.com/Elven9/pi-agent/commit/0d5ff8f09ba1806a6170acab146c7885fceffe50))
+* **scenarios:** add the-sculptor scenario for design discussions ([956367b](https://github.com/Elven9/pi-agent/commit/956367b6a1c60603fb6b7d0c90f1d73bf0a3cab5))
+* **tags:** --tags flag and /tags command record session tags ([276bcbb](https://github.com/Elven9/pi-agent/commit/276bcbb41c27f2939eee771a98c869caeaac541d))
+* **tags:** shared session tag parsing and session-file reader ([a1f9466](https://github.com/Elven9/pi-agent/commit/a1f9466848c6302643503eb4915ab253c052050e))
+* **tags:** show tags left of the cwd in the footer, dimmed like it ([b607ad9](https://github.com/Elven9/pi-agent/commit/b607ad916d155ab24190c0f6fe95d94361601b65))
+* **wrapper:** task.json tags recorded in the run's session ([73dc2ca](https://github.com/Elven9/pi-agent/commit/73dc2ca987c8d09927d98807e7ace8223ab8622d))
+
 ## [0.4.0](https://github.com/Elven9/pi-agent/compare/v0.3.0...v0.4.0) (2026-10-28)
 
 
