@@ -14,6 +14,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/tags/` | pi extension: session tags (`--tags`, `/tags`) as `pi-agent.tags` entries in the session file (runner and personal pi) |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
 | `src/activation-hint/` | pi extension (personal pi only): a startup notification when a scenario or project is active |
+| `src/herdr-session-name/` | pi extension (personal pi only): the pi session name as the herdr pane label and agent name |
 | `src/tool-ref/` | pi extension: a handle (`[tool-ref #N]`) on every tool result, `tool_ref_get` / `tool_ref_grep` to look calls up (runner and personal pi) |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
 | `examples/` | Example task file and project folder (`project/`: `project.yaml`, a workflow, a doc) |
@@ -31,7 +32,7 @@ pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /r
 
 The manifest exposes `skills/`, `prompts/*.md` and these extensions: project context
 (`src/project/`), activation hint (`src/activation-hint/`, after project), context view (`src/context-view/`), session metrics (`src/metrics/`), session
-upload (`src/session-upload/`), session tags (`src/tags/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
+upload (`src/session-upload/`), herdr session name (`src/herdr-session-name/`), session tags (`src/tags/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
 and the scenario profile, loaded from `dist/scenario-profile.js` because
 scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`
 after cloning and after changing a scenario. Not the runner extension.
@@ -84,6 +85,24 @@ notification), and on `/quit`, `/new`, `/resume` and `/fork` for the session bei
 appends its latest totals, so the file ends with them. A session with no file yet is skipped;
 the timeout is 15 s, no retry. A crashed session is not uploaded; its file stays on disk.
 Sandbox runs never load it (`-ne`): the orchestrator uploads the session and report.
+
+### herdr session name
+
+Inside a [herdr](https://herdr.dev) pane (`HERDR_ENV=1`, `HERDR_PANE_ID`), in the TUI only, the pi
+session name (`/name`) is shown in herdr:
+
+| Where | Value | herdr call |
+|---|---|---|
+| Pane label | the name, cut to 24 characters with `…` | `pane rename` |
+| `herdr agent list` | a slug: `Refactor auth module` → `refactor-auth-module` (32 max; `-<pane>` added when another agent has it) | `agent rename` |
+| Sidebar agent name | the full name (80 max) | `pane report-metadata --display-agent` |
+
+A named session sets them at start and on `/name`; clearing the name clears them. Leaving the
+session (`/quit`, `/new`, `/resume`, `/fork`, `/reload`) clears all three, including labels set by
+hand; the next session sets its own. A failed herdr call is retried on the next prompt (3 times
+at most). herdr calls go through its CLI (1 s timeout each, 2 s at most when leaving) and never
+block pi; a name with nothing usable for a slug (e.g. `日本語`) skips the agent name. Separate
+from herdr's own `~/.pi/agent/extensions/herdr-agent-state.ts`. Sandbox runs never load it.
 
 ### Session tags
 
