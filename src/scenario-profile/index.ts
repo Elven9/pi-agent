@@ -5,8 +5,8 @@ import { loadSkillsFromDir, type ExtensionAPI, type Skill } from "@earendil-work
 import { externalSkillRoots, findExternalSkills } from "../shared/external-skills.ts";
 import { ENTRY, PROJECT_CHANNEL, SCENARIO_CHANNEL, SCENARIO_FLAG, type ScenarioSelected } from "../shared/protocol.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
-import { GLOBAL_RULES } from "./global-rules.ts";
-import { addGlobalRules, isPackageSkill, keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
+import { GLOBAL_RULES, GLOBAL_RULES_SECTION } from "./global-rules.ts";
+import { isPackageSkill, keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
 
 /**
  * This package's skills folder. Bundled: dist/scenario-profile.js -> ../skills. From source
@@ -28,9 +28,9 @@ function real(path: string): string {
 
 /**
  * Scenario profile extension, loaded by both the runner (`-e dist/scenario-profile.js`) and
- * personal pi (package manifest). In every session it adds the global rules (GLOBAL_RULES) to
- * the prompt guidelines, so they end up in `<rules>`: pi's own without a scenario, the
- * scenario's with one. Otherwise inert unless pi is started with `--scenario <name>`; then
+ * personal pi (package manifest). In every session it adds the global rules (GLOBAL_RULES,
+ * `rules/global.md`) as a `<global_rules>` section, after `<rules>` (pi's own without a scenario,
+ * the scenario's with one). Otherwise inert unless pi is started with `--scenario <name>`; then
  * the session gets that scenario's profile:
  *
  * - system prompt: the scenario's prompt replaces pi's default preamble (`customPrompt`, as
@@ -74,7 +74,7 @@ export default function scenarioProfile(
   pi: ExtensionAPI,
   skillsDir: string = defaultSkillsDir(),
   externalRoots: readonly string[] = externalSkillRoots(),
-  globalRules: readonly string[] = GLOBAL_RULES,
+  globalRules: string = GLOBAL_RULES,
 ) {
   pi.registerFlag(SCENARIO_FLAG, {
     type: "string",
@@ -132,9 +132,16 @@ export default function scenarioProfile(
   // never change within a session, so pi sees no delta.
   pi.on("before_agent_start", (event) => {
     const options = event.systemPromptOptions;
-    // Before scenarioRules, which reads promptGuidelines; without a scenario pi's <rules> does.
-    addGlobalRules(options.promptGuidelines, globalRules);
-    if (!scenario) return;
+    // Custom sections render in insertion order after <cwd>: <rules> (with a scenario) first,
+    // then <global_rules>, both before the project extension's sections (cache block A).
+    const addGlobalRules = () => {
+      const text = globalRules.trim();
+      if (text) options.sections[GLOBAL_RULES_SECTION] = text;
+    };
+    if (!scenario) {
+      addGlobalRules();
+      return;
+    }
     options.customPrompt = scenario.systemPrompt;
     // A custom section, so it follows <cwd>. Set before the project extension adds its
     // sections (it loads after this one), so it stays in cache block A.
@@ -147,6 +154,7 @@ export default function scenarioProfile(
       options.hiddenTools,
     );
     if (rules) options.sections.rules = rules;
+    addGlobalRules();
     const known = scenarioNames();
     const name = scenario.name;
     options.skills = options.skills.filter((s) => {

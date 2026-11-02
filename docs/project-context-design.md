@@ -64,7 +64,8 @@ come after `<cwd>`, which is exactly where block B belongs.
 │ tools: fixed for the whole run; submit_result is generic (done)        │
 │ system: preamble, APPEND_SYSTEM, skills, <cwd> (/sandbox everywhere),  │
 │         <tool_refs> (tool-ref), <rules> (scenario-profile: extension   │
-│         tools' and codemode's guidelines)                              │
+│         tools' and codemode's guidelines), <global_rules>              │
+│         (scenario-profile: rules/global.md)                            │
 └──────────────────────────────────────────────────────────── ◆ marker ┘
 ┌ Block B: per project, fixed for the session ──────────────────────────┐
 │ <project> <project_rules> <agents_md> <project_commands>               │
@@ -365,8 +366,8 @@ at all, and with what review, is part of that later design.
   `project_context` is empty, and pi places extension sections after `<cwd>`. `<cwd>` therefore
   ends block A (it is `/sandbox` in every sandbox), except that under `--scenario` the
   scenario-profile extension adds a `<rules>` section (extension tools' `promptGuidelines`,
-  which pi drops with a custom prompt). It loads before this extension, so `<rules>` comes
-  before block B and stays in block A. tool-ref loads last but puts its `<tool_refs>` section
+  which pi drops with a custom prompt), and in every session a `<global_rules>` section. It
+  loads before this extension, so both come before block B and stay in block A. tool-ref loads last but puts its `<tool_refs>` section
   first among the extension sections, so it is in block A too.
 - **Two extensions.** The runner (`dist/extension.js`) and the project extension
   (`dist/project.js`) are separate; the wrapper always loads both, because `AGENTS.md` is used

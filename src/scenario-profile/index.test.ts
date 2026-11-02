@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import scenarioProfile from "./index.ts";
-import { addGlobalRules, keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
+import { keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
 import { GLOBAL_RULES } from "./global-rules.ts";
 import { ENTRY, SCENARIO_CHANNEL } from "../shared/protocol.ts";
 import { defineScenario, getScenario } from "../shared/scenarios/index.ts";
@@ -17,7 +17,7 @@ const fromExt = (name: string) => ({ name, sourceInfo: { path: "/ext/index.js" }
 const skill = (baseDir: string) => ({ name: baseDir.split("/").pop(), baseDir });
 
 /** Minimal stand-in for the parts of ExtensionAPI the extension uses. */
-function fakePi(flags: Record<string, string | undefined>, externalRoots: string[] = [], globalRules: string[] = []) {
+function fakePi(flags: Record<string, string | undefined>, externalRoots: string[] = [], globalRules = "") {
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const entries: Array<{ customType: string; data: unknown }> = [];
   let active = ["read", "bash", "edit", "write", "my_tool"];
@@ -74,37 +74,32 @@ test("is inert without --scenario", () => {
   assert.deepEqual(options, promptOptions());
 });
 
-test("global rules without --scenario: only added to promptGuidelines (pi's <rules>)", () => {
-  const pi = fakePi({}, [], [" Global 1 ", "Global 2"]);
+test("global rules without --scenario: only a <global_rules> section, as is (trimmed)", () => {
+  const pi = fakePi({}, [], "\n- Global 1\n\n## More\n- Global 2\n");
   pi.emit("session_start");
   for (let i = 0; i < 2; i++) {
     const options = promptOptions();
-    options.promptGuidelines.push("Global 2");
     pi.emit("before_agent_start", { systemPromptOptions: options });
-    assert.deepEqual(options.promptGuidelines, ["Global 2", "Global 1"]);
-    assert.deepEqual({ ...options, promptGuidelines: [] }, promptOptions());
+    assert.deepEqual(options.sections, { global_rules: "- Global 1\n\n## More\n- Global 2" });
+    assert.deepEqual({ ...options, sections: {} }, promptOptions());
   }
 });
 
-test("global rules with --scenario: last in the scenario's <rules>", () => {
-  const pi = fakePi({ scenario: "work-request-triage" }, [], ["Global 1"]);
+test("global rules with --scenario: <global_rules> after the scenario's <rules>, not in it", () => {
+  const pi = fakePi({ scenario: "work-request-triage" }, [], "- Global 1");
   pi.emit("session_start");
   const options = promptOptions();
   pi.emit("before_agent_start", { systemPromptOptions: options });
-  assert.equal(options.sections.rules, "- Use my_tool for X\n- Global 1");
+  assert.deepEqual(Object.entries(options.sections), [
+    ["rules", "- Use my_tool for X"],
+    ["global_rules", "- Global 1"],
+  ]);
 });
 
-test("addGlobalRules: trimmed, appended once", () => {
-  const guidelines = ["a"];
-  addGlobalRules(guidelines, [" b ", "a", "", "b"]);
-  addGlobalRules(guidelines, ["b"]);
-  assert.deepEqual(guidelines, ["a", "b"]);
-});
-
-test("GLOBAL_RULES: no empty or duplicate rules", () => {
-  const trimmed = GLOBAL_RULES.map((r) => r.trim());
-  assert.ok(trimmed.every((r) => r !== ""), "empty global rule");
-  assert.equal(new Set(trimmed).size, trimmed.length, "duplicate global rule");
+test("GLOBAL_RULES: rules/global.md, trimmed, says scenario rules take precedence", () => {
+  assert.ok(GLOBAL_RULES !== "" && GLOBAL_RULES === GLOBAL_RULES.trim());
+  assert.match(GLOBAL_RULES, /^- When searching for text or files, prefer using rg/);
+  assert.match(GLOBAL_RULES, /Scenario rules take precedence/);
 });
 
 test("unknown scenario: records an error entry and shuts down", () => {

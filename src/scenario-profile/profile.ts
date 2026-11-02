@@ -32,7 +32,7 @@ export function scenarioActiveTools(scenarioTools: readonly string[], active: re
  * The `<rules>` section for a scenario prompt. pi builds `<rules>` only for its default prompt,
  * so with `customPrompt` extension tools' `promptGuidelines` would be lost. This restores just
  * those, after the scenario's own `rules`: guidelines of active tools that are not built-in (in active order), then the run's
- * global `promptGuidelines`; trimmed and de-duplicated like pi does. Built-in tools' guidelines
+ * `promptGuidelines` (from other extensions; the global rules are a separate section); trimmed and de-duplicated like pi does. Built-in tools' guidelines
  * and pi's fixed rules ("Be concise", ...) stay out: the scenario prompt decides those; except
  * codemode's (BUILTIN_RULES_KEPT).
  *
@@ -58,21 +58,6 @@ export function scenarioRules(
   for (const name of active) if (!skip.has(name)) (toolGuidelines[name] ?? []).forEach(add);
   promptGuidelines.forEach(add);
   return rules.size > 0 ? [...rules].map((r) => `- ${r}`).join("\n") : undefined;
-}
-
-/**
- * Appends the global rules (trimmed) to the run's `promptGuidelines` in place, skipping ones
- * already there, so a reused options object never gets them twice.
- */
-export function addGlobalRules(promptGuidelines: string[], globalRules: readonly string[]): void {
-  const present = new Set(promptGuidelines.map((g) => g.trim()));
-  for (const rule of globalRules) {
-    const r = rule.trim();
-    if (r && !present.has(r)) {
-      promptGuidelines.push(r);
-      present.add(r);
-    }
-  }
 }
 
 /** Whether a skill folder is inside this package's skills dir (strictly; the dir itself is not). */

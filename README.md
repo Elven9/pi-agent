@@ -47,9 +47,10 @@ extensions (MCP, personal) stay. Every scenario lists `codemode`; with `"codemod
 scenario's `<rules>` has the scenario's own `rules` (if it sets any), then the extension tools' guidelines and codemode's (other built-in tools'
 rules and those of tools only scripts call stay out). Skills of other scenarios (`skills/<other>/`) are left out of
 the prompt; shared, grouped and skills from outside this package stay. There is no
-`submit_result` and no instruction to call it: both come from the runner extension. Without
-`--scenario` the extension only adds the global rules (`src/scenario-profile/global-rules.ts`)
-to pi's `<rules>`; with a scenario they close the scenario's `<rules>`.
+`submit_result` and no instruction to call it: both come from the runner extension. In every
+session, with or without `--scenario`, the extension adds the global rules
+(`src/scenario-profile/rules/global.md`, as is) as a `<global_rules>` section after `<rules>`;
+without `--scenario` that is all it does.
 
 ```sh
 pi --project ~/path/to/project-folder   # project.yaml + workspace AGENTS.md; pi's context files off

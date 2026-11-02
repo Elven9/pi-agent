@@ -80,14 +80,15 @@ test("runner setup, codemode only: scripts reach the tools, <tool_refs> in block
   const sections = system?.sections ?? {};
   // <tool_refs> comes first among the extension sections, so it is in block A (before the
   // project's sections) although tool-ref loads last.
-  assert.deepEqual(Object.keys(sections).slice(-4), ["cwd", "tool_refs", "rules", "project"]);
+  assert.deepEqual(Object.keys(sections).slice(-5), ["cwd", "tool_refs", "rules", "global_rules", "project"]);
   assert.equal(sections.tool_refs, `<tool_refs>\n${sectionText(true)}\n</tool_refs>`);
   assert.ok(sections.tool_refs.includes(CODEMODE_GUIDELINE), "codemode active: the intent rule is in <tool_refs>");
-  // The scenario's <rules>: codemode's own guideline, then the global rules. tool-ref has none;
-  // read and bash are built-in and hidden (only scripts call them).
-  const [first, ...rest] = sections.rules!.replace(/^<rules>\n|\n<\/rules>$/g, "").split("\n");
-  assert.match(first!, /^- Use codemode to /);
-  assert.deepEqual(rest, GLOBAL_RULES.map((r) => `- ${r.trim()}`));
+  // The scenario's <rules>: only codemode's own guideline. tool-ref has none; read and bash are
+  // built-in and hidden (only scripts call them). The global rules follow in their own section.
+  const rules = sections.rules!.replace(/^<rules>\n|\n<\/rules>$/g, "").split("\n");
+  assert.equal(rules.length, 1);
+  assert.match(rules[0]!, /^- Use codemode to /);
+  assert.equal(sections.global_rules, `<global_rules>\n${GLOBAL_RULES}\n</global_rules>`);
 
   // Declared to the model: codemode and submit_result. Scripts reach the others, not submit_result.
   assert.deepEqual(system?.toolsAdded?.map((t) => t.name).sort(), ["codemode", SUBMIT_RESULT]);
