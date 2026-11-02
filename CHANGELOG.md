@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0](https://github.com/Elven9/pi-agent/compare/v0.4.0...v0.5.0) (2026-11-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **project:** the "commands" key of project.yaml is removed (it is now an error); move the commands to recipes in a justfile next to project.yaml.
+* **project:** "provider" is replaced by "type" in the settings.json "project" entry, and PI_AGENT_PROJECT with a project.yaml now wins over the entry.
+
+### Features
+
+* **herdr-session-name:** herdr CLI calls that never throw ([846c4f6](https://github.com/Elven9/pi-agent/commit/846c4f6fa8d99afc68a9fe68034f7b4dfbf8d8fe))
+* **herdr-session-name:** latest-wins sync with generic retry and clear ([acf352c](https://github.com/Elven9/pi-agent/commit/acf352c636b1c7c73a29584dd08a5c9755cfe91a))
+* **herdr-session-name:** name helpers for herdr labels ([3a79c50](https://github.com/Elven9/pi-agent/commit/3a79c50670540f044b00f64a2f00f18268c59e8d))
+* **herdr-session-name:** show the pi session name in herdr ([154f2ef](https://github.com/Elven9/pi-agent/commit/154f2ef71fee7e17d44d92af07b76bb5df5567f5))
+* **project:** project commands are just recipes from the project and workspace justfiles ([f663bed](https://github.com/Elven9/pi-agent/commit/f663bed23e20e6bafa1467a0fb5ef40cb512b742))
+* **project:** typed project entry in settings.json, with local folders ([0d5ff8f](https://github.com/Elven9/pi-agent/commit/0d5ff8f09ba1806a6170acab146c7885fceffe50))
+* **scenario-profile:** global rules from rules/global.md in a &lt;global_rules&gt; section ([bd814a1](https://github.com/Elven9/pi-agent/commit/bd814a14dd0b7751fec59d987dcee8e9b87d6e1e))
+* **scenarios:** add the-sculptor scenario for design discussions ([956367b](https://github.com/Elven9/pi-agent/commit/956367b6a1c60603fb6b7d0c90f1d73bf0a3cab5))
+* **scenarios:** scenario rules from rules/&lt;name&gt;.md, embedded as is in &lt;rules&gt; ([b5a83f1](https://github.com/Elven9/pi-agent/commit/b5a83f1c756683ab828f111af0b8fe371c8183f9))
+* **tags:** --tags flag and /tags command record session tags ([276bcbb](https://github.com/Elven9/pi-agent/commit/276bcbb41c27f2939eee771a98c869caeaac541d))
+* **tags:** shared session tag parsing and session-file reader ([a1f9466](https://github.com/Elven9/pi-agent/commit/a1f9466848c6302643503eb4915ab253c052050e))
+* **tags:** show tags left of the cwd in the footer, dimmed like it ([b607ad9](https://github.com/Elven9/pi-agent/commit/b607ad916d155ab24190c0f6fe95d94361601b65))
+* **wrapper:** task.json tags recorded in the run's session ([73dc2ca](https://github.com/Elven9/pi-agent/commit/73dc2ca987c8d09927d98807e7ace8223ab8622d))
+
 ## [0.4.0](https://github.com/Elven9/pi-agent/compare/v0.3.0...v0.4.0) (2026-10-28)
 
 
