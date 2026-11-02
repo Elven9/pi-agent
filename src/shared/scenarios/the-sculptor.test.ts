@@ -17,7 +17,8 @@ test("the-sculptor is registered without edit", () => {
   assert.equal(getScenario("the-sculptor"), theSculptor);
   assert.equal(theSculptor.detailKind, "the-sculptor/v1");
   assert.deepEqual(theSculptor.tools, ["codemode", "read", "bash", "write"]);
-  assert.match(theSculptor.rules?.[0] ?? "", /^Never write, edit or generate source code/);
+  assert.match(theSculptor.rules ?? "", /^- Never write, edit or generate source code/);
+  assert.equal(theSculptor.rules?.split("\n").length, 4);
   assert.doesNotMatch(theSculptor.systemPrompt, /## Rules/);
 });
 

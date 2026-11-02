@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import systemPrompt from "./prompts/the-sculptor.md";
+import rules from "./rules/the-sculptor.md";
 import { defineScenario } from "./types.ts";
 
 const Solution = Type.Object(
@@ -20,12 +21,7 @@ export const theSculptor = defineScenario({
   systemPrompt,
   // write is for design documents only; no edit, the scenario does not change code.
   tools: ["codemode", "read", "bash", "write"],
-  rules: [
-    "Never write, edit or generate source code, tests or config, and never run commands that change the project. Short snippets inside a design are fine to illustrate an interface.",
-    "Use the write tool only for design documents (notes, proposals, decision records) the user asks for.",
-    "Prefer simple solutions; name the trade-offs instead of hiding them.",
-    "Separate facts (what you read or ran) from assumptions and opinions.",
-  ],
+  rules,
   detailSchema: Type.Object(
     {
       problem: Type.String({ minLength: 1, description: "The problem as understood, with its constraints" }),

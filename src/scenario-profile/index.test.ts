@@ -164,28 +164,38 @@ test("externalSkills: only included external skills stay; installed missing ones
 test("scenarioRules: extension tools' and global guidelines only, de-duplicated", () => {
   const all = [builtin("read"), builtin("bash"), fromExt("a"), fromExt("b"), fromExt("inactive")];
   const guidelines = { read: ["r"], bash: ["b"], a: [" A1 ", "shared"], b: ["shared", ""], inactive: ["x"] };
-  assert.equal(scenarioRules([], ["read", "bash", "b", "a"], all, guidelines, ["global", "A1"]), "- shared\n- A1\n- global");
-  assert.equal(scenarioRules([], ["read", "bash"], all, guidelines, []), undefined);
+  assert.equal(scenarioRules(undefined, ["read", "bash", "b", "a"], all, guidelines, ["global", "A1"]), "- shared\n- A1\n- global");
+  assert.equal(scenarioRules(undefined, ["read", "bash"], all, guidelines, []), undefined);
+  assert.equal(scenarioRules(" \n", ["read", "bash"], all, guidelines, []), undefined);
 });
 
-test("scenarioRules: the scenario's own rules come first, de-duplicated with the rest", () => {
+test("scenarioRules: the scenario's own rules come first, as is (trimmed)", () => {
   const all = [builtin("read"), fromExt("a")];
-  const guidelines = { read: ["r"], a: ["A", "own 2"] };
-  assert.equal(scenarioRules(["own 1", "own 2"], ["read", "a"], all, guidelines, ["global"]), "- own 1\n- own 2\n- A\n- global");
-  assert.equal(scenarioRules(["own"], ["read"], all, guidelines, []), "- own");
+  const guidelines = { read: ["r"], a: ["A"] };
+  const own = "\n## Scenario\n- own 1\n  continued\n- own 2\n";
+  assert.equal(scenarioRules(own, ["read", "a"], all, guidelines, ["global"]), "## Scenario\n- own 1\n  continued\n- own 2\n- A\n- global");
+  assert.equal(scenarioRules("- own", ["read"], all, guidelines, []), "- own");
 });
 
 test("defineScenario trims rules and rejects empty ones", () => {
   const base = { name: "t", detailKind: "t/v1", systemPrompt: "p", tools: [], detailSchema: Type.Object({}) };
-  assert.deepEqual(defineScenario({ ...base, rules: [" a ", "b"] }).rules, ["a", "b"]);
+  assert.equal(defineScenario({ ...base, rules: "\n- a\n- b\n" }).rules, "- a\n- b");
   assert.equal(defineScenario(base).rules, undefined);
-  assert.throws(() => defineScenario({ ...base, rules: ["a", "  "] }), /rules must not be empty/);
+  assert.throws(() => defineScenario({ ...base, rules: " \n " }), /rules must not be empty/);
+});
+
+test("the scenario's rules open its <rules> section", () => {
+  const pi = fakePi({ scenario: "the-sculptor" });
+  pi.emit("session_start");
+  const options = promptOptions();
+  pi.emit("before_agent_start", { systemPromptOptions: options });
+  assert.equal(options.sections.rules, `${getScenario("the-sculptor").rules}\n- Use my_tool for X`);
 });
 
 test("scenarioRules: codemode's guidelines stay; hidden tools' are left out (they are in codemode's description)", () => {
   const all = [builtin("codemode"), builtin("read"), fromExt("a"), fromExt("b")];
   const guidelines = { codemode: ["Use codemode"], read: ["r"], a: ["A"], b: ["B"] };
-  assert.equal(scenarioRules([], ["codemode", "read", "a", "b"], all, guidelines, [], ["read", "a"]), "- Use codemode\n- B");
+  assert.equal(scenarioRules(undefined, ["codemode", "read", "a", "b"], all, guidelines, [], ["read", "a"]), "- Use codemode\n- B");
 });
 
 test("scenarioActiveTools: built-ins are the scenario's, extension tools stay", () => {

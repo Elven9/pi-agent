@@ -31,8 +31,10 @@ export function scenarioActiveTools(scenarioTools: readonly string[], active: re
 /**
  * The `<rules>` section for a scenario prompt. pi builds `<rules>` only for its default prompt,
  * so with `customPrompt` extension tools' `promptGuidelines` would be lost. This restores just
- * those, after the scenario's own `rules`: guidelines of active tools that are not built-in (in active order), then the run's
- * `promptGuidelines` (from other extensions; the global rules are a separate section); trimmed and de-duplicated like pi does. Built-in tools' guidelines
+ * those, after the scenario's own `rules` (its Markdown, as is): guidelines of active tools that
+ * are not built-in (in active order), then the run's `promptGuidelines` (from other extensions;
+ * the global rules are a separate section), as `- ` bullets, trimmed and de-duplicated like pi
+ * does. Built-in tools' guidelines
  * and pi's fixed rules ("Be concise", ...) stay out: the scenario prompt decides those; except
  * codemode's (BUILTIN_RULES_KEPT).
  *
@@ -41,7 +43,7 @@ export function scenarioActiveTools(scenarioTools: readonly string[], active: re
  * guidelines. Returns undefined when there is nothing to add.
  */
 export function scenarioRules(
-  scenarioOwn: readonly string[],
+  scenarioOwn: string | undefined,
   active: readonly string[],
   all: readonly ToolSource[],
   toolGuidelines: Readonly<Record<string, readonly string[]>>,
@@ -54,10 +56,10 @@ export function scenarioRules(
     const r = rule.trim();
     if (r) rules.add(r);
   };
-  scenarioOwn.forEach(add);
   for (const name of active) if (!skip.has(name)) (toolGuidelines[name] ?? []).forEach(add);
   promptGuidelines.forEach(add);
-  return rules.size > 0 ? [...rules].map((r) => `- ${r}`).join("\n") : undefined;
+  const parts = [scenarioOwn?.trim(), ...[...rules].map((r) => `- ${r}`)].filter((p) => p);
+  return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
 /** Whether a skill folder is inside this package's skills dir (strictly; the dir itself is not). */
