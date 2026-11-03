@@ -13,6 +13,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
 | `src/tags/` | pi extension: session tags (`--tags`, `/tags`) as `pi-agent.tags` entries in the session file (runner and personal pi) |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
+| `src/agent-docs/` | pi extension (personal pi only): `pi --pi-agent-docs [topic]` prints usage docs for agents (`docs/*.md`) and exits; the flag is listed in `pi --help` |
 | `src/activation-hint/` | pi extension (personal pi only): a startup notification when a scenario or project is active |
 | `src/herdr-session-name/` | pi extension (personal pi only): the pi session name as the herdr pane label and agent name |
 | `src/tool-ref/` | pi extension: a handle (`[tool-ref #N]`) on every tool result, `tool_ref_get` / `tool_ref_grep` to look calls up (runner and personal pi) |
