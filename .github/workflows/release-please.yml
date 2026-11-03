@@ -24,8 +24,9 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
 
   # pi installs git packages without building them (npm install --omit=dev, no build step), so the
-  # built extension pi loads (dist/scenario-profile.js, see "pi.extensions") is committed. It is
-  # built here into the release pull request, so the release commit and its tag contain it.
+  # built extensions pi loads (dist/scenario-profile.js, dist/agent-docs.js, see "pi.extensions")
+  # are committed. They are built here into the release pull request, so the release commit and its
+  # tag contain them.
   # release-please regenerates its branch when main moves, dropping this commit; this job then
   # runs again right after.
   build:
@@ -45,14 +46,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - name: Commit dist/scenario-profile.js
+      - name: Commit the built extensions
         run: |
-          git add dist/scenario-profile.js
+          git add dist/scenario-profile.js dist/agent-docs.js
           if git diff --cached --quiet; then
-            echo "dist/scenario-profile.js is up to date"
+            echo "dist/scenario-profile.js and dist/agent-docs.js are up to date"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: build dist/scenario-profile.js"
+          git commit -m "chore: build dist/scenario-profile.js and dist/agent-docs.js"
           git push origin "HEAD:$BRANCH"
