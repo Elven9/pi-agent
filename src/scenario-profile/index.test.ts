@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import scenarioProfile from "./index.ts";
-import { keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
+import { keepSkill, scenarioActiveTools, scenarioRules, skillActive } from "./profile.ts";
 import { GLOBAL_RULES } from "./global-rules.ts";
-import { ENTRY, SCENARIO_CHANNEL } from "../shared/protocol.ts";
+import { ENTRY, PROJECT_CHANNEL, SCENARIO_CHANNEL, SKILLS_CHANNEL } from "../shared/protocol.ts";
 import { defineScenario, getScenario } from "../shared/scenarios/index.ts";
 import { Type } from "typebox";
 
@@ -17,14 +17,21 @@ const fromExt = (name: string) => ({ name, sourceInfo: { path: "/ext/index.js" }
 const skill = (baseDir: string) => ({ name: baseDir.split("/").pop(), baseDir });
 
 /** Minimal stand-in for the parts of ExtensionAPI the extension uses. */
-function fakePi(flags: Record<string, string | undefined>, externalRoots: string[] = [], globalRules = "") {
+function fakePi(flags: Record<string, string | undefined>, externalRoots: string[] = [], globalRules = "", skillsDir = SKILLS) {
   const handlers = new Map<string, (event: any, ctx: any) => any>();
+  const listeners = new Map<string, Array<(data: unknown) => void>>();
   const entries: Array<{ customType: string; data: unknown }> = [];
   let active = ["read", "bash", "edit", "write", "my_tool"];
   let shutdown = false;
   const announced: unknown[] = [];
   const pi = {
-    events: { emit: (channel: string, data: unknown) => void announced.push({ channel, data }), on() {} },
+    events: {
+      emit: (channel: string, data: unknown) => void announced.push({ channel, data }),
+      on: (channel: string, l: (data: unknown) => void) => void listeners.set(channel, [...(listeners.get(channel) ?? []), l]),
+    },
+    // pi's loaded skills as commands, like promptOptions().skills.
+    getCommands: () =>
+      promptOptions().skills.map((s) => ({ name: `skill:${s.name}`, source: "skill", sourceInfo: { path: join(s.baseDir, "SKILL.md") } })),
     registerFlag() {},
     getFlag: (name: string) => flags[name],
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.set(event, handler),
@@ -33,7 +40,7 @@ function fakePi(flags: Record<string, string | undefined>, externalRoots: string
     setActiveTools: (names: string[]) => void (active = names),
     appendEntry: (customType: string, data: unknown) => void entries.push({ customType, data }),
   } as unknown as ExtensionAPI;
-  scenarioProfile(pi, SKILLS, externalRoots, globalRules);
+  scenarioProfile(pi, skillsDir, externalRoots, globalRules);
   const ctx = { shutdown: () => (shutdown = true) };
   return {
     entries,
@@ -45,8 +52,16 @@ function fakePi(flags: Record<string, string | undefined>, externalRoots: string
       return shutdown;
     },
     emit: (name: string, event: object = {}) => handlers.get(name)?.({ type: name, ...event }, ctx),
+    /** Another extension's announcement (the project extension's). */
+    hear: (channel: string, data: unknown) => listeners.get(channel)?.forEach((l) => l(data)),
+    /** Skill names from the last SKILLS_CHANNEL announcement. */
+    get skills() {
+      return (announced.filter((a: any) => a.channel === SKILLS_CHANNEL).at(-1) as any)?.data;
+    },
   };
 }
+
+const ALL = ["shared", "synology-nas", "demo-only", "triage-only", "personal"];
 
 function promptOptions() {
   return {
@@ -64,10 +79,13 @@ function promptOptions() {
   };
 }
 
-test("is inert without --scenario", () => {
+test("is inert without --scenario (only announces pi's skills)", () => {
   const pi = fakePi({});
   pi.emit("session_start");
-  assert.deepEqual(pi.announced, []);
+  assert.deepEqual(pi.announced, [{ channel: SKILLS_CHANNEL, data: { skills: ALL, missing: [] } }]);
+  // A project without `skills` changes nothing.
+  pi.hear(PROJECT_CHANNEL, { project: { name: "p", dir: "/p" }, block: "" });
+  assert.equal(pi.announced.length, 1);
   assert.deepEqual(pi.active, ["read", "bash", "edit", "write", "my_tool"]);
   const options = promptOptions();
   pi.emit("before_agent_start", { systemPromptOptions: options });
@@ -114,7 +132,10 @@ test("unknown scenario: records an error entry and shuts down", () => {
 test("applies the scenario's prompt, tools and skills", () => {
   const pi = fakePi({ scenario: "work-request-triage" });
   pi.emit("session_start");
-  assert.deepEqual(pi.announced, [{ channel: SCENARIO_CHANNEL, data: { name: "work-request-triage" } }]);
+  assert.deepEqual(pi.announced, [
+    { channel: SCENARIO_CHANNEL, data: { name: "work-request-triage" } },
+    { channel: SKILLS_CHANNEL, data: { skills: ["shared", "synology-nas", "triage-only"], missing: [] } },
+  ]);
   assert.deepEqual(pi.active, ["codemode", "read", "my_tool"]);
 
   // Twice: pi rebuilds the options for every prompt.
@@ -159,6 +180,63 @@ test("externalSkills: only included external skills stay; installed missing ones
   } finally {
     demo.externalSkills = saved;
   }
+});
+
+/** A package skills dir with a scenario skill pi did not load (e.g. sandbox -ns), plus an external root. */
+async function installed() {
+  const pkg = await mkdtemp(join(tmpdir(), "pi-agent-pkg-"));
+  const ext = await mkdtemp(join(tmpdir(), "pi-agent-ext-"));
+  const write = async (dir: string, name: string) => {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: The ${name} skill\n---\n`);
+  };
+  await write(join(pkg, "code-writer", "golang"), "golang");
+  await write(join(ext, "agent-browser"), "agent-browser");
+  return { pkg, ext };
+}
+
+test("project skills without a scenario: only the project's, missing ones added, not installed reported", async () => {
+  const { pkg, ext } = await installed();
+  const pi = fakePi({}, [ext], "", pkg);
+  pi.emit("session_start");
+  pi.hear(PROJECT_CHANNEL, { project: { name: "p", dir: "/p" }, block: "", skills: ["personal", "golang", "agent-browser", "nope"] });
+  // Announced again once the project's skills are known.
+  assert.deepEqual(pi.skills, { skills: ["personal", "golang", "agent-browser"], missing: ["nope"] });
+  for (let i = 0; i < 2; i++) {
+    const options = promptOptions();
+    pi.emit("before_agent_start", { systemPromptOptions: options });
+    assert.deepEqual(options.skills.map((s) => s.name), ["personal", "golang", "agent-browser"]);
+  }
+});
+
+test("project skills with a scenario: added to the scenario's (also another scenario's skill)", async () => {
+  const { ext } = await installed();
+  const pi = fakePi({ scenario: "demo" }, [ext]);
+  pi.emit("session_start");
+  pi.hear(PROJECT_CHANNEL, { project: { name: "p", dir: "/p" }, block: "", skills: ["triage-only", "personal"] });
+  assert.deepEqual(pi.skills, { skills: ["shared", "synology-nas", "demo-only", "triage-only", "personal"], missing: [] });
+  const options = promptOptions();
+  pi.emit("before_agent_start", { systemPromptOptions: options });
+  assert.deepEqual(options.skills.map((s) => s.name), ["shared", "synology-nas", "demo-only", "triage-only", "personal"]);
+});
+
+test("project skills: an empty include leaves no skills", () => {
+  const pi = fakePi({});
+  pi.emit("session_start");
+  pi.hear(PROJECT_CHANNEL, { block: "", skills: [] });
+  assert.deepEqual(pi.skills, { skills: [], missing: [] });
+});
+
+test("skillActive: scenario rules, project includes, union", () => {
+  const scenario = { name: "demo", known: ["demo", "work-request-triage"], include: new Set(["ext-in"]) };
+  const on = (rules: object, name: string, dir: string) => skillActive({ skillsDir: SKILLS, ...rules }, name, dir);
+  assert.equal(on({}, "x", "/anywhere/x"), true);
+  assert.equal(on({ scenario }, "t", join(SKILLS, "work-request-triage", "t")), false);
+  assert.equal(on({ scenario }, "ext", "/ext/ext"), false);
+  assert.equal(on({ scenario }, "ext-in", "/ext/ext-in"), true);
+  assert.equal(on({ scenario, project: new Set(["t"]) }, "t", join(SKILLS, "work-request-triage", "t")), true);
+  assert.equal(on({ project: new Set(["t"]) }, "shared", join(SKILLS, "shared")), false);
+  assert.equal(on({ project: new Set(["t"]) }, "t", "/ext/t"), true);
 });
 
 test("scenarioRules: extension tools' and global guidelines only, de-duplicated", () => {

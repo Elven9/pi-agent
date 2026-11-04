@@ -80,3 +80,33 @@ export function keepSkill(baseDir: string, skillsDir: string, scenario: string, 
   const top = rel.split(sep)[0];
   return top === scenario || !knownScenarios.includes(top);
 }
+
+/** What decides a session's skills: the scenario (if any) and the project's `skills.include` (if any). */
+export interface SkillRules {
+  /** This package's skills dir (real path). */
+  skillsDir: string;
+  scenario?: {
+    name: string;
+    known: readonly string[];
+    /** The scenario's `externalSkills.include`. */
+    include: ReadonlySet<string>;
+  };
+  /** The project's `skills.include`; undefined when the project does not set it. */
+  project?: ReadonlySet<string>;
+}
+
+/**
+ * Whether a loaded skill (`baseDir`: its real folder) stays in the prompt:
+ * - neither a scenario nor project skills: every skill pi loaded,
+ * - a skill the project includes: always,
+ * - with a scenario: this package's shared skills and the scenario's own (keepSkill), external
+ *   skills only when the scenario includes them,
+ * - project skills without a scenario: only the project's.
+ */
+export function skillActive(rules: SkillRules, name: string, baseDir: string): boolean {
+  if (!rules.scenario && !rules.project) return true;
+  if (rules.project?.has(name)) return true;
+  const s = rules.scenario;
+  if (!s) return false;
+  return isPackageSkill(baseDir, rules.skillsDir) ? keepSkill(baseDir, rules.skillsDir, s.name, s.known) : s.include.has(name);
+}

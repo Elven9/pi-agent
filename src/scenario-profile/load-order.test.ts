@@ -33,6 +33,7 @@ async function startSession(order: Factory[], flags: Record<string, string>) {
     registerCommand() {},
     registerTool() {},
     getSettings: () => ({}),
+    getCommands: () => [],
     getActiveTools: () => ["read"],
     getAllTools: () => [{ name: "read", sourceInfo: { path: "builtin:read" } }],
     setActiveTools() {},

@@ -3,10 +3,19 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSkillsFromDir, type ExtensionAPI, type Skill } from "@earendil-works/pi-coding-agent";
 import { externalSkillRoots, findExternalSkills } from "../shared/external-skills.ts";
-import { ENTRY, PROJECT_CHANNEL, SCENARIO_CHANNEL, SCENARIO_FLAG, type ScenarioSelected } from "../shared/protocol.ts";
+import {
+  ENTRY,
+  PROJECT_CHANNEL,
+  SCENARIO_CHANNEL,
+  SCENARIO_FLAG,
+  SKILLS_CHANNEL,
+  type ProjectAnnounced,
+  type ScenarioSelected,
+  type SkillsAnnounced,
+} from "../shared/protocol.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
 import { GLOBAL_RULES, GLOBAL_RULES_SECTION } from "./global-rules.ts";
-import { isPackageSkill, keepSkill, scenarioActiveTools, scenarioRules } from "./profile.ts";
+import { scenarioActiveTools, scenarioRules, skillActive, type SkillRules } from "./profile.ts";
 
 /**
  * This package's skills folder. Bundled: dist/scenario-profile.js -> ../skills. From source
@@ -48,6 +57,13 @@ function real(path: string): string {
  *   (after pi's, in include order) when installed and not already there, e.g. turned off in
  *   pi's settings. Added ones are in the prompt only; pi
  *   has no `/skill:<name>` command for them.
+ * - project skills: a project with `skills.include` in project.yaml (announced on
+ *   PROJECT_CHANNEL) decides the skills too, also without `--scenario`: without a scenario only
+ *   its skills stay, with one they are added to the scenario's (profile.ts, skillActive).
+ *   Included ones pi did not load are added like the scenario's external ones, looked up in this
+ *   package's skills first.
+ * - announces the resulting skill names on SKILLS_CHANNEL at session start (and again when the
+ *   project's skills arrive), for the activation hint.
  *
  * `submit_result` and the result format stay with the runner extension (src/extension/). This
  * extension owns the `--scenario` flag and tells the runner on SCENARIO_CHANNEL.
@@ -83,25 +99,77 @@ export default function scenarioProfile(
 
   let scenario: Scenario | undefined;
   const root = real(skillsDir);
-  /** Skill folder -> kept; skills don't move within a session. */
+  /** Skill folder -> kept, for the current rules (cleared when they change). */
   const kept = new Map<string, boolean>();
   /** The scenario's included external skills that are installed (found at session start). */
   let included: Skill[] = [];
   let includedNames = new Set<string>();
+  /** The project's `skills.include` (PROJECT_CHANNEL); undefined: the project does not set it. */
+  let projectInclude: string[] | undefined;
+  /** The project's skills that are installed: this package's skills first, then the external roots. */
+  let projectSkills: Skill[] = [];
 
   /** This extension's session_start has run (later project announcements are expected). */
   let started = false;
   /** The project extension announced itself before our session_start: it loaded first. */
   let projectLoadedFirst = false;
-  pi.events.on(PROJECT_CHANNEL, () => {
+
+  const rules = (): SkillRules => ({
+    skillsDir: root,
+    ...(scenario && { scenario: { name: scenario.name, known: scenarioNames(), include: includedNames } }),
+    ...(projectInclude && { project: new Set(projectInclude) }),
+  });
+
+  /** `base` (pi's skills) filtered by the rules, then the installed included ones pi did not load. */
+  const select = <S extends { name: string; baseDir: string }>(base: readonly S[], extra: readonly S[]): S[] => {
+    const r = rules();
+    const out = base.filter((s) => {
+      let keep = kept.get(s.baseDir);
+      if (keep === undefined) {
+        keep = skillActive(r, s.name, real(s.baseDir));
+        kept.set(s.baseDir, keep);
+      }
+      return keep;
+    });
+    const present = new Set(out.map((s) => s.name));
+    for (const s of extra) {
+      if (present.has(s.name)) continue;
+      present.add(s.name);
+      out.push(s);
+    }
+    return out;
+  };
+
+  /** Tell the activation hint which skills the prompts get (pi's loaded skills, as commands). */
+  const announceSkills = () => {
+    const base = pi
+      .getCommands()
+      .filter((c) => c.source === "skill")
+      .map((c) => ({ name: c.name.replace(/^skill:/, ""), baseDir: dirname(c.sourceInfo.path) }));
+    const skills = select(base, [...included, ...projectSkills]).map((s) => s.name);
+    const missing = (projectInclude ?? []).filter((n) => !skills.includes(n));
+    pi.events.emit(SKILLS_CHANNEL, { skills, missing } satisfies SkillsAnnounced);
+  };
+
+  pi.events.on(PROJECT_CHANNEL, (data) => {
     if (!started) projectLoadedFirst = true;
+    // Announced at every session start and every prompt; the skills only change with the project.
+    const next = (data as ProjectAnnounced).skills;
+    if (JSON.stringify(next) === JSON.stringify(projectInclude)) return;
+    projectInclude = next && [...next];
+    projectSkills = loadIncluded(projectInclude ?? [], [skillsDir, ...externalRoots]);
+    kept.clear();
+    if (started) announceSkills();
   });
 
   // Flags are only parsed after extensions load, so everything happens from session_start on.
   pi.on("session_start", (_event, ctx) => {
     started = true;
     const name = pi.getFlag(SCENARIO_FLAG);
-    if (typeof name !== "string" || name === "") return;
+    if (typeof name !== "string" || name === "") {
+      announceSkills();
+      return;
+    }
     const fail = (message: string) => {
       // Startup entries are not streamed in --mode json, so also tell stderr.
       console.error(`[pi-agent] ${message}`);
@@ -124,8 +192,10 @@ export default function scenarioProfile(
     // Synchronous: the runner registers submit_result before the tools are set below.
     included = loadIncluded(scenario.externalSkills?.include ?? [], externalRoots);
     includedNames = new Set(scenario.externalSkills?.include ?? []);
+    kept.clear();
     pi.events.emit(SCENARIO_CHANNEL, { name } satisfies ScenarioSelected);
     pi.setActiveTools(scenarioActiveTools(scenario.tools, pi.getActiveTools(), pi.getAllTools()));
+    announceSkills();
   });
 
   // pi rebuilds the options from its base for every prompt, so set them every time; they
@@ -138,6 +208,7 @@ export default function scenarioProfile(
       const text = globalRules.trim();
       if (text) options.sections[GLOBAL_RULES_SECTION] = text;
     };
+    if (scenario || projectInclude) options.skills = select(options.skills, [...included, ...projectSkills]);
     if (!scenario) {
       addGlobalRules();
       return;
@@ -145,7 +216,7 @@ export default function scenarioProfile(
     options.customPrompt = scenario.systemPrompt;
     // A custom section, so it follows <cwd>. Set before the project extension adds its
     // sections (it loads after this one), so it stays in cache block A.
-    const rules = scenarioRules(
+    const sectionRules = scenarioRules(
       scenario.rules,
       pi.getActiveTools(),
       pi.getAllTools(),
@@ -153,20 +224,7 @@ export default function scenarioProfile(
       options.promptGuidelines,
       options.hiddenTools,
     );
-    if (rules) options.sections.rules = rules;
+    if (sectionRules) options.sections.rules = sectionRules;
     addGlobalRules();
-    const known = scenarioNames();
-    const name = scenario.name;
-    options.skills = options.skills.filter((s) => {
-      let keep = kept.get(s.baseDir);
-      if (keep === undefined) {
-        const dir = real(s.baseDir);
-        keep = isPackageSkill(dir, root) ? keepSkill(dir, root, name, known) : includedNames.has(s.name);
-        kept.set(s.baseDir, keep);
-      }
-      return keep;
-    });
-    const present = new Set(options.skills.map((s) => s.name));
-    for (const s of included) if (!present.has(s.name)) options.skills.push(s);
   });
 }

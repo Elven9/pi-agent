@@ -60,6 +60,19 @@ export interface ProjectAnnounced {
   skills?: string[];
 }
 
+/**
+ * `pi.events` channel: the scenario profile extension emits `SkillsAnnounced` at session start
+ * (and again once the project's skills are known): the skills the session's prompts get, after
+ * the scenario's and the project's selection. Read by the activation hint.
+ */
+export const SKILLS_CHANNEL = "pi-agent.skills";
+
+export interface SkillsAnnounced {
+  /** Skill names, in prompt order. */
+  skills: string[];
+  /** Names in the project's `skills.include` that are not installed (skipped). */
+  missing: string[];
+}
 
 /**
  * `pi.events` channel: every pi-agent extension with a `message_end` handler that replaces
