@@ -34,3 +34,9 @@ Included skills are loaded when installed (sandbox runs: `--skill`; personal pi:
 prompt, or added if pi's settings turned them off); not installed ones are ignored. Without
 `--scenario`, personal pi loads whatever pi's settings say. This package's own skills are not
 affected (`src/shared/external-skills.ts`).
+
+## Project skills
+
+A project can list skills too (`project.yaml` → `skills.include`, by name). Without a scenario
+only those are active; with one they are added to the scenario's. They are looked up here first
+(any skill, also another scenario's), then in the external folders. See README "Project context".

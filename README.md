@@ -353,6 +353,8 @@ workflows:                   # step-by-step instructions for one task each; read
 docs:                        # reference material; read on demand
   - path: docs/architecture.md
     when: Before changing module boundaries.
+skills:                      # skills for this project, by name (see "Project skills")
+  include: [golang, agent-browser]
 ```
 
 `examples/project/` is a complete example (for this repo), with a justfile, a workflow and a
@@ -367,6 +369,15 @@ agent runs (for sandbox runs: in the image). The rendering is deterministic
 (manifest order, normalized text), so the same files give the same bytes and the cached prefix
 carries over between runs. Keep the folder at the same path on every run: paths are part of the
 text.
+
+Project skills: with `skills.include`, the project decides the skills (they are not part of
+block B; they are in pi's `<available_skills>`). Without a scenario only the listed skills are
+active; with a scenario they are added to the scenario's (shared, its own and its included
+external skills). Names are looked up in this package's `skills/` (any skill, also another
+scenario's), then `<agent dir>/skills` and `~/.agents/skills`. A name that is not installed is
+skipped with a warning (sandbox runs: in `report.json` `warnings`; personal pi: in the
+activation hint). Without the key the project does not change the skills; an empty list means no
+skills.
 
 #### Project commands
 

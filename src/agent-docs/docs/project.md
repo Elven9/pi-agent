@@ -42,6 +42,8 @@ workflows:                   # step-by-step for one task each; read on demand
 docs:                        # reference material; read on demand
   - path: docs/architecture.md
     when: Before changing module boundaries.
+skills:                      # skills for this project, by skill name
+  include: [golang, agent-browser]
 ```
 
 - Only these keys are allowed; any other key is an error.
@@ -49,6 +51,16 @@ docs:                        # reference material; read on demand
 - Write `when` as the trigger for reading the file, not as a summary of it.
 - Keep rules short. Move detail into a workflow or doc. The whole project section is re-sent
   every turn.
+
+## Skills
+
+- `skills.include` lists skills by name (frontmatter `name`, else the folder name).
+- Without `--scenario`, only the listed skills are active. With a scenario, they are added to
+  the scenario's skills.
+- Names are looked up in pi-agent's own skills (any of them), then `~/.pi/agent/skills` and
+  `~/.agents/skills`. A name that is not installed is skipped with a warning.
+- Without the `skills` key the project does not change the skills; `include: []` means none.
+- The startup hint lists the active skills.
 
 ## Commands
 

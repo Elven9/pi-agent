@@ -23,7 +23,8 @@ pi -p --scenario code-writer --project ./my-project "Fix the failing test in src
 - Built-in tools are exactly the scenario's (table below). Tools from other extensions (MCP,
   personal) stay.
 - Only shared skills and the scenario's own skills are loaded. Skills installed outside this
-  package are left out unless the scenario includes them.
+  package are left out unless the scenario includes them. A project's `skills.include` adds
+  its skills on top.
 - Combine it with `--project` to add project rules and commands on top.
 
 ## Results

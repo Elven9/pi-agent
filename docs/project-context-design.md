@@ -139,6 +139,11 @@ rules:
 cli_tools:
   synotool: Synology internal tooling (chat, deploy).
 
+# Skills for this project, by skill name. Without a scenario only these are active; with one
+# they are added to the scenario's. Not part of block B (pi lists skills itself).
+skills:
+  include: [golang]
+
 # Strictly step-by-step instructions for one specific task. Index only; read on demand.
 # Guidance for one area of the code is a workflow too.
 workflows:
@@ -256,7 +261,9 @@ Rules for byte-identical output:
 TypeBox schema, strict:
 
 - `version: 1`; `name` required; `description`, `rules`, `cli_tools`, `workflows`,
-  `docs` optional.
+  `docs`, `skills` optional.
+- `skills.include`: skill names, none listed twice or with surrounding spaces. Not installed
+  ones are a warning, not an error (installed skills differ per machine).
 - Unknown keys are errors (a typo must not silently do nothing).
 - `cli_tools` keys are one word (an executable).
 - Justfiles must parse (`just --dump`) and merge; `just` must be installed when there is one.
