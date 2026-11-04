@@ -96,6 +96,7 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
         project: project && { name: project.manifest.name, dir: project.source.label },
         block: applied ? block : "",
         sections: Object.keys(sections),
+        ...(project?.manifest.skills && { skills: [...project.manifest.skills.include] }),
       } satisfies ProjectAnnounced);
 
     /**

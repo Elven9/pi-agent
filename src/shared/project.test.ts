@@ -186,6 +186,20 @@ docs:
   assert.match(paths, /\/docs\/2\/path: sub is not a file/);
 });
 
+test("skills.include: names kept in order; blank, padded and duplicate names are errors", async () => {
+  const ok = await loadProject(await folder({ "project.yaml": "version: 1\nname: x\nskills:\n  include: [golang, agent-browser]\n" }));
+  assert.deepEqual(ok!.manifest.skills, { include: ["golang", "agent-browser"] });
+  const bad = await loadProject(
+    await folder({ "project.yaml": 'version: 1\nname: x\nskills:\n  include: [a, " b", a]\n' }),
+  ).then(
+    () => assert.fail("expected an error"),
+    (e: Error) => e.message,
+  );
+  assert.match(bad, /\/skills\/include\/1: " b" must be a skill name/);
+  assert.match(bad, /\/skills\/include\/2: skill "a" is already listed/);
+  await assert.rejects(loadProject(await folder({ "project.yaml": "version: 1\nname: x\nskills:\n  exclude: [a]\n" })), /Invalid/);
+});
+
 test("readAgentsMd reads only <cwd>/AGENTS.md and skips blank files", async () => {
   const dir = await folder({ "AGENTS.md": "Rules\n", "sub/AGENTS.md": "nested" });
   assert.deepEqual(await readAgentsMd(dir), { path: join(dir, "AGENTS.md"), content: "Rules\n" });

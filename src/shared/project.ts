@@ -51,6 +51,13 @@ export const ProjectManifestSchema = Type.Object(
     workflows: Type.Optional(Type.Array(IndexEntry)),
     /** Reference material. Index only. */
     docs: Type.Optional(Type.Array(IndexEntry)),
+    /**
+     * Skills for this project, by skill name (frontmatter `name`, else the folder name). With
+     * this key the project decides the skills: without a scenario only these are active, with one
+     * they are added to the scenario's. Looked up in this package's skills, then the user's skill
+     * folders (shared/external-skills.ts); not installed ones are skipped with a warning.
+     */
+    skills: Type.Optional(Type.Object({ include: Type.Array(Line) }, { additionalProperties: false })),
   },
   { additionalProperties: false },
 );
@@ -91,6 +98,11 @@ async function manifestProblems(source: ProjectSource, m: ProjectManifest): Prom
     if (!/^\S+$/.test(tool)) {
       problems.push(`/cli_tools: tool ${JSON.stringify(tool)} must be an executable name (one word, no spaces)`);
     }
+  }
+  const skills = m.skills?.include ?? [];
+  for (const [i, name] of skills.entries()) {
+    if (name.trim() !== name || name === "") problems.push(`/skills/include/${i}: ${JSON.stringify(name)} must be a skill name without surrounding spaces`);
+    else if (skills.indexOf(name) !== i) problems.push(`/skills/include/${i}: skill "${name}" is already listed`);
   }
   const seen = new Map<string, string>();
   const checks: Array<Promise<string | undefined>> = [];

@@ -52,7 +52,14 @@ export interface ProjectAnnounced {
    * split. Optional: older announcements have none.
    */
   sections?: string[];
+  /**
+   * The project's `skills.include` from project.yaml; undefined without a project or without
+   * that key (then the project does not change the skills). Read by the scenario profile
+   * extension, which selects the skills.
+   */
+  skills?: string[];
 }
+
 
 /**
  * `pi.events` channel: every pi-agent extension with a `message_end` handler that replaces
