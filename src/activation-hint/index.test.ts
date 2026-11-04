@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import activationHint, { activationMessage } from "./index.ts";
-import { PROJECT_CHANNEL, SCENARIO_CHANNEL } from "../shared/protocol.ts";
+import { PROJECT_CHANNEL, SCENARIO_CHANNEL, SKILLS_CHANNEL } from "../shared/protocol.ts";
 
 function setup(mode = "tui") {
   const listeners = new Map<string, Array<(data: unknown) => void>>();
@@ -43,6 +43,26 @@ test("scenario and project: one info hint with both", () => {
   assert.match(s.notes[0].message, /Project: demo \(\/p\/demo\)/);
 });
 
+test("neither active: lists the skills; the last announcement wins", () => {
+  const s = setup();
+  s.emit(SKILLS_CHANNEL, { skills: ["a", "b", "c"], missing: [] });
+  s.emit(SKILLS_CHANNEL, { skills: ["golang", "agent-browser"], missing: [] });
+  s.emit(PROJECT_CHANNEL, { block: "" });
+  s.start();
+  assert.deepEqual(s.notes, [{ message: "Skills: golang, agent-browser", type: "info" }]);
+});
+
+test("project with skills: project line, skills and the not installed ones", () => {
+  const s = setup();
+  s.emit(PROJECT_CHANNEL, { project: { name: "demo", dir: "/p/demo" }, block: "", skills: ["golang", "nope"] });
+  s.emit(SKILLS_CHANNEL, { skills: ["golang"], missing: ["nope"] });
+  s.start();
+  assert.equal(
+    s.notes[0].message,
+    "Project: demo (/p/demo); /project shows its context\nSkills: golang\nNot installed (project.yaml skills, skipped): nope",
+  );
+});
+
 test("state is per session start", () => {
   const s = setup();
   s.emit(SCENARIO_CHANNEL, { name: "code-writer" });
@@ -62,4 +82,5 @@ test("activationMessage: only one of them", () => {
   assert.equal(activationMessage("x"), "Scenario: x (its system prompt, tools and skills are active)");
   assert.equal(activationMessage(undefined, { name: "p", dir: "r@v1" }), "Project: p (r@v1); /project shows its context");
   assert.equal(activationMessage(), undefined);
+  assert.equal(activationMessage(undefined, undefined, { skills: [], missing: [] }), "Skills: none");
 });
