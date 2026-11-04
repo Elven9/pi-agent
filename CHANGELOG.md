@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/Elven9/pi-agent/compare/v0.5.0...v0.6.0) (2026-11-04)
+
+
+### Features
+
+* **activation-hint:** bordered startup widget with the final skills list, cleared on the first prompt ([5de39c2](https://github.com/Elven9/pi-agent/commit/5de39c2dc49beb4244696d351fa24d3dc4476c44))
+* **activation-hint:** list the active skills, also without scenario or project ([b4d2b1e](https://github.com/Elven9/pi-agent/commit/b4d2b1e01c1211dd4515a9d6c06fa9ec55cc97aa))
+* **agent-docs:** --pi-agent-docs [topic] prints usage docs for agents and exits ([2a24880](https://github.com/Elven9/pi-agent/commit/2a24880b52eb88c80c61693359f9b87640ca648c))
+* **agent-docs:** load from the package manifest (personal pi) ([853e3b1](https://github.com/Elven9/pi-agent/commit/853e3b1ae5173d129069b0a55b7aceea1e7f40ec))
+* **project:** skills.include in project.yaml, announced with the project ([57fe63a](https://github.com/Elven9/pi-agent/commit/57fe63a163e7b6f17037755b81de50f1281cce47))
+* **scenario-profile:** apply the project's skills and announce the active skills ([042a637](https://github.com/Elven9/pi-agent/commit/042a63731050ced3db896bee83c35013f0bfe160))
+* **scenario-profile:** skill descriptions in the skills announcement ([45fadc8](https://github.com/Elven9/pi-agent/commit/45fadc80886f2846698681e979f0ef91c45a5cfb))
+* **wrapper:** pass the project's skills to sandbox runs, warn about missing ones ([280bd8e](https://github.com/Elven9/pi-agent/commit/280bd8ed2da13ddb3e1a0bf63b4f89a296ba4a3e))
+
 ## [0.5.0](https://github.com/Elven9/pi-agent/compare/v0.4.0...v0.5.0) (2026-11-02)
 
 
