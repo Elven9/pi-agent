@@ -145,10 +145,12 @@ export default function scenarioProfile(
     const base = pi
       .getCommands()
       .filter((c) => c.source === "skill")
-      .map((c) => ({ name: c.name.replace(/^skill:/, ""), baseDir: dirname(c.sourceInfo.path) }));
-    const skills = select(base, [...included, ...projectSkills]).map((s) => s.name);
+      .map((c) => ({ name: c.name.replace(/^skill:/, ""), baseDir: dirname(c.sourceInfo.path), description: c.description ?? "" }));
+    const selected = select(base, [...included, ...projectSkills]);
+    const skills = selected.map((s) => s.name);
     const missing = (projectInclude ?? []).filter((n) => !skills.includes(n));
-    pi.events.emit(SKILLS_CHANNEL, { skills, missing } satisfies SkillsAnnounced);
+    const descriptions = Object.fromEntries(selected.map((s) => [s.name, s.description]));
+    pi.events.emit(SKILLS_CHANNEL, { skills, missing, descriptions } satisfies SkillsAnnounced);
   };
 
   pi.events.on(PROJECT_CHANNEL, (data) => {

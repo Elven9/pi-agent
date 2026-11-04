@@ -24,14 +24,28 @@ function fakePi(flags: Record<string, string | undefined>, externalRoots: string
   let active = ["read", "bash", "edit", "write", "my_tool"];
   let shutdown = false;
   const announced: unknown[] = [];
+  /** Descriptions from the last SKILLS_CHANNEL announcement (kept out of `announced`). */
+  let descriptions: Record<string, string> | undefined;
   const pi = {
     events: {
-      emit: (channel: string, data: unknown) => void announced.push({ channel, data }),
+      emit: (channel: string, data: any) => {
+        if (channel === SKILLS_CHANNEL) {
+          const { descriptions: d, ...rest } = data;
+          descriptions = d;
+          data = rest;
+        }
+        announced.push({ channel, data });
+      },
       on: (channel: string, l: (data: unknown) => void) => void listeners.set(channel, [...(listeners.get(channel) ?? []), l]),
     },
     // pi's loaded skills as commands, like promptOptions().skills.
     getCommands: () =>
-      promptOptions().skills.map((s) => ({ name: `skill:${s.name}`, source: "skill", sourceInfo: { path: join(s.baseDir, "SKILL.md") } })),
+      promptOptions().skills.map((s) => ({
+        name: `skill:${s.name}`,
+        description: `About ${s.name}`,
+        source: "skill",
+        sourceInfo: { path: join(s.baseDir, "SKILL.md") },
+      })),
     registerFlag() {},
     getFlag: (name: string) => flags[name],
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.set(event, handler),
@@ -54,6 +68,9 @@ function fakePi(flags: Record<string, string | undefined>, externalRoots: string
     emit: (name: string, event: object = {}) => handlers.get(name)?.({ type: name, ...event }, ctx),
     /** Another extension's announcement (the project extension's). */
     hear: (channel: string, data: unknown) => listeners.get(channel)?.forEach((l) => l(data)),
+    get descriptions() {
+      return descriptions;
+    },
     /** Skill names from the last SKILLS_CHANNEL announcement. */
     get skills() {
       return (announced.filter((a: any) => a.channel === SKILLS_CHANNEL).at(-1) as any)?.data;
@@ -202,6 +219,8 @@ test("project skills without a scenario: only the project's, missing ones added,
   pi.hear(PROJECT_CHANNEL, { project: { name: "p", dir: "/p" }, block: "", skills: ["personal", "golang", "agent-browser", "nope"] });
   // Announced again once the project's skills are known.
   assert.deepEqual(pi.skills, { skills: ["personal", "golang", "agent-browser"], missing: ["nope"] });
+  // pi's (from its commands) and the added ones' (from SKILL.md).
+  assert.deepEqual(pi.descriptions, { personal: "About personal", golang: "The golang skill", "agent-browser": "The agent-browser skill" });
   for (let i = 0; i < 2; i++) {
     const options = promptOptions();
     pi.emit("before_agent_start", { systemPromptOptions: options });

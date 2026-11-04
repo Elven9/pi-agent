@@ -72,6 +72,8 @@ export interface SkillsAnnounced {
   skills: string[];
   /** Names in the project's `skills.include` that are not installed (skipped). */
   missing: string[];
+  /** Skill name -> its description (frontmatter), for display. */
+  descriptions?: Record<string, string>;
 }
 
 /**
