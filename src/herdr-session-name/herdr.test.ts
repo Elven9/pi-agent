@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import type { ExecResult } from "@earendil-works/pi-coding-agent";
 import { CALL_TIMEOUT_MS, createHerdr, errorCode, METADATA_SOURCE, type Exec } from "./herdr.ts";
 
-const ok: ExecResult = { stdout: '{"id":"cli:pane:rename","result":{}}\n', stderr: "", code: 0, killed: false };
+const ok: ExecResult = { stdout: '{"id":"cli:pane:rename","result":{}}\n', stderr: "", code: 0, killed: false, truncated: false };
 const fail = (code: string): ExecResult => ({
   stdout: JSON.stringify({ error: { code, message: "x" }, id: "cli:agent:rename" }) + "\n",
   stderr: "",
   code: 1,
   killed: false,
+  truncated: false,
 });
 
 function recorder(reply: (args: string[]) => ExecResult | Promise<ExecResult> = () => ok) {
@@ -68,7 +69,7 @@ test("failures carry herdr's error code and never throw", async () => {
   const taken = createHerdr(async () => fail("agent_name_taken"), "p");
   assert.deepEqual(await taken.renameAgent("x"), { ok: false, code: "agent_name_taken" });
 
-  const usage = createHerdr(async () => ({ stdout: "", stderr: "unknown option: --x\n", code: 2, killed: false }), "p");
+  const usage = createHerdr(async () => ({ stdout: "", stderr: "unknown option: --x\n", code: 2, killed: false, truncated: false }), "p");
   assert.deepEqual(await usage.renamePane("x"), { ok: false });
 
   const killed = createHerdr(async () => ({ ...ok, code: 0, killed: true }), "p");

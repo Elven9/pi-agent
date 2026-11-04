@@ -4,7 +4,7 @@ import type { ExecResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { herdrSessionName } from "./index.ts";
 
 const HERDR = { HERDR_ENV: "1", HERDR_PANE_ID: "wD:p1", HERDR_SOCKET_PATH: "/tmp/herdr.sock" };
-const OK: ExecResult = { stdout: "{}", stderr: "", code: 0, killed: false };
+const OK: ExecResult = { stdout: "{}", stderr: "", code: 0, killed: false, truncated: false };
 
 /** Minimal ExtensionAPI: records handlers and herdr calls (args after "herdr"). */
 function fakePi(o: { env?: NodeJS.ProcessEnv; name?: string; mode?: string; reply?: (args: string[]) => ExecResult } = {}) {
@@ -103,7 +103,7 @@ test("startup before herdr knows pi: agent rename retried on agent_start, only w
   const pi = fakePi({
     name: "Named",
     reply: (args) =>
-      args[0] === "agent" && !detected ? { stdout: '{"error":{"code":"agent_not_found"}}', stderr: "", code: 1, killed: false } : OK,
+      args[0] === "agent" && !detected ? { stdout: '{"error":{"code":"agent_not_found"}}', stderr: "", code: 1, killed: false, truncated: false } : OK,
   });
   await pi.start();
   assert.equal(pi.calls.length, 3);

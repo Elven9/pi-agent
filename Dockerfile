@@ -3,7 +3,7 @@
 # Keep these in sync with .nvmrc and the pi devDependency in package.json (the extension, the
 # session parser and the test fixtures are tied to that pi version).
 ARG NODE_VERSION=26.10.0
-ARG PI_VERSION=1.4.0
+ARG PI_VERSION=1.5.0
 # just runs the project commands (justfile recipes, see README "Project commands").
 ARG JUST_VERSION=1.59.0
 
