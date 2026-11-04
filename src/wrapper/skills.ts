@@ -106,6 +106,26 @@ export function withExternalSkills(
   return [...packageSkills, ...external.map((s) => s.baseDir)];
 }
 
+/**
+ * `skillPaths` (package and scenario skills) followed by the project's included skills
+ * (project.yaml `skills.include`, in that order) that are not there yet: looked up in this
+ * package's `skillsDir` first (any skill, also another scenario's), then the external roots.
+ * `missing`: included names that are not installed (the caller warns). A skill counts as there
+ * by folder name, as in withExternalSkills.
+ */
+export function withProjectSkills(
+  skillPaths: readonly string[],
+  include: readonly string[] = [],
+  skillsDir: string,
+  roots: readonly string[] = externalSkillRoots(),
+): { paths: string[]; missing: string[] } {
+  const present = new Set(skillPaths.map((dir) => basename(dir)));
+  const wanted = include.filter((n) => !present.has(n));
+  const found = findExternalSkills(wanted, [skillsDir, ...roots], (root) => scanSkillDirs(root));
+  const foundNames = new Set(found.map((s) => s.name));
+  return { paths: [...skillPaths, ...found.map((s) => s.baseDir)], missing: wanted.filter((n) => !foundNames.has(n)) };
+}
+
 /** An installed skill folder found by scanSkillDirs. */
 export interface InstalledSkill {
   name: string;

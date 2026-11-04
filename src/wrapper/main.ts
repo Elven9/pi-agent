@@ -10,7 +10,7 @@ import { loadJustCommands } from "../shared/just.ts";
 import { writeReport } from "./report-file.ts";
 import { loadPreviousSession } from "./resume.ts";
 import { runTask, type RunOptions } from "./run.ts";
-import { resolveSkills, withExternalSkills } from "./skills.ts";
+import { resolveSkills, withExternalSkills, withProjectSkills } from "./skills.ts";
 
 const EXIT_OK = 0; // report.json written (whatever its status)
 const EXIT_CRASH = 1; // wrapper crashed; no reliable report
@@ -93,10 +93,13 @@ async function parseInput(argv: string[]): Promise<Omit<RunOptions, "signal" | "
   // Invalid justfiles are invalid input, like an invalid project.yaml.
   const just = await loadJustCommands({ cwd: workdir, project });
   const { rootDir, ...extensions } = locate();
-  const skillPaths = withExternalSkills(
-    await resolveSkills(join(rootDir, "skills"), scenario.name, scenarioNames()),
-    scenario.externalSkills?.include,
+  const skillsDir = join(rootDir, "skills");
+  const { paths: skillPaths, missing } = withProjectSkills(
+    withExternalSkills(await resolveSkills(skillsDir, scenario.name, scenarioNames()), scenario.externalSkills?.include),
+    project?.manifest.skills?.include,
+    skillsDir,
   );
+  for (const name of missing) warnings.push(`project skill "${name}" (project.yaml skills.include) is not installed; skipped`);
   return {
     task, scenario, workdir, out, resume, project, just, warnings, skillPaths,
     piBin: process.env.PI_AGENT_PI_BIN || "pi",

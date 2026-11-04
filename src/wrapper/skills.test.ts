@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scenarioNames } from "../shared/scenarios/index.ts";
-import { resolveSkills, withExternalSkills } from "./skills.ts";
+import { resolveSkills, withExternalSkills, withProjectSkills } from "./skills.ts";
 
 /** Creates `files` (paths relative to a new temp dir) and returns the dir. */
 async function tree(files: string[]): Promise<string> {
@@ -136,6 +136,22 @@ test("withExternalSkills: installed included skills follow the package's, in inc
     join(ext, "a-ext"),
   ]);
   assert.deepEqual(withExternalSkills(own, undefined, [ext]), own);
+});
+
+test("withProjectSkills: package skills first (any scenario's), then external; missing reported", async () => {
+  const pkg = await tree(["alpha/SKILL.md", "other/beta/SKILL.md"]);
+  for (const dir of ["alpha", "other/beta"]) await writeFile(join(pkg, dir, "SKILL.md"), `---\ndescription: d\n---\n`);
+  const ext = await mkdtemp(join(tmpdir(), "pi-agent-ext-"));
+  for (const name of ["beta", "gamma"]) {
+    await mkdir(join(ext, name));
+    await writeFile(join(ext, name, "SKILL.md"), `---\nname: ${name}\ndescription: d\n---\n`);
+  }
+  const own = [join(pkg, "alpha")];
+  assert.deepEqual(withProjectSkills(own, ["gamma", "alpha", "beta", "nope"], pkg, [ext]), {
+    paths: [join(pkg, "alpha"), join(ext, "gamma"), join(pkg, "other/beta")],
+    missing: ["nope"],
+  });
+  assert.deepEqual(withProjectSkills(own, undefined, pkg, [ext]), { paths: own, missing: [] });
 });
 
 test("the repo's skills folder is valid for every scenario", async () => {
