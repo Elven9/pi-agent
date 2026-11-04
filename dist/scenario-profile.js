@@ -35,6 +35,7 @@ function findExternalSkills(names, roots, scanRoot) {
 var SCENARIO_FLAG = "scenario";
 var SCENARIO_CHANNEL = "pi-agent.scenario";
 var PROJECT_CHANNEL = "pi-agent.project";
+var SKILLS_CHANNEL = "pi-agent.skills";
 var ENTRY = {
   /** `custom_message` with the scenario's result format, sent once after the task prompt. */
   resultFormat: "pi-agent.result-format",
@@ -257,6 +258,13 @@ function keepSkill(baseDir, skillsDir, scenario, knownScenarios) {
   const top = rel.split(sep)[0];
   return top === scenario || !knownScenarios.includes(top);
 }
+function skillActive(rules, name, baseDir) {
+  if (!rules.scenario && !rules.project) return true;
+  if (rules.project?.has(name)) return true;
+  const s = rules.scenario;
+  if (!s) return false;
+  return isPackageSkill(baseDir, rules.skillsDir) ? keepSkill(baseDir, rules.skillsDir, s.name, s.known) : s.include.has(name);
+}
 
 // src/scenario-profile/index.ts
 function defaultSkillsDir() {
@@ -289,15 +297,57 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
   const kept = /* @__PURE__ */ new Map();
   let included = [];
   let includedNames = /* @__PURE__ */ new Set();
+  let projectInclude;
+  let projectSkills = [];
   let started = false;
   let projectLoadedFirst = false;
-  pi.events.on(PROJECT_CHANNEL, () => {
+  const rules = () => ({
+    skillsDir: root,
+    ...scenario && { scenario: { name: scenario.name, known: scenarioNames(), include: includedNames } },
+    ...projectInclude && { project: new Set(projectInclude) }
+  });
+  const select = (base, extra) => {
+    const r = rules();
+    const out = base.filter((s) => {
+      let keep = kept.get(s.baseDir);
+      if (keep === void 0) {
+        keep = skillActive(r, s.name, real(s.baseDir));
+        kept.set(s.baseDir, keep);
+      }
+      return keep;
+    });
+    const present = new Set(out.map((s) => s.name));
+    for (const s of extra) {
+      if (present.has(s.name)) continue;
+      present.add(s.name);
+      out.push(s);
+    }
+    return out;
+  };
+  const announceSkills = () => {
+    const base = pi.getCommands().filter((c) => c.source === "skill").map((c) => ({ name: c.name.replace(/^skill:/, ""), baseDir: dirname(c.sourceInfo.path), description: c.description ?? "" }));
+    const selected = select(base, [...included, ...projectSkills]);
+    const skills = selected.map((s) => s.name);
+    const missing = (projectInclude ?? []).filter((n) => !skills.includes(n));
+    const descriptions = Object.fromEntries(selected.map((s) => [s.name, s.description]));
+    pi.events.emit(SKILLS_CHANNEL, { skills, missing, descriptions });
+  };
+  pi.events.on(PROJECT_CHANNEL, (data) => {
     if (!started) projectLoadedFirst = true;
+    const next = data.skills;
+    if (JSON.stringify(next) === JSON.stringify(projectInclude)) return;
+    projectInclude = next && [...next];
+    projectSkills = loadIncluded(projectInclude ?? [], [skillsDir, ...externalRoots]);
+    kept.clear();
+    if (started) announceSkills();
   });
   pi.on("session_start", (_event, ctx) => {
     started = true;
     const name = pi.getFlag(SCENARIO_FLAG);
-    if (typeof name !== "string" || name === "") return;
+    if (typeof name !== "string" || name === "") {
+      announceSkills();
+      return;
+    }
     const fail = (message) => {
       console.error(`[pi-agent] ${message}`);
       pi.appendEntry(ENTRY.error, { message });
@@ -317,8 +367,10 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
     }
     included = loadIncluded(scenario.externalSkills?.include ?? [], externalRoots);
     includedNames = new Set(scenario.externalSkills?.include ?? []);
+    kept.clear();
     pi.events.emit(SCENARIO_CHANNEL, { name });
     pi.setActiveTools(scenarioActiveTools(scenario.tools, pi.getActiveTools(), pi.getAllTools()));
+    announceSkills();
   });
   pi.on("before_agent_start", (event) => {
     const options = event.systemPromptOptions;
@@ -326,12 +378,13 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
       const text = globalRules.trim();
       if (text) options.sections[GLOBAL_RULES_SECTION] = text;
     };
+    if (scenario || projectInclude) options.skills = select(options.skills, [...included, ...projectSkills]);
     if (!scenario) {
       addGlobalRules();
       return;
     }
     options.customPrompt = scenario.systemPrompt;
-    const rules = scenarioRules(
+    const sectionRules = scenarioRules(
       scenario.rules,
       pi.getActiveTools(),
       pi.getAllTools(),
@@ -339,21 +392,8 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
       options.promptGuidelines,
       options.hiddenTools
     );
-    if (rules) options.sections.rules = rules;
+    if (sectionRules) options.sections.rules = sectionRules;
     addGlobalRules();
-    const known = scenarioNames();
-    const name = scenario.name;
-    options.skills = options.skills.filter((s) => {
-      let keep = kept.get(s.baseDir);
-      if (keep === void 0) {
-        const dir = real(s.baseDir);
-        keep = isPackageSkill(dir, root) ? keepSkill(dir, root, name, known) : includedNames.has(s.name);
-        kept.set(s.baseDir, keep);
-      }
-      return keep;
-    });
-    const present = new Set(options.skills.map((s) => s.name));
-    for (const s of included) if (!present.has(s.name)) options.skills.push(s);
   });
 }
 export {
