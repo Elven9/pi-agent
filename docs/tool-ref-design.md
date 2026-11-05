@@ -23,8 +23,8 @@ The extension provides:
 3. `tool_ref_grep`: find calls by regex over their input and output. There is no
    `tool_ref_list` index tool; grep covers listing too (see "`tool_ref_grep`").
 4. A resolver module other extensions (report system) import to turn handles into data.
-5. `/ref <N> [N ...]`: a slash command for the user to view calls by handle (see "`/ref`
-   command").
+5. `/ref [N ...]`: a slash command for the user to view calls by handle, or all of them
+   (see "`/ref` command").
 
 Out of scope for now:
 
@@ -355,6 +355,12 @@ output (1 line):
   handles.
 - **Excluded calls are shown**, marked "excluded from tool_ref_get/grep": `toolRef.exclude`
   keeps plumbing out of the model's lookups, not out of the user's.
+- **`/ref` without arguments** pages through every call on the active branch
+  (`browseHandles`: results with an unambiguous handle, excluded ones included, oldest first;
+  no 10-handle cap) and opens at the newest: ← goes back in time, → forward. The list is taken
+  when the panel opens; results that arrive while it is open need a new `/ref`. Unnumbered and
+  ambiguous results are skipped (no handle reaches them). An empty branch gives a notice, no
+  panel. Outside the interactive UI it shows the newest call only.
 - **Panel** (`src/tool-ref/viewer.ts`, `RefViewer`): `ctx.ui.custom()` with `overlay: true`,
   90% wide, 80% high, centred. Lines wrap to the panel width; the title row shows the visible
   range when the text is longer than the panel. Keys: ↑/↓ or `j`/`k` a line, PgUp/PgDn or
@@ -795,9 +801,11 @@ All done with the implementation.
 - Tool log: `ref` taken from the `toolResult` `message_end` by `toolCallId` (also for
   blocked and length-cut calls); `output` has no trailer; `ref: null` without a trailer and
   for unfinished calls.
-- `/ref`: argument parsing (`#`, commas, usage error, more than 10), whole input and output
-  without cap, excluded calls shown and marked, per-ref errors inline.
-- `/ref` panel (`viewer.test.ts`): pages built on first view only, once.
+- `/ref`: argument parsing (`#`, commas, none, usage error, more than 10), whole input and
+  output without cap, excluded calls shown and marked, per-ref errors inline.
+- `/ref` without arguments: browse list (branch order, excluded kept, unnumbered, ambiguous
+  and other-branch results dropped), notice on an empty branch, newest call outside the TUI.
+- `/ref` panel (`viewer.test.ts`): pages built on first view only, once; start page (clamped).
 
 ## Implementation notes
 

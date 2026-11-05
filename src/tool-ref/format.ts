@@ -324,14 +324,14 @@ export function getStructured(index: ToolRefIndex, refs: number[], options: Omit
 }
 
 /**
- * Parses `/ref` arguments: handles, with or without `#`, separated by spaces or commas.
- * Throws with a usage message on anything else.
+ * Parses `/ref` arguments: handles, with or without `#`, separated by spaces or commas; none
+ * gives `[]` (browse every call). Throws with a usage message on anything else.
  */
 export function parseRefArgs(args: string): number[] {
   const words = args.split(/[\s,]+/).filter(Boolean);
   const refs = words.map((w) => (/^#?\d+$/.test(w) ? Number(w.replace("#", "")) : NaN));
-  if (words.length === 0 || refs.some((n) => !Number.isSafeInteger(n) || n < 1)) {
-    throw new Error("Usage: /ref <N> [N ...], e.g. /ref 12 or /ref #12 #14");
+  if (refs.some((n) => !Number.isSafeInteger(n) || n < 1)) {
+    throw new Error("Usage: /ref [N ...], e.g. /ref (browse all), /ref 12 or /ref #12 #14");
   }
   if (refs.length > MAX_REFS) throw new Error(`At most ${MAX_REFS} refs at a time (got ${refs.length}).`);
   return refs;
@@ -430,6 +430,18 @@ function refOutputBlocks(ref: ToolRef): RefBlock[] {
   blocks.push({ kind: "code", lines: lines.slice(0, end), gutter: gutter.slice(0, end), file });
   if (end < total) blocks.push({ kind: "code", lines: lines.slice(end), gutter: gutter.slice(end) });
   return blocks;
+}
+
+/**
+ * Handles `/ref` without arguments pages through: every result on the active branch that a
+ * handle reaches (excluded ones too, ambiguous and unnumbered ones not), oldest first.
+ */
+export function browseHandles(index: ToolRefIndex): number[] {
+  const handles: number[] = [];
+  for (const ref of index.refs) {
+    if (ref.handle !== undefined && !ref.ambiguous) handles.push(ref.handle);
+  }
+  return handles;
 }
 
 /** `/ref` text per handle (duplicates dropped), in the given order. */

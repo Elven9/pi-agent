@@ -195,8 +195,23 @@ test("/ref arguments: handles with or without #, spaces or commas", async () => 
   const { parseRefArgs } = await import("./format.ts");
   assert.deepEqual(parseRefArgs("12"), [12]);
   assert.deepEqual(parseRefArgs(" #12, 14 #3 "), [12, 14, 3]);
-  for (const bad of ["", "abc", "12 x", "0", "-1", "1.5"]) assert.throws(() => parseRefArgs(bad), /Usage: \/ref <N>/, bad);
+  assert.deepEqual(parseRefArgs(""), []);
+  assert.deepEqual(parseRefArgs("  , "), []);
+  for (const bad of ["abc", "12 x", "0", "-1", "1.5"]) assert.throws(() => parseRefArgs(bad), /Usage: \/ref \[N \.\.\.\]/, bad);
   assert.throws(() => parseRefArgs("1 2 3 4 5 6 7 8 9 10 11"), /At most 10/);
+});
+
+test("/ref browse handles: branch order, excluded kept, unnumbered, ambiguous and other-branch dropped", async () => {
+  const { browseHandles } = await import("./format.ts");
+  const s = new TestSession();
+  const root = s.user("go");
+  s.calls({ id: "x", tool: "bash", handle: 1 }, { id: "y", tool: "bash", handle: 2 });
+  s.branchFrom(root);
+  s.calls({ id: "a", tool: "bash", handle: 3 }, { id: "b", tool: "submit_result", handle: 5 }, { id: "c", tool: "bash" });
+  s.calls({ id: "d", tool: "bash", handle: 4 }, { id: "e", tool: "bash", handle: 2 });
+  // #2 is claimed on both branches (ambiguous), #1 is on the other branch, "c" has no handle.
+  assert.deepEqual(browseHandles(indexBranch(s.entries, s.leafId, ["submit_result"])), [3, 5, 4]);
+  assert.deepEqual(browseHandles(indexBranch([], null, [])), []);
 });
 
 test("/ref view: whole input and output, details, excluded calls shown, errors inline", async () => {

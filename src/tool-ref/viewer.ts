@@ -51,7 +51,10 @@ export class RefViewer implements Component {
   private readonly summarizer: Summarizer | undefined;
   private readonly done: () => void;
 
-  /** `handles`: one page each, in order (at least one); `build` makes a page's section on first view. */
+  /**
+   * `handles`: one page each, in order (at least one); `build` makes a page's section on first
+   * view. `start`: the page shown first (default the first).
+   */
   constructor(
     tui: TUI,
     theme: Theme,
@@ -60,6 +63,7 @@ export class RefViewer implements Component {
     build: (handle: number) => RefSection,
     summarizer: Summarizer | undefined,
     done: () => void,
+    options: { start?: number } = {},
   ) {
     this.tui = tui;
     this.theme = theme;
@@ -68,6 +72,7 @@ export class RefViewer implements Component {
     this.build = build;
     this.summarizer = summarizer;
     this.done = done;
+    this.page = Math.max(0, Math.min(handles.length - 1, options.start ?? 0));
   }
 
   private readonly onSummaryUpdate = () => {

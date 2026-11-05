@@ -9,6 +9,7 @@ import {
   formatGrep,
   getStructured,
   grepStructured,
+  browseHandles,
   formatRefView,
   refViewSection,
   grepRefs,
@@ -254,7 +255,7 @@ export default function toolRef(pi: ExtensionAPI) {
 
   // For the user: the original input and output of calls by handle, excluded ones included.
   pi.registerCommand("ref", {
-    description: "Show the original input and output of tool calls by handle: /ref 12 [14 ...]",
+    description: "Show the original input and output of tool calls by handle: /ref 12 [14 ...]; /ref alone pages through all, newest first",
     handler: async (args, ctx) => {
       let refs: number[];
       try {
@@ -264,16 +265,26 @@ export default function toolRef(pi: ExtensionAPI) {
         return;
       }
       const idx = index(ctx);
-      // Only the interactive UI can float a panel; other modes keep the notification.
-      if (ctx.mode !== "tui") {
-        ctx.ui.notify(formatRefView(idx, refs), "info");
+      // No arguments: every call on the branch (taken now; later results need a new /ref),
+      // opened at the newest.
+      const browse = refs.length === 0;
+      const handles = browse ? browseHandles(idx) : [...new Set(refs)];
+      if (handles.length === 0) {
+        ctx.ui.notify("No tool results on this branch yet.", "info");
         return;
       }
-      const handles = [...new Set(refs)];
+      // Only the interactive UI can float a panel; other modes keep the notification (the
+      // newest call only when browsing).
+      if (ctx.mode !== "tui") {
+        ctx.ui.notify(formatRefView(idx, browse ? handles.slice(-1) : handles), "info");
+        return;
+      }
+      const title = browse ? "/ref" : `/ref ${refs.join(" ")}`;
+      const start = browse ? handles.length - 1 : 0;
       const summarizer = makeSummarizer(ctx);
       await ctx.ui.custom<void>(
         (tui, theme, _keybindings, done) =>
-          new RefViewer(tui, theme, `/ref ${refs.join(" ")}`, handles, (n) => refViewSection(idx, n), summarizer, () => done()),
+          new RefViewer(tui, theme, title, handles, (n) => refViewSection(idx, n), summarizer, () => done(), { start }),
         { overlay: true, overlayOptions: VIEWER_OVERLAY },
       );
     },

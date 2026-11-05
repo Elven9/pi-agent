@@ -90,5 +90,16 @@ test("/ref command: shows the call from the session, usage error on bad argument
   const [text, type] = await ref("#1");
   assert.equal(type, "info");
   assert.match(text, /^──── #1 bash ok ────\ncall c1 · .*\n\noutput \(1 line\):\n1  hi\n\ninput:\necho hi$/);
-  assert.deepEqual(await ref("nope"), ["Usage: /ref <N> [N ...], e.g. /ref 12 or /ref #12 #14", "error"]);
+  assert.deepEqual(await ref("nope"), ["Usage: /ref [N ...], e.g. /ref (browse all), /ref 12 or /ref #12 #14", "error"]);
+});
+
+test("/ref without arguments: notice on an empty branch, else the newest call (no panel outside the TUI)", async () => {
+  const { ref, session } = loadExtension();
+  assert.deepEqual(await ref(""), ["No tool results on this branch yet.", "info"]);
+  session.calls({ id: "c1", tool: "bash", input: { command: "echo one" }, output: "one", handle: 1 });
+  session.calls({ id: "c2", tool: "bash", input: { command: "echo two" }, output: "two", handle: 2 });
+  const [text, type] = await ref("");
+  assert.equal(type, "info");
+  assert.match(text, /^──── #2 bash ok ────\n[\s\S]*echo two$/);
+  assert.doesNotMatch(text, /#1/);
 });

@@ -9,10 +9,10 @@ const theme = { fg: (_color: string, text: string) => text, bold: (text: string)
 const tui = { terminal: { rows: 30 }, requestRender() {} } as unknown as TUI;
 
 /** A viewer over `handles` whose pages are plain text; `built` lists the handles built, in order. */
-function viewer(handles: number[]) {
+function viewer(handles: number[], options: { start?: number } = {}) {
   const built: number[] = [];
   const build = (n: number): RefSection => (built.push(n), { handle: n, header: `#${n} bash ok`, text: `page ${n}` });
-  const v = new RefViewer(tui, theme, "/ref", handles, build, undefined, () => {});
+  const v = new RefViewer(tui, theme, "/ref", handles, build, undefined, () => {}, options);
   const title = () => v.render(60)[1]!;
   return { v, built, title };
 }
@@ -35,4 +35,14 @@ test("builds a page only when it is first shown, once", () => {
   v.handleInput("l");
   title();
   assert.deepEqual(built, [3, 9, 5]);
+});
+
+test("start page: opens there (clamped), ← goes to older pages", () => {
+  const { v, built, title } = viewer([3, 5, 9], { start: 2 });
+  assert.match(title(), /‹ 3\/3 › #9 bash ok/);
+  v.handleInput("\x1b[D"); // left
+  assert.match(title(), /‹ 2\/3 › #5 bash ok/);
+  assert.deepEqual(built, [9, 5]);
+  assert.match(viewer([3, 5], { start: 7 }).title(), /‹ 2\/2 › #5/);
+  assert.match(viewer([3, 5], { start: -1 }).title(), /‹ 1\/2 › #3/);
 });
