@@ -9,7 +9,8 @@ import {
   formatGrep,
   getStructured,
   grepStructured,
-  refViewSections,
+  formatRefView,
+  refViewSection,
   grepRefs,
   MAX_REFS,
   parseRefArgs,
@@ -262,16 +263,17 @@ export default function toolRef(pi: ExtensionAPI) {
         ctx.ui.notify((err as Error).message, "error");
         return;
       }
-      const sections = refViewSections(index(ctx), refs);
+      const idx = index(ctx);
       // Only the interactive UI can float a panel; other modes keep the notification.
       if (ctx.mode !== "tui") {
-        ctx.ui.notify(sections.map((s) => s.text).join("\n\n"), "info");
+        ctx.ui.notify(formatRefView(idx, refs), "info");
         return;
       }
+      const handles = [...new Set(refs)];
       const summarizer = makeSummarizer(ctx);
       await ctx.ui.custom<void>(
         (tui, theme, _keybindings, done) =>
-          new RefViewer(tui, theme, `/ref ${refs.join(" ")}`, sections, summarizer, () => done()),
+          new RefViewer(tui, theme, `/ref ${refs.join(" ")}`, handles, (n) => refViewSection(idx, n), summarizer, () => done()),
         { overlay: true, overlayOptions: VIEWER_OVERLAY },
       );
     },

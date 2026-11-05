@@ -361,6 +361,9 @@ output (1 line):
   `b`/space a page, Home/End or `g`/`G` top/end, `q`/Esc close (through `done()`, never
   `OverlayHandle.hide()`). It scrolls by itself rather than using pi-tui's `ScrollView`,
   whose viewport height comes from the layout engine.
+- **Pages are built when first shown**: the panel gets the handles and builds a page
+  (`refViewSection`, whole input and output, highlighting) the first time it is drawn, then
+  keeps it. Pages paged past without being drawn are never built.
 - **Quick summary** (`src/tool-ref/summary.ts`, `Summarizer`; only with `toolRef.summaryModel`):
   `s` switches the panel between the raw text and one summary per call; `r` summarizes the
   panel's calls again. Each view keeps its own scroll position.
@@ -794,6 +797,7 @@ All done with the implementation.
   for unfinished calls.
 - `/ref`: argument parsing (`#`, commas, usage error, more than 10), whole input and output
   without cap, excluded calls shown and marked, per-ref errors inline.
+- `/ref` panel (`viewer.test.ts`): pages built on first view only, once.
 
 ## Implementation notes
 

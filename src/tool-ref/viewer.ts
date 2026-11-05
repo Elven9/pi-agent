@@ -9,7 +9,8 @@ import type { Summarizer, SummaryState } from "./summary.ts";
  * Closes through `done()`; the panel never writes to the transcript.
  *
  * One ref per page: with several refs, ←/→ (or h/l) switch between them. Each page and view
- * keeps its own scroll position.
+ * keeps its own scroll position. Pages are built when first shown (`build`), so a long list of
+ * handles costs nothing until it is paged through.
  *
  * With a `Summarizer` (`toolRef.summaryModel` set), `s` switches to a summary view: one summary
  * of the page's call, streamed in, started on first view; `r` summarizes it again.
@@ -43,15 +44,28 @@ export class RefViewer implements Component {
   private readonly tui: TUI;
   private readonly theme: Theme;
   private readonly title: string;
-  private readonly sections: RefSection[];
+  private readonly handles: readonly number[];
+  private readonly build: (handle: number) => RefSection;
+  /** Pages built so far, by page index. */
+  private readonly built = new Map<number, RefSection>();
   private readonly summarizer: Summarizer | undefined;
   private readonly done: () => void;
 
-  constructor(tui: TUI, theme: Theme, title: string, sections: RefSection[], summarizer: Summarizer | undefined, done: () => void) {
+  /** `handles`: one page each, in order (at least one); `build` makes a page's section on first view. */
+  constructor(
+    tui: TUI,
+    theme: Theme,
+    title: string,
+    handles: readonly number[],
+    build: (handle: number) => RefSection,
+    summarizer: Summarizer | undefined,
+    done: () => void,
+  ) {
     this.tui = tui;
     this.theme = theme;
     this.title = title;
-    this.sections = sections;
+    this.handles = handles;
+    this.build = build;
     this.summarizer = summarizer;
     this.done = done;
   }
@@ -63,7 +77,12 @@ export class RefViewer implements Component {
   };
 
   private get section(): RefSection {
-    return this.sections[this.page]!;
+    let section = this.built.get(this.page);
+    if (!section) {
+      section = this.build(this.handles[this.page]!);
+      this.built.set(this.page, section);
+    }
+    return section;
   }
 
   private get top(): number {
@@ -155,8 +174,8 @@ export class RefViewer implements Component {
     const row = (s: string) => border("│") + truncateToWidth(s, inner, "", true) + border("│");
     const position = lines.length > height ? `  ${top + 1}-${end}/${lines.length}` : "";
     const view = this.mode === "summary" ? ` · summary (${this.summarizer?.label})` : "";
-    const many = this.sections.length > 1;
-    const pager = many ? ` · ‹ ${this.page + 1}/${this.sections.length} › ${this.section.header ?? `#${this.section.handle}`}` : "";
+    const many = this.handles.length > 1;
+    const pager = many ? ` · ‹ ${this.page + 1}/${this.handles.length} › ${this.section.header ?? `#${this.section.handle}`}` : "";
     const base = many ? ` ←→/h l ref ·${HINT}` : HINT;
     const hint = !this.summarizer ? base : this.mode === "raw" ? `${base} · s summary` : `${base} · s raw · r regenerate`;
 
@@ -187,7 +206,7 @@ export class RefViewer implements Component {
     }
     const step = matchesKey(data, "left") || data === "h" ? -1 : matchesKey(data, "right") || data === "l" ? 1 : 0;
     if (step !== 0) {
-      const next = Math.max(0, Math.min(this.sections.length - 1, this.page + step));
+      const next = Math.max(0, Math.min(this.handles.length - 1, this.page + step));
       if (next === this.page) return;
       this.page = next;
       if (this.mode === "summary") this.startSummary();

@@ -434,38 +434,39 @@ function refOutputBlocks(ref: ToolRef): RefBlock[] {
 
 /** `/ref` text per handle (duplicates dropped), in the given order. */
 export function refViewSections(index: ToolRefIndex, refs: number[]): RefSection[] {
-  const sections: RefSection[] = [];
-  for (const n of new Set(refs)) {
-    const r = resolveHandle(index, n, { allowExcluded: true });
-    if (r.error !== undefined) {
-      sections.push({ handle: n, text: r.error });
-      continue;
-    }
-    const ref = r.ref as ToolRef & { handle: number };
-    const facts = [
-      `call ${ref.toolCallId}`,
-      ref.startedAt && `started ${ref.startedAt}`,
-      ref.durationMs !== undefined && `${ref.durationMs} ms`,
-      `entry ${ref.entryId}`,
-      ref.excluded && "excluded from tool_ref_get/grep",
-      lookupSummary(ref),
-    ].filter(Boolean);
-    // Whole output and input (no character cap); a blank line between parts. The script's
-    // intent first, the output (what the user mostly wants) before the input.
-    const header = `#${ref.handle} ${ref.toolName} ${status(ref)}`;
-    const intent = ref.toolName === CODEMODE && typeof ref.input?.code === "string" ? scriptIntent(ref.input.code) : undefined;
-    const blocks: RefBlock[] = [
-      textBlock(`──── ${header} ────`),
-      ...(intent ? [{ kind: "text" as const, text: `intent: ${intent}`, intent: true as const }] : []),
-      textBlock(facts.join(" · ")),
-      textBlock(""),
-      ...refOutputBlocks(ref),
-      textBlock(""),
-      ...refInputBlocks(ref),
-    ];
-    sections.push({ handle: n, ref, header, text: refBlocksText(blocks), blocks });
-  }
-  return sections;
+  return [...new Set(refs)].map((n) => refViewSection(index, n));
+}
+
+/**
+ * `/ref` text of one handle: the resolved call, or the error line. The panel builds its pages
+ * with this one at a time, when they are first shown.
+ */
+export function refViewSection(index: ToolRefIndex, n: number): RefSection {
+  const r = resolveHandle(index, n, { allowExcluded: true });
+  if (r.error !== undefined) return { handle: n, text: r.error };
+  const ref = r.ref as ToolRef & { handle: number };
+  const facts = [
+    `call ${ref.toolCallId}`,
+    ref.startedAt && `started ${ref.startedAt}`,
+    ref.durationMs !== undefined && `${ref.durationMs} ms`,
+    `entry ${ref.entryId}`,
+    ref.excluded && "excluded from tool_ref_get/grep",
+    lookupSummary(ref),
+  ].filter(Boolean);
+  // Whole output and input (no character cap); a blank line between parts. The script's
+  // intent first, the output (what the user mostly wants) before the input.
+  const header = `#${ref.handle} ${ref.toolName} ${status(ref)}`;
+  const intent = ref.toolName === CODEMODE && typeof ref.input?.code === "string" ? scriptIntent(ref.input.code) : undefined;
+  const blocks: RefBlock[] = [
+    textBlock(`──── ${header} ────`),
+    ...(intent ? [{ kind: "text" as const, text: `intent: ${intent}`, intent: true as const }] : []),
+    textBlock(facts.join(" · ")),
+    textBlock(""),
+    ...refOutputBlocks(ref),
+    textBlock(""),
+    ...refInputBlocks(ref),
+  ];
+  return { handle: n, ref, header, text: refBlocksText(blocks), blocks };
 }
 
 export type Where = "in" | "out";
