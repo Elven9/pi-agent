@@ -357,7 +357,8 @@ output (1 line):
   keeps plumbing out of the model's lookups, not out of the user's.
 - **`/ref` without arguments** pages through every call on the active branch
   (`browseHandles`: results with an unambiguous handle, excluded ones included, oldest first;
-  no 10-handle cap) and opens at the newest: ← goes back in time, → forward. The list is taken
+  no 10-handle cap) and opens at the newest: ← goes back in time, → forward, shift+←/→ jump
+  to the oldest/newest (any multi-call panel). The list is taken
   when the panel opens; results that arrive while it is open need a new `/ref`. Unnumbered and
   ambiguous results are skipped (no handle reaches them). An empty branch gives a notice, no
   panel. Outside the interactive UI it shows the newest call only.
@@ -805,7 +806,8 @@ All done with the implementation.
   output without cap, excluded calls shown and marked, per-ref errors inline.
 - `/ref` without arguments: browse list (branch order, excluded kept, unnumbered, ambiguous
   and other-branch results dropped), notice on an empty branch, newest call outside the TUI.
-- `/ref` panel (`viewer.test.ts`): pages built on first view only, once; start page (clamped).
+- `/ref` panel (`viewer.test.ts`): pages built on first view only, once; start page (clamped); shift+←/→ jumps
+  without building the pages between.
 
 ## Implementation notes
 

@@ -8,7 +8,8 @@ import type { Summarizer, SummaryState } from "./summary.ts";
  * Scrolls by itself instead of using `ScrollView`, whose viewport comes from the layout engine.
  * Closes through `done()`; the panel never writes to the transcript.
  *
- * One ref per page: with several refs, ←/→ (or h/l) switch between them. Each page and view
+ * One ref per page: with several refs, ←/→ (or h/l) switch between them and shift+←/→ jump
+ * to the first/last. Each page and view
  * keeps its own scroll position. Pages are built when first shown (`build`), so a long list of
  * handles costs nothing until it is paged through.
  *
@@ -181,7 +182,7 @@ export class RefViewer implements Component {
     const view = this.mode === "summary" ? ` · summary (${this.summarizer?.label})` : "";
     const many = this.handles.length > 1;
     const pager = many ? ` · ‹ ${this.page + 1}/${this.handles.length} › ${this.section.header ?? `#${this.section.handle}`}` : "";
-    const base = many ? ` ←→/h l ref ·${HINT}` : HINT;
+    const base = many ? ` ←→/h l ref · ⇧←→ first/last ·${HINT}` : HINT;
     const hint = !this.summarizer ? base : this.mode === "raw" ? `${base} · s summary` : `${base} · s raw · r regenerate`;
 
     const out = [border(`╭${"─".repeat(inner)}╮`), row(th.fg("accent", ` ${this.title}${pager}${view}`) + th.fg("dim", position))];
@@ -209,9 +210,18 @@ export class RefViewer implements Component {
       if (ref) this.summarizer.regenerate(ref, this.onSummaryUpdate);
       return;
     }
-    const step = matchesKey(data, "left") || data === "h" ? -1 : matchesKey(data, "right") || data === "l" ? 1 : 0;
-    if (step !== 0) {
-      const next = Math.max(0, Math.min(this.handles.length - 1, this.page + step));
+    const last = this.handles.length - 1;
+    const target = matchesKey(data, "shift+left")
+      ? 0
+      : matchesKey(data, "shift+right")
+        ? last
+        : matchesKey(data, "left") || data === "h"
+          ? this.page - 1
+          : matchesKey(data, "right") || data === "l"
+            ? this.page + 1
+            : undefined;
+    if (target !== undefined) {
+      const next = Math.max(0, Math.min(last, target));
       if (next === this.page) return;
       this.page = next;
       if (this.mode === "summary") this.startSummary();

@@ -137,7 +137,7 @@ for a range, `part: input|both`), `tool_ref_grep` finds calls by regex over inpu
 (`pattern: ".", in: "input"` lists them). Both read the raw session entries of the active
 branch, so compaction does not hide anything. For yourself, `/ref 12 [14 ...]` shows the
 whole original input and output of calls by handle, excluded ones included, in a floating panel
-(scroll with ↑/↓, `j`/`k`, PgUp/PgDn; ←/→ between calls; close with `q` or Esc) that leaves
+(scroll with ↑/↓, `j`/`k`, PgUp/PgDn; ←/→ between calls, shift+←/→ to the first/last; close with `q` or Esc) that leaves
 nothing in the transcript. `/ref` alone pages through every call on the branch, starting at
 the newest. The interactive UI hides the trailer; the session file keeps it.
 

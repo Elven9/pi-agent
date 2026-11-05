@@ -37,6 +37,19 @@ test("builds a page only when it is first shown, once", () => {
   assert.deepEqual(built, [3, 9, 5]);
 });
 
+test("shift+←/→ jump to the first/last page; the pages between are not built", () => {
+  const { v, built, title } = viewer([1, 2, 3, 4, 5], { start: 4 });
+  assert.match(v.render(200).at(-2)!, /⇧←→ first\/last/);
+  v.handleInput("\x1b[1;2D"); // shift+left
+  assert.match(title(), /‹ 1\/5 › #1/);
+  v.handleInput("\x1b[1;2D"); // already first
+  v.handleInput("\x1b[1;2C"); // shift+right
+  assert.match(title(), /‹ 5\/5 › #5/);
+  assert.deepEqual(built, [5, 1]);
+  // One page: no pager, no jump hint.
+  assert.doesNotMatch(viewer([7]).v.render(200).join("\n"), /first\/last|‹/);
+});
+
 test("start page: opens there (clamped), ← goes to older pages", () => {
   const { v, built, title } = viewer([3, 5, 9], { start: 2 });
   assert.match(title(), /‹ 3\/3 › #9 bash ok/);
