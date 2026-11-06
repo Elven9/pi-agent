@@ -59,3 +59,63 @@ test("start page: opens there (clamped), ← goes to older pages", () => {
   assert.match(viewer([3, 5], { start: 7 }).title(), /‹ 2\/2 › #5/);
   assert.match(viewer([3, 5], { start: -1 }).title(), /‹ 1\/2 › #3/);
 });
+
+/** One page with a resolved call, for the copy tests. */
+function copyViewer(copy: (text: string) => Promise<void>) {
+  const ref = {
+    handle: 4, toolName: "bash", toolCallId: "t", isError: false, ambiguous: false, excluded: false,
+    input: { command: "echo hi\necho there" }, content: [{ type: "text", text: "hi\nthere" }], output: "hi\nthere",
+  };
+  const build = (n: number): RefSection => ({ handle: n, ref: ref as unknown as RefSection["ref"], header: "#4 bash ok", text: "x" });
+  const v = new RefViewer(tui, theme, "/ref", [4, 5], build, undefined, () => {}, { copy });
+  const footer = () => v.render(200).at(-2)!;
+  return { v, footer };
+}
+
+const settle = () => new Promise((r) => setImmediate(r));
+
+test("c then o / c copies the output, c then i the input; the footer reports it", async () => {
+  const copied: string[] = [];
+  const { v, footer } = copyViewer(async (t) => void copied.push(t));
+  assert.match(footer(), /c copy/);
+  v.handleInput("c");
+  assert.match(footer(), /copy: o\/c output · i input/);
+  v.handleInput("o");
+  await settle();
+  assert.match(footer(), /copied output of #4 \(2 lines/);
+  v.handleInput("c");
+  v.handleInput("i");
+  await settle();
+  v.handleInput("c");
+  v.handleInput("c");
+  await settle();
+  assert.deepEqual(copied, ["hi\nthere", "echo hi\necho there", "hi\nthere"]);
+  // Any other key cancels, and is not acted on (no page change).
+  v.handleInput("c");
+  v.handleInput("l");
+  assert.match(v.render(200)[1]!, /‹ 1\/2/);
+  assert.equal(copied.length, 3);
+});
+
+test("a failed copy is reported; the next key clears it", async () => {
+  const { v, footer } = copyViewer(async () => {
+    throw new Error("no clipboard");
+  });
+  v.handleInput("c");
+  v.handleInput("i");
+  await settle();
+  assert.match(footer(), /copy failed: no clipboard/);
+  v.handleInput("j");
+  assert.match(footer(), /c copy/);
+});
+
+test("a page without a call has nothing to copy", () => {
+  let calls = 0;
+  const v = new RefViewer(tui, theme, "/ref", [9], (n) => ({ handle: n, text: "no such handle" }), undefined, () => {}, {
+    copy: async () => void calls++,
+  });
+  v.handleInput("c");
+  v.handleInput("o");
+  assert.match(v.render(200).at(-2)!, /nothing to copy/);
+  assert.equal(calls, 0);
+});

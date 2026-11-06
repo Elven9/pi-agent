@@ -99,6 +99,16 @@ export function inputLines(ref: Pick<ToolRef, "toolName" | "input">): string[] {
   );
 }
 
+/**
+ * Text the `/ref` panel copies to the clipboard: the output as is (images as `[image]`), or the
+ * input as a bash command or codemode script as is, other arguments as indented JSON.
+ */
+export function copyText(ref: Pick<ToolRef, "toolName" | "input" | "content">, part: "input" | "output"): string {
+  if (part === "output") return outputLines(ref).lines.join("\n");
+  if (!ref.input) return "";
+  return soleCode(ref) ?? JSON.stringify(ref.input, null, 2);
+}
+
 /** Output as lines (`out:N`); `image` marks the `[image]` placeholder lines. */
 export function outputLines(ref: Pick<ToolRef, "content">): { lines: string[]; image: boolean[] } {
   const lines: string[] = [];

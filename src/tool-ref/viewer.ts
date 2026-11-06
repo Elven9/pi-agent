@@ -1,6 +1,6 @@
-import { getLanguageFromPath, getMarkdownTheme, highlightCode, type Theme } from "@earendil-works/pi-coding-agent";
+import { copyToClipboard, getLanguageFromPath, getMarkdownTheme, highlightCode, type Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, Markdown, matchesKey, truncateToWidth, type TUI, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { RefBlock, RefSection } from "./format.ts";
+import { copyText, type RefBlock, type RefSection } from "./format.ts";
 import type { Summarizer, SummaryState } from "./summary.ts";
 
 /**
@@ -16,6 +16,9 @@ import type { Summarizer, SummaryState } from "./summary.ts";
  * With a `Summarizer` (`toolRef.summaryModel` set), `s` switches to a summary view: one summary
  * of the page's call, streamed in, started on first view; `r` summarizes it again.
  *
+ * `c` then `o` (or `c` again) copies the page's output to the system clipboard, `c` then `i`
+ * its input; the hint row reports the result until the next key.
+ *
  * The raw view highlights code blocks whose language is known (bash commands, `read` output,
  * written and edited text by file extension); everything else stays plain text. The summary
  * view renders summaries as markdown.
@@ -28,7 +31,11 @@ export const VIEWER_OVERLAY = { width: "90%", maxHeight: "80%", anchor: "center"
 /** Border top/bottom, title row, hint row. */
 const CHROME_ROWS = 4;
 
-const HINT = " ↑↓/j k scroll · PgUp/PgDn/space page · g/G top/end · q/Esc close";
+const HINT = " ↑↓/j k scroll · PgUp/PgDn/space page · g/G top/end · c copy · q/Esc close";
+const COPY_HINT = " copy: o/c output · i input · any other key cancels";
+
+/** Writes text to the system clipboard; rejects when no clipboard is reachable. */
+export type CopyFn = (text: string) => Promise<void>;
 
 type Mode = "raw" | "summary";
 
@@ -41,6 +48,11 @@ export class RefViewer implements Component {
   /** Highlighted raw body per page; it does not depend on the width. */
   private raw = new Map<number, string>();
   private innerWidth = 80;
+  /** `c` was pressed: the next key picks what to copy. */
+  private copyPending = false;
+  /** Result of the last copy, shown in the hint row until the next key. */
+  private status: { text: string; error: boolean } | undefined;
+  private readonly copy: CopyFn;
 
   private readonly tui: TUI;
   private readonly theme: Theme;
@@ -64,7 +76,7 @@ export class RefViewer implements Component {
     build: (handle: number) => RefSection,
     summarizer: Summarizer | undefined,
     done: () => void,
-    options: { start?: number } = {},
+    options: { start?: number; copy?: CopyFn } = {},
   ) {
     this.tui = tui;
     this.theme = theme;
@@ -74,6 +86,27 @@ export class RefViewer implements Component {
     this.summarizer = summarizer;
     this.done = done;
     this.page = Math.max(0, Math.min(handles.length - 1, options.start ?? 0));
+    this.copy = options.copy ?? copyToClipboard;
+  }
+
+  /** Copies the page's output or input; the status line reports how it went. */
+  private copyPart(part: "input" | "output"): void {
+    const ref = this.section.ref;
+    if (!ref) return this.setStatus("nothing to copy: no call on this page", true);
+    const text = copyText(ref, part);
+    if (text === "") return this.setStatus(`nothing to copy: no ${part}`, true);
+    const lines = text.split("\n").length;
+    const page = this.page;
+    this.setStatus(`copying ${part}…`, false);
+    this.copy(text).then(
+      () => this.page === page && this.setStatus(`copied ${part} of #${ref.handle} (${lines} line${lines === 1 ? "" : "s"}, ${text.length} chars)`, false),
+      (err: unknown) => this.page === page && this.setStatus(`copy failed: ${err instanceof Error ? err.message : String(err)}`, true),
+    );
+  }
+
+  private setStatus(text: string, error: boolean): void {
+    this.status = { text, error };
+    this.tui.requestRender();
   }
 
   private readonly onSummaryUpdate = () => {
@@ -188,11 +221,32 @@ export class RefViewer implements Component {
     const out = [border(`╭${"─".repeat(inner)}╮`), row(th.fg("accent", ` ${this.title}${pager}${view}`) + th.fg("dim", position))];
     for (let i = top; i < end; i++) out.push(row(lines[i]!));
     for (let i = end - top; i < height; i++) out.push(row(""));
-    out.push(row(th.fg("dim", hint)), border(`╰${"─".repeat(inner)}╯`));
+    const footer = this.copyPending
+      ? th.fg("accent", COPY_HINT)
+      : this.status
+        ? th.fg(this.status.error ? "error" : "success", ` ${this.status.text}`)
+        : th.fg("dim", hint);
+    out.push(row(footer), border(`╰${"─".repeat(inner)}╯`));
     return out;
   }
 
   handleInput(data: string): void {
+    if (this.status) {
+      this.status = undefined;
+      this.tui.requestRender();
+    }
+    if (this.copyPending) {
+      this.copyPending = false;
+      if (data === "o" || data === "c") this.copyPart("output");
+      else if (data === "i") this.copyPart("input");
+      this.tui.requestRender();
+      return;
+    }
+    if (data === "c") {
+      this.copyPending = true;
+      this.tui.requestRender();
+      return;
+    }
     if (matchesKey(data, "escape") || data === "q") {
       this.dispose();
       this.done();
