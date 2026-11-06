@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/Elven9/pi-agent/compare/v0.7.0...v0.7.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* **scenario-profile:** concise global rules; precedence line only with rules ([d7399bf](https://github.com/Elven9/pi-agent/commit/d7399bf9c71a810dd0b7a9f173dabb2b314d5a49))
+
 ## [0.7.0](https://github.com/Elven9/pi-agent/compare/v0.6.0...v0.7.0) (2026-11-06)
 
 
