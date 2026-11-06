@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.0](https://github.com/Elven9/pi-agent/compare/v0.6.0...v0.7.0) (2026-11-06)
+
+
+### Features
+
+* **project:** read AGENTS.md from the workspace's parent folders too ([bb2f44f](https://github.com/Elven9/pi-agent/commit/bb2f44fedd40b6a08feb2d8b7eae148a330bf545))
+* **skills:** add shared pi-agent-usage skill ([e275462](https://github.com/Elven9/pi-agent/commit/e27546257c2e9ef17490c5f872e7cea13dd21d4c))
+* **tool-ref:** /ref without arguments pages through all calls, newest first ([1dddebb](https://github.com/Elven9/pi-agent/commit/1dddebbe2468d5d22d66a767ce0eddd7b53af4e4))
+* **tool-ref:** shift+←/→ jump to the first/last call in the /ref panel ([c1de05a](https://github.com/Elven9/pi-agent/commit/c1de05a03ad93055cf9b44940d6d55a23a142e17))
+
 ## [0.6.0](https://github.com/Elven9/pi-agent/compare/v0.5.0...v0.6.0) (2026-11-04)
 
 
