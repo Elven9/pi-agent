@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/Elven9/pi-agent/compare/v0.7.1...v0.8.0) (2026-11-06)
+
+
+### Features
+
+* **tool-ref:** copy a call's output or input to the clipboard from the /ref panel ([952b6f4](https://github.com/Elven9/pi-agent/commit/952b6f4b79de8850242b5aec288775dacfc57f22))
+
 ## [0.7.1](https://github.com/Elven9/pi-agent/compare/v0.7.0...v0.7.1) (2026-11-06)
 
 
