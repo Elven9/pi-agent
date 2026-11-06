@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import scenarioProfile from "./index.ts";
 import { keepSkill, scenarioActiveTools, scenarioRules, skillActive } from "./profile.ts";
-import { GLOBAL_RULES } from "./global-rules.ts";
+import { GLOBAL_RULES, GLOBAL_RULES_PRECEDENCE, globalRulesSection } from "./global-rules.ts";
 import { ENTRY, PROJECT_CHANNEL, SCENARIO_CHANNEL, SKILLS_CHANNEL } from "../shared/protocol.ts";
 import { defineScenario, getScenario } from "../shared/scenarios/index.ts";
 import { Type } from "typebox";
@@ -109,13 +109,13 @@ test("is inert without --scenario (only announces pi's skills)", () => {
   assert.deepEqual(options, promptOptions());
 });
 
-test("global rules without --scenario: only a <global_rules> section, as is (trimmed)", () => {
+test("global rules without --scenario: only a <global_rules> section, precedence line then the rules (trimmed)", () => {
   const pi = fakePi({}, [], "\n- Global 1\n\n## More\n- Global 2\n");
   pi.emit("session_start");
   for (let i = 0; i < 2; i++) {
     const options = promptOptions();
     pi.emit("before_agent_start", { systemPromptOptions: options });
-    assert.deepEqual(options.sections, { global_rules: "- Global 1\n\n## More\n- Global 2" });
+    assert.deepEqual(options.sections, { global_rules: `${GLOBAL_RULES_PRECEDENCE}\n\n- Global 1\n\n## More\n- Global 2` });
     assert.deepEqual({ ...options, sections: {} }, promptOptions());
   }
 });
@@ -127,14 +127,25 @@ test("global rules with --scenario: <global_rules> after the scenario's <rules>,
   pi.emit("before_agent_start", { systemPromptOptions: options });
   assert.deepEqual(Object.entries(options.sections), [
     ["rules", "- Use my_tool for X"],
-    ["global_rules", "- Global 1"],
+    ["global_rules", `${GLOBAL_RULES_PRECEDENCE}\n\n- Global 1`],
   ]);
 });
 
-test("GLOBAL_RULES: rules/global.md, trimmed, says scenario rules take precedence", () => {
+test("globalRulesSection: precedence line only with rules", () => {
+  assert.equal(globalRulesSection(" \n "), undefined);
+  assert.equal(globalRulesSection("\n- a\n"), `${GLOBAL_RULES_PRECEDENCE}\n\n- a`);
+  // Empty rules file: no <global_rules> section, even with a scenario.
+  const pi = fakePi({ scenario: "work-request-triage" }, [], " \n");
+  pi.emit("session_start");
+  const options = promptOptions();
+  pi.emit("before_agent_start", { systemPromptOptions: options });
+  assert.equal("global_rules" in options.sections, false);
+});
+
+test("GLOBAL_RULES: rules/global.md, trimmed, without the precedence line", () => {
+  assert.ok(!GLOBAL_RULES.includes(GLOBAL_RULES_PRECEDENCE));
   assert.ok(GLOBAL_RULES !== "" && GLOBAL_RULES === GLOBAL_RULES.trim());
-  assert.match(GLOBAL_RULES, /^- When searching for text or files, prefer using rg/);
-  assert.match(GLOBAL_RULES, /Scenario rules take precedence/);
+  assert.match(GLOBAL_RULES, /## Preferred tools\n.*\n- rg over grep\n- fd over find/);
 });
 
 test("unknown scenario: records an error entry and shuts down", () => {

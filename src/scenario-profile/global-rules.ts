@@ -13,3 +13,12 @@ export const GLOBAL_RULES_SECTION = "global_rules";
  * for every session.
  */
 export const GLOBAL_RULES: string = globalRules.trim();
+
+/** Opens the `<global_rules>` section; added by code, so `rules/global.md` holds only the rules. */
+export const GLOBAL_RULES_PRECEDENCE = "Scenario rules take precedence over these global rules.";
+
+/** The `<global_rules>` section text: the precedence line, then `rules` (trimmed); undefined when empty. */
+export function globalRulesSection(rules: string): string | undefined {
+  const text = rules.trim();
+  return text ? `${GLOBAL_RULES_PRECEDENCE}\n\n${text}` : undefined;
+}

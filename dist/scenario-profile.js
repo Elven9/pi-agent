@@ -218,11 +218,18 @@ function getScenario(name) {
 }
 
 // src/scenario-profile/rules/global.md
-var global_default = "- When searching for text or files, prefer using rg or rg --files respectively because rg is much faster than alternatives like grep. (If the rg command is not found, then use alternatives.)\n- Scenario rules take precedence over these global rules.\n";
+var global_default = "## Preferred tools\nModern tools are faster; fall back only if not installed.\n- rg over grep\n- fd over find\n";
 
 // src/scenario-profile/global-rules.ts
 var GLOBAL_RULES_SECTION = "global_rules";
 var GLOBAL_RULES = global_default.trim();
+var GLOBAL_RULES_PRECEDENCE = "Scenario rules take precedence over these global rules.";
+function globalRulesSection(rules) {
+  const text = rules.trim();
+  return text ? `${GLOBAL_RULES_PRECEDENCE}
+
+${text}` : void 0;
+}
 
 // src/scenario-profile/profile.ts
 import { isAbsolute, relative, sep } from "node:path";
@@ -375,7 +382,7 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
   pi.on("before_agent_start", (event) => {
     const options = event.systemPromptOptions;
     const addGlobalRules = () => {
-      const text = globalRules.trim();
+      const text = globalRulesSection(globalRules);
       if (text) options.sections[GLOBAL_RULES_SECTION] = text;
     };
     if (scenario || projectInclude) options.skills = select(options.skills, [...included, ...projectSkills]);

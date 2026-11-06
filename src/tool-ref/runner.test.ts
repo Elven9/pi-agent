@@ -8,7 +8,7 @@ import { createCodemodeExtension, type ExtensionFactory } from "@earendil-works/
 import piAgentRunner from "../extension/index.ts";
 import metrics from "../metrics/index.ts";
 import projectContext from "../project/index.ts";
-import { GLOBAL_RULES } from "../scenario-profile/global-rules.ts";
+import { GLOBAL_RULES, globalRulesSection } from "../scenario-profile/global-rules.ts";
 import scenarioProfile from "../scenario-profile/index.ts";
 import { SUBMIT_RESULT } from "../shared/protocol.ts";
 import { demo } from "../shared/scenarios/demo.ts";
@@ -88,7 +88,7 @@ test("runner setup, codemode only: scripts reach the tools, <tool_refs> in block
   const rules = sections.rules!.replace(/^<rules>\n|\n<\/rules>$/g, "").split("\n");
   assert.equal(rules.length, 1);
   assert.match(rules[0]!, /^- Use codemode to /);
-  assert.equal(sections.global_rules, `<global_rules>\n${GLOBAL_RULES}\n</global_rules>`);
+  assert.equal(sections.global_rules, `<global_rules>\n${globalRulesSection(GLOBAL_RULES)}\n</global_rules>`);
 
   // Declared to the model: codemode and submit_result. Scripts reach the others, not submit_result.
   assert.deepEqual(system?.toolsAdded?.map((t) => t.name).sort(), ["codemode", SUBMIT_RESULT]);

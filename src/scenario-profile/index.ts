@@ -14,7 +14,7 @@ import {
   type SkillsAnnounced,
 } from "../shared/protocol.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
-import { GLOBAL_RULES, GLOBAL_RULES_SECTION } from "./global-rules.ts";
+import { GLOBAL_RULES, GLOBAL_RULES_SECTION, globalRulesSection } from "./global-rules.ts";
 import { scenarioActiveTools, scenarioRules, skillActive, type SkillRules } from "./profile.ts";
 
 /**
@@ -38,7 +38,7 @@ function real(path: string): string {
 /**
  * Scenario profile extension, loaded by both the runner (`-e dist/scenario-profile.js`) and
  * personal pi (package manifest). In every session it adds the global rules (GLOBAL_RULES,
- * `rules/global.md`) as a `<global_rules>` section, after `<rules>` (pi's own without a scenario,
+ * `rules/global.md`, opened by a precedence line; none when empty) as a `<global_rules>` section, after `<rules>` (pi's own without a scenario,
  * the scenario's with one). Otherwise inert unless pi is started with `--scenario <name>`; then
  * the session gets that scenario's profile:
  *
@@ -207,7 +207,7 @@ export default function scenarioProfile(
     // Custom sections render in insertion order after <cwd>: <rules> (with a scenario) first,
     // then <global_rules>, both before the project extension's sections (cache block A).
     const addGlobalRules = () => {
-      const text = globalRules.trim();
+      const text = globalRulesSection(globalRules);
       if (text) options.sections[GLOBAL_RULES_SECTION] = text;
     };
     if (scenario || projectInclude) options.skills = select(options.skills, [...included, ...projectSkills]);
