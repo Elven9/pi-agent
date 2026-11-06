@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -170,6 +170,21 @@ test("without --project, pi's own context files win and nothing is added or spli
   assert.deepEqual(options.sections, { cwd: "/w" });
   const request = payload(`prompt\n\n<agents_md>\npath: ${join(workspace, "AGENTS.md")}\nUse pnpm.\n</agents_md>`);
   assert.equal(pi.emit("before_provider_request", { payload: request }), undefined);
+});
+
+test("reads the AGENTS.md files of the parent folders too, outermost first", async () => {
+  const parent = await tmp({ "AGENTS.md": "From the parent.\n" });
+  const workspace = join(parent, "ws");
+  await mkdir(workspace);
+  await writeFile(join(workspace, "AGENTS.md"), "Use pnpm.\n");
+  const pi = fakePi({}, workspace);
+  await pi.emit("session_start");
+  const section = promptSections(pi).agents_md!;
+  // Folders above the temp folder may have their own; the last two are ours, in order.
+  assert.ok(
+    section.endsWith(`path: ${join(parent, "AGENTS.md")}\nFrom the parent.\n\npath: ${join(workspace, "AGENTS.md")}\nUse pnpm.`),
+    section,
+  );
 });
 
 test("without --project and without pi's context files (-nc), AGENTS.md is block B", async () => {

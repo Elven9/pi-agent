@@ -22,8 +22,8 @@ Or set it once in `settings.json` (`~/.pi/agent/settings.json` or `.pi/settings.
   expanded.
 - `github` / `gitlab` read the repo at the tag through the logged-in `gh` / `glab` (nothing is
   cloned). The agent then reads workflows and docs with the `project_read` tool.
-- With a project, pi's own AGENTS.md/CLAUDE.md discovery is turned off. Only the workspace's
-  `AGENTS.md` (in the cwd) is added.
+- With a project, pi's own AGENTS.md/CLAUDE.md discovery is turned off. The `AGENTS.md` files
+  of the cwd and every parent folder (up to `/`) are added instead, outermost first.
 
 ## Write project.yaml
 

@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import {
   describeBlock,
   PROJECT_TOKEN_WARNING,
-  readAgentsMd,
+  readAgentsMdFiles,
   renderProjectSections,
   type Project,
 } from "../shared/project.ts";
@@ -80,7 +80,7 @@ async function findSessionFile(dir: string, id: string): Promise<string | null> 
  * report: its hash shows whether the cached project prefix changed between runs.
  */
 async function projectContext(project: Project | undefined, workdir: string, just?: JustCommands): Promise<ProjectContextInfo | null> {
-  const sections = renderProjectSections({ cwd: workdir, project, agentsMd: await readAgentsMd(workdir), just });
+  const sections = renderProjectSections({ cwd: workdir, project, agentsMd: await readAgentsMdFiles(workdir), just });
   if (Object.keys(sections).length === 0) return null;
   const r = project?.source.remote;
   return {

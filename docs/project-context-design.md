@@ -188,13 +188,14 @@ prompt, so block B stays the same between runs.
 
 ### `AGENTS.md`
 
-Not part of the manifest. The extension reads `AGENTS.md` at the root of the workspace (cwd) if
-it exists, and includes it in full. Only that one file: no parent folders, no subfolders, no
-`CLAUDE.md`. It is read once at session start; edits the agent makes to it during the run show up
+Not part of the manifest. The extension reads `AGENTS.md` in the workspace (cwd) and in each of
+its parent folders up to the filesystem root, the same walk as pi's context files (no depth
+limit), and includes each in full, outermost first, in one `<agents_md>` section (each file
+starts with its `path:` line, separated by a blank line). Only `AGENTS.md`: no subfolders, no
+`CLAUDE.md`, not pi's agent dir. An unreadable parent file is skipped. They are read once at session start; edits the agent makes to it during the run show up
 in the next session. It is included with or without a project manifest.
 
-pi's own context-file loading stays off (`-na`), because it would place the file before skills
-and also pick up parent folders.
+pi's own context-file loading stays off (`-nc`), because it would place the files before skills.
 
 In personal pi (the extension is in the package manifest) pi's context files may be on. With
 `--project`, `before_agent_start` empties `systemPromptOptions.contextFiles` on every prompt, the
@@ -351,7 +352,7 @@ first and decides the allowed keys (errors name only that type's keys):
 
 - **Manifest only.** Project context comes only from `project.yaml`; nothing is discovered by
   scanning folders. The project owner keeps the manifest up to date. The one fixed exception is
-  `AGENTS.md` at the workspace root.
+  `AGENTS.md` in the workspace and its parent folders (the same walk as pi's context files).
 - **No scoped instructions.** Nothing is attached to tool results; area-specific guidance is a
   workflow.
 - **Commands are just recipes** (project and workspace justfiles, merged); multi-step

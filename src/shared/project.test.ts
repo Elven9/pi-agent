@@ -8,6 +8,7 @@ import {
   loadProject,
   normalizeText,
   readAgentsMd,
+  readAgentsMdFiles,
   renderBlock,
   renderProjectSections,
 } from "./project.ts";
@@ -62,7 +63,7 @@ test("renders block B in the documented order, keeping the manifest's order", as
   const sections = renderProjectSections({
     cwd: "/sandbox",
     project: { ...project!, dir: "/project" },
-    agentsMd: { path: "/sandbox/AGENTS.md", content: "\n# Agents\r\nUse pnpm.   \n\n\n" },
+    agentsMd: [{ path: "/sandbox/AGENTS.md", content: "\n# Agents\r\nUse pnpm.   \n\n\n" }],
     just: JUST,
   });
   assert.equal(
@@ -131,7 +132,7 @@ test("rendering is byte-identical across loads; the hash tracks content", async 
 test("leaves out empty sections; AGENTS.md alone works without a manifest", async () => {
   const minimal = await loadProject(await folder({ "project.yaml": "version: 1\nname: x\nrules: []\n" }));
   assert.deepEqual(renderProjectSections({ cwd: "/w", project: minimal }), { project: "name: x" });
-  assert.deepEqual(renderProjectSections({ cwd: "/w", agentsMd: { path: "/w/AGENTS.md", content: "Hi" } }), {
+  assert.deepEqual(renderProjectSections({ cwd: "/w", agentsMd: [{ path: "/w/AGENTS.md", content: "Hi" }] }), {
     agents_md: "path: /w/AGENTS.md\nHi",
   });
   assert.equal(renderBlock({}), "");
@@ -205,6 +206,27 @@ test("readAgentsMd reads only <cwd>/AGENTS.md and skips blank files", async () =
   assert.deepEqual(await readAgentsMd(dir), { path: join(dir, "AGENTS.md"), content: "Rules\n" });
   assert.equal(await readAgentsMd(join(dir, "sub", "none")), undefined);
   assert.equal(await readAgentsMd(await folder({ "AGENTS.md": " \n\n" })), undefined);
+});
+
+test("readAgentsMdFiles walks from cwd to the root, outermost first, skipping folders without one", async () => {
+  const top = await folder({ "AGENTS.md": "Top\n", "a/b/AGENTS.md": "Workspace\n", "a/b/c/AGENTS.md": "below cwd" });
+  const cwd = join(top, "a", "b");
+  // a/ has none; a/b/c/ is below the cwd and not read.
+  assert.deepEqual(await readAgentsMdFiles(cwd, { stopAt: top }), [
+    { path: join(top, "AGENTS.md"), content: "Top\n" },
+    { path: join(cwd, "AGENTS.md"), content: "Workspace\n" },
+  ]);
+  // stopAt ends the walk: folders above it are not read.
+  assert.deepEqual(await readAgentsMdFiles(cwd, { stopAt: cwd }), [{ path: join(cwd, "AGENTS.md"), content: "Workspace\n" }]);
+  assert.deepEqual(await readAgentsMdFiles(join(top, "a"), { stopAt: join(top, "a") }), []);
+});
+
+test("several AGENTS.md files render in one section, separated by a blank line", () => {
+  const agentsMd = [
+    { path: "/AGENTS.md", content: "Top\n" },
+    { path: "/w/AGENTS.md", content: "Workspace" },
+  ];
+  assert.deepEqual(renderProjectSections({ cwd: "/w", agentsMd }), { agents_md: "path: /AGENTS.md\nTop\n\npath: /w/AGENTS.md\nWorkspace" });
 });
 
 test("normalizeText", () => {

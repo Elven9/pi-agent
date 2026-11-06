@@ -6,7 +6,7 @@ import {
   estimateTokens,
   loadProject,
   loadProjectFrom,
-  readAgentsMd,
+  readAgentsMdFiles,
   renderBlock,
   renderProjectSections,
   type Project,
@@ -35,7 +35,8 @@ export interface ProjectContextOptions {
 
 /**
  * Project context extension (docs/project-context-design.md). Adds "block B" to the system
- * prompt: the project's sections from `project.yaml` and `AGENTS.md` at the workspace root.
+ * prompt: the project's sections from `project.yaml` and the `AGENTS.md` files of the workspace
+ * and its parent folders, up to the filesystem root (readAgentsMdFiles).
  * Both are read once per session, so block B stays byte-identical for the whole session (and
  * across sessions while the files don't change).
  *
@@ -56,11 +57,11 @@ export interface ProjectContextOptions {
  *
  * Context files (pi's AGENTS.md/CLAUDE.md discovery, see `-nc`):
  * - With a project, pi's context files are dropped from every prompt (as if `-nc`): the
- *   project decides the context, and the workspace AGENTS.md is in block B instead.
+ *   project decides the context, and the AGENTS.md files (workspace and parents) are in block B instead.
  * - Without a project, if pi loaded context files, the extension adds nothing and leaves them
  *   to pi (plain `pi` with this package installed behaves as without it).
  * - Without a project and with no context files from pi (`-nc`, as the wrapper runs), the
- *   workspace AGENTS.md alone is block B.
+ *   AGENTS.md files (workspace and parents) alone are block B.
  */
 export function createProjectContext(options: ProjectContextOptions = {}) {
   const run = options.run ?? execCli;
@@ -163,7 +164,7 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
         }
         const just = await loadJustCommands({ cwd: ctx.cwd, project, run });
         setJustEnv(just && justEnv(just));
-        sections = renderProjectSections({ cwd: ctx.cwd, project, agentsMd: await readAgentsMd(ctx.cwd), just });
+        sections = renderProjectSections({ cwd: ctx.cwd, project, agentsMd: await readAgentsMdFiles(ctx.cwd), just });
         block = renderBlock(sections);
         applied = false;
         updateTools();

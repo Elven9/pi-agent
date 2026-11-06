@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { join, normalize, resolve } from "node:path";
+import { dirname, join, normalize, resolve } from "node:path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { parse as parseYaml } from "yaml";
@@ -10,7 +10,8 @@ import { PROJECT_READ } from "./protocol.ts";
 
 /**
  * Project context (docs/project-context-design.md): `project.yaml` in a read-only project
- * folder plus `AGENTS.md` at the workspace root, rendered into "block B" of the system prompt.
+ * folder plus the `AGENTS.md` files of the workspace and its parent folders, rendered into
+ * "block B" of the system prompt.
  * Commands are `just` recipes from the project's and the workspace's justfiles (just.ts).
  *
  * The project files come from a `ProjectSource`: a local folder or a remote repository pinned to
@@ -71,7 +72,7 @@ export interface Project {
   source: ProjectSource;
 }
 
-/** `AGENTS.md` at the workspace root. */
+/** An `AGENTS.md` in the workspace or one of its parent folders. */
 export interface AgentsMd {
   path: string;
   content: string;
@@ -166,14 +167,38 @@ function unknownKey(path: string): string {
     : "is not a known key";
 }
 
-/** Reads `<cwd>/AGENTS.md`; undefined if it is missing or blank. Nothing else is looked up. */
-export async function readAgentsMd(cwd: string): Promise<AgentsMd | undefined> {
-  const path = join(cwd, AGENTS_MD);
+/**
+ * Reads `<dir>/AGENTS.md`; undefined if it is missing or blank. With `lenient`, an unreadable
+ * file (permissions) is skipped too instead of throwing.
+ */
+export async function readAgentsMd(dir: string, opts: { lenient?: boolean } = {}): Promise<AgentsMd | undefined> {
+  const path = join(dir, AGENTS_MD);
   const content = await readFile(path, "utf8").catch((err: NodeJS.ErrnoException) => {
-    if (err.code === "ENOENT" || err.code === "EISDIR") return undefined;
+    if (err.code === "ENOENT" || err.code === "EISDIR" || err.code === "ENOTDIR") return undefined;
+    if (opts.lenient && (err.code === "EACCES" || err.code === "EPERM")) return undefined;
     throw new Error(`Cannot read ${path}: ${err.message}`);
   });
   return content === undefined || normalizeText(content) === "" ? undefined : { path, content };
+}
+
+/**
+ * The `AGENTS.md` files of `cwd` and every parent folder up to the filesystem root (as pi
+ * discovers context files; no depth limit), outermost first, so the workspace's own file comes
+ * last and the most specific instructions are read last. `stopAt` (an ancestor of `cwd`, for
+ * tests) ends the walk after that folder. Only `AGENTS.md`: no `CLAUDE.md`, no subfolders,
+ * not pi's agent dir. An unreadable parent file is skipped; an unreadable `<cwd>/AGENTS.md` throws.
+ */
+export async function readAgentsMdFiles(cwd: string, opts: { stopAt?: string } = {}): Promise<AgentsMd[]> {
+  const stopAt = opts.stopAt === undefined ? undefined : resolve(opts.stopAt);
+  const files: AgentsMd[] = [];
+  for (let dir = resolve(cwd), first = true; ; first = false) {
+    const file = await readAgentsMd(dir, { lenient: !first });
+    if (file) files.unshift(file);
+    const parent = dirname(dir);
+    if (dir === stopAt || parent === dir) break;
+    dir = parent;
+  }
+  return files;
 }
 
 /**
@@ -206,7 +231,8 @@ function code(command: string): string {
 export function renderProjectSections(o: {
   cwd: string;
   project?: Project;
-  agentsMd?: AgentsMd;
+  /** From readAgentsMdFiles: outermost first, rendered in that order. */
+  agentsMd?: readonly AgentsMd[];
   just?: JustCommands;
 }): ProjectSections {
   const sections: ProjectSections = {};
@@ -219,7 +245,10 @@ export function renderProjectSections(o: {
     sections[SECTION.project] = [`name: ${m.name}`, ...(m.description ? [normalizeText(m.description)] : [])].join("\n");
     if (m.rules?.length) sections[SECTION.rules] = m.rules.map(item).join("\n");
   }
-  if (o.agentsMd) sections[SECTION.agentsMd] = `path: ${o.agentsMd.path}\n${normalizeText(o.agentsMd.content)}`;
+  // One file renders as before (`path: …` then its text); more are separated by a blank line.
+  if (o.agentsMd?.length) {
+    sections[SECTION.agentsMd] = o.agentsMd.map((f) => `path: ${f.path}\n${normalizeText(f.content)}`).join("\n\n");
+  }
   if (o.just?.recipes.length) {
     sections[SECTION.commands] = [
       `Run the project's commands with \`just\`, from any folder: recipes run in ${o.just.workdir}. They come from ${o.just.sources.join(" and ")}. Use a recipe instead of typing its commands yourself; \`just --usage <recipe>\` shows its arguments and \`just --show <recipe>\` what it runs:`,

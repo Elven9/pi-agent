@@ -56,13 +56,13 @@ session, with or without `--scenario`, the extension adds the global rules
 without `--scenario` that is all it does.
 
 ```sh
-pi --project ~/path/to/project-folder   # project.yaml + workspace AGENTS.md; pi's context files off
+pi --project ~/path/to/project-folder   # project.yaml + AGENTS.md of cwd and parents; pi's context files off
 pi                                      # extension stays out of the way: pi's own AGENTS.md handling
 ```
 
 With `--project`, the extension drops pi's context files (AGENTS.md/CLAUDE.md from the agent
-dir, cwd and parents) from every prompt, as `-nc` would, and adds only the workspace AGENTS.md
-in its own section. Startup still lists them under `[Context]`; `/project` shows what is
+dir, cwd and parents) from every prompt, as `-nc` would, and adds the `AGENTS.md` files of the
+cwd and its parent folders (not CLAUDE.md, not the agent dir's) in its own section. Startup still lists them under `[Context]`; `/project` shows what is
 actually sent. Without `--project` it adds nothing while pi loads context files itself.
 
 ### Session upload
@@ -338,7 +338,9 @@ prompt, after the scenario's prompt and skills, as "block B". Design and reasons
 
 - `project.yaml` in the `--project` folder (in the image: `/project`, mounted read-only). Only
   what the manifest lists is used; nothing is discovered by scanning folders.
-- `AGENTS.md` at the root of the workspace, if it exists (no parent folders, no subfolders).
+- `AGENTS.md` in the workspace and in each of its parent folders, up to the filesystem root
+  (no depth limit, like pi), outermost first so the workspace's own file comes last. No
+  subfolders, no `CLAUDE.md`.
 
 ```yaml
 version: 1
