@@ -1,4 +1,5 @@
 import { codeWriter } from "./code-writer.ts";
+import { debuggerScenario } from "./debugger.ts";
 import { demo } from "./demo.ts";
 import { theSculptor } from "./the-sculptor.ts";
 import type { Scenario } from "./types.ts";
@@ -7,7 +8,7 @@ import { workRequestTriage } from "./work-request-triage.ts";
 export type { Scenario } from "./types.ts";
 export { defineScenario } from "./types.ts";
 
-const registry = new Map<string, Scenario>([demo, workRequestTriage, codeWriter, theSculptor].map((s) => [s.name, s]));
+const registry = new Map<string, Scenario>([demo, workRequestTriage, codeWriter, theSculptor, debuggerScenario].map((s) => [s.name, s]));
 
 /** Registered scenario names (also the names of scenario skill folders, `skills/<scenario>/`). */
 export function scenarioNames(): string[] {
