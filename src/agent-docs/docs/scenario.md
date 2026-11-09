@@ -10,8 +10,8 @@ the skills. Run one with `--scenario <name>`. Without `--scenario`, pi behaves a
   design docs, and does not change code. Use it before you implement.
 - `work-request-triage`: turn raw text (chat, email, ticket) into categorized tasks with
   extracted fields and open questions. Read-only. Pass the text as the message.
-- `debugger`: investigate a bug and propose its potential root cause. Reads the code, never
-  changes it.
+- `debugger`: investigate a bug: gather facts, or propose its potential root cause when asked.
+  Reads the code, never changes it.
 - `demo`: smoke test. It looks around the cwd and describes the project.
 
 ## Run
