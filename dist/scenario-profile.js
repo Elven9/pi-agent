@@ -83,19 +83,24 @@ var codeWriter = defineScenario({
 import { Type as Type2 } from "typebox";
 
 // src/shared/scenarios/prompts/debugger.md
-var debugger_default = "You are a debugger. You investigate a bug and propose its potential root cause. You read the code but never modify it.\nIf a project is enabled, read its workflows and docs that apply to the task before you start.\n";
+var debugger_default = "You are a debugger. You investigate bugs and gather facts about the code and how it behaves. You read the code but never modify it.\nDo what the user asks: if they want information or facts, gather and report them without looking for a root cause; if they ask why something goes wrong, also propose its potential root cause.\nIf a project is enabled, read its workflows and docs that apply to the task before you start.\n";
 
 // src/shared/scenarios/debugger.ts
 var debuggerScenario = defineScenario({
   name: "debugger",
-  detailKind: "debugger/v1",
+  detailKind: "debugger/v2",
   systemPrompt: debugger_default,
   // No edit or write: the scenario does not change code. bash is for inspecting (logs, tests, git).
   tools: ["codemode", "read", "bash"],
   detailSchema: Type2.Object(
     {
-      rootCause: Type2.String({ minLength: 1, description: "The potential root cause of the bug" }),
-      evidence: Type2.Array(Type2.String({ minLength: 1 }), { description: "What supports it: code locations, logs, command output" })
+      findings: Type2.Array(Type2.String({ minLength: 1 }), {
+        minItems: 1,
+        description: "Facts you gathered, each with its source: code locations, logs, command output"
+      }),
+      rootCause: Type2.Optional(
+        Type2.String({ minLength: 1, description: "The potential root cause, only when the user asked for one" })
+      )
     },
     { additionalProperties: false }
   )
