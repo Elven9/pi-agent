@@ -1,0 +1,7 @@
+{
+  "taskId": "debugger-example-001",
+  "scenario": "debugger",
+  "prompt": "Run the unit tests in this directory. If any fail, find the potential root cause. Do not change any code.",
+  "model": "cpa/claude-haiku-4-5-20251001",
+  "thinkingLevel": "low"
+}
