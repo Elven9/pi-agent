@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0](https://github.com/Elven9/pi-agent/compare/v0.7.1...v0.8.0) (2026-11-09)
+
+
+### Features
+
+* **scenarios:** add debugger scenario that proposes a bug's root cause without changing code ([7a9a6fc](https://github.com/Elven9/pi-agent/commit/7a9a6fc0ddefdedd90cf04ecc2b18ff954ef28cf))
+* **scenarios:** debugger can gather facts without a root cause (debugger/v2: findings, optional rootCause) ([0808d7b](https://github.com/Elven9/pi-agent/commit/0808d7b348d39b50597dad35f01f77f01873dd17))
+* **tool-ref:** copy a call's output or input to the clipboard from the /ref panel ([952b6f4](https://github.com/Elven9/pi-agent/commit/952b6f4b79de8850242b5aec288775dacfc57f22))
+
 ## [0.7.1](https://github.com/Elven9/pi-agent/compare/v0.7.0...v0.7.1) (2026-11-06)
 
 
