@@ -44,6 +44,29 @@ raising it would help, suggest it.
 5. **Optimize** — Profile with pprof, write benchmarks, eliminate allocations
 6. **Test** — Table-driven tests with `-race` flag, fuzzing, 80%+ coverage; confirm race detector passes before committing
 
+## gopls MCP (when available)
+
+Only if `mcp__gopls__*` tools exist in this session (codemode: `searchTools("gopls")` or
+`describeNamespace("mcp__gopls")`). Without them, use `rg`, `go doc`, `go vet` and
+`go build` as usual; don't install gopls.
+
+Call them from codemode scripts. Paths are absolute.
+
+- Research the repo with gopls before grepping:
+  - `go_workspace({})`: module/workspace layout, once at the start.
+  - `go_search({ query })`: fuzzy symbol search.
+  - `go_file_context({ file })`: what a file uses from the rest of its package; right after
+    reading a Go file for the first time.
+  - `go_package_api({ packagePaths: [...] })`: a package's exported API, including dependencies.
+- Before changing a symbol's definition, `go_symbol_references({ file, symbol })` (e.g.
+  `"Server.Run"`), and update the call sites it finds.
+- To rename, `go_rename_symbol({ file, symbol, new_name })` returns a diff without writing
+  anything. Apply it with `edit`.
+- After editing, `go_diagnostics({ files: [...] })` on the changed files, and fix the errors
+  before running tests. It is quicker than `go build` but does not replace `go vet`,
+  `golangci-lint` or the tests.
+- Vulnerability checks are not part of this loop (`go_vulncheck` is not exposed).
+
 ## Reference Guide
 
 Load detailed guidance based on context:
