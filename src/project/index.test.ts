@@ -187,6 +187,26 @@ test("without --project, pi's own context files win and nothing is added or spli
   assert.equal(pi.emit("before_provider_request", { payload: request }), undefined);
 });
 
+test("without --project, pi's context files stay and a justfile still adds the commands", { skip: hasJust ? false : "just is not installed" }, async () => {
+  const workspace = await tmp({ "AGENTS.md": "Use pnpm.\n", justfile: "# Lint.\nlint:\n  @true\n" });
+  const pi = fakePi({}, workspace, [PI_AGENTS_MD]);
+  await pi.emit("session_start");
+  await pi.command("project");
+  assert.match(pi.notices[0], /^Project: none; pi loads its own context files \(1\), only the commands are added\n  <project_commands>/);
+
+  const options = promptOptions(pi, [PI_AGENTS_MD]);
+  assert.deepEqual(options.contextFiles, [PI_AGENTS_MD]);
+  assert.deepEqual(Object.keys(options.sections), ["cwd", "project_commands"]);
+  assert.match(options.sections.project_commands!, new RegExp(`\\nFrom ${join(workspace, "justfile")}:\\n- \`just lint\`: Lint\\.$`));
+  const last = pi.announced.at(-1) as { block: string; sections: string[] };
+  assert.deepEqual(last.sections, ["project_commands"]);
+  assert.match(last.block, /^<project_commands>\n[\s\S]*<\/project_commands>$/);
+
+  // The commands are cached as block B.
+  const split = pi.emit("before_provider_request", { payload: payload(`prompt\n\n${last.block}`) }) as { system: { text: string }[] };
+  assert.deepEqual(split.system.map((b) => b.text), ["prompt", last.block]);
+});
+
 test("reads the AGENTS.md files of the parent folders too, outermost first", async () => {
   const parent = await tmp({ "AGENTS.md": "From the parent.\n" });
   const workspace = join(parent, "ws");
