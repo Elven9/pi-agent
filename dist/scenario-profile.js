@@ -3,7 +3,7 @@ const require = __piAgentCreateRequire(import.meta.url);
 
 // src/scenario-profile/index.ts
 import { realpathSync } from "node:fs";
-import { basename, dirname, join as join2 } from "node:path";
+import { basename, dirname as dirname2, join as join3 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 
@@ -49,6 +49,85 @@ var ENTRY = {
   tags: "pi-agent.tags"
 };
 
+// src/shared/mcp-servers.ts
+import { accessSync, constants, statSync } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { delimiter, dirname, join as join2 } from "node:path";
+function findUp(dir, names) {
+  for (let d = dir; ; d = dirname(d)) {
+    for (const n of names) {
+      const p = join2(d, n);
+      try {
+        if (statSync(p).isFile()) return p;
+      } catch {
+      }
+    }
+    if (dirname(d) === d) return void 0;
+  }
+}
+function executable(path) {
+  try {
+    if (!statSync(path).isFile()) return false;
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function findExecutable(name, env, extraDirs = []) {
+  const dirs = [...(env.PATH ?? "").split(delimiter), ...extraDirs].filter((d) => d !== "");
+  for (const d of dirs) {
+    const p = join2(d, name);
+    if (executable(p)) return p;
+  }
+  return void 0;
+}
+function goBinDirs(env, home) {
+  const gopath = env.GOPATH ? env.GOPATH.split(delimiter) : [];
+  return [...env.GOBIN ? [env.GOBIN] : [], ...gopath.map((p) => join2(p, "bin")), join2(home, "go", "bin")];
+}
+var GO_PROJECT_FILES = ["go.work", "go.mod"];
+var GOPLS_DESCRIPTION = "gopls, the Go language server: workspace layout, symbol search, file context, package API, references, diagnostics, rename diffs";
+function goplsConfig(command, cwd) {
+  return {
+    command,
+    args: ["mcp"],
+    cwd,
+    exposure: "codemode",
+    toolExposure: { go_vulncheck: "hidden" },
+    description: GOPLS_DESCRIPTION,
+    timeout: 180
+  };
+}
+function decideGopls(cwd, { env = process.env, home = homedir2() }) {
+  const root = findUp(cwd, GO_PROJECT_FILES);
+  if (!root) return { name: "gopls", status: "skipped", reason: "no go.mod or go.work in the workdir or its parents" };
+  const command = findExecutable("gopls", env, goBinDirs(env, home));
+  if (!command) {
+    return {
+      name: "gopls",
+      status: "unavailable",
+      root,
+      reason: "gopls is not installed (go install golang.org/x/tools/gopls@latest); continuing without the gopls MCP server"
+    };
+  }
+  return { name: "gopls", status: "registered", command, root };
+}
+function decideMcpServers(names, cwd, opts = {}) {
+  return names.map((n) => {
+    switch (n) {
+      case "gopls":
+        return decideGopls(cwd, opts);
+    }
+  });
+}
+function mcpServerConfig(d, cwd) {
+  switch (d.name) {
+    case "gopls":
+      return goplsConfig(d.command, cwd);
+  }
+}
+
 // src/shared/scenarios/code-writer.ts
 import { Type } from "typebox";
 
@@ -71,6 +150,7 @@ var codeWriter = defineScenario({
   detailKind: "code-writer/v1",
   systemPrompt: code_writer_default,
   tools: ["codemode", "read", "bash", "edit", "write"],
+  mcpServers: ["gopls"],
   detailSchema: Type.Object(
     {
       filesChanged: Type.Array(Type.String({ minLength: 1 }), { description: "Paths of the files you created or changed" })
@@ -302,8 +382,8 @@ function skillActive(rules, name, baseDir) {
 
 // src/scenario-profile/index.ts
 function defaultSkillsDir() {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return basename(here) === "dist" ? join2(here, "..", "skills") : join2(here, "..", "..", "skills");
+  const here = dirname2(fileURLToPath(import.meta.url));
+  return basename(here) === "dist" ? join3(here, "..", "skills") : join3(here, "..", "..", "skills");
 }
 function real(path) {
   try {
@@ -321,7 +401,7 @@ function loadIncluded(names, roots) {
     }
   });
 }
-function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = externalSkillRoots(), globalRules = GLOBAL_RULES) {
+function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = externalSkillRoots(), globalRules = GLOBAL_RULES, mcpEnv = {}) {
   pi.registerFlag(SCENARIO_FLAG, {
     type: "string",
     description: "pi-agent scenario: use its system prompt, tools and skills"
@@ -359,12 +439,28 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
     return out;
   };
   const announceSkills = () => {
-    const base = pi.getCommands().filter((c) => c.source === "skill").map((c) => ({ name: c.name.replace(/^skill:/, ""), baseDir: dirname(c.sourceInfo.path), description: c.description ?? "" }));
+    const base = pi.getCommands().filter((c) => c.source === "skill").map((c) => ({ name: c.name.replace(/^skill:/, ""), baseDir: dirname2(c.sourceInfo.path), description: c.description ?? "" }));
     const selected = select(base, [...included, ...projectSkills]);
     const skills = selected.map((s) => s.name);
     const missing = (projectInclude ?? []).filter((n) => !skills.includes(n));
     const descriptions = Object.fromEntries(selected.map((s) => [s.name, s.description]));
     pi.events.emit(SKILLS_CHANNEL, { skills, missing, descriptions });
+  };
+  const registerMcpServers = (s, ctx) => {
+    if (!s.mcpServers?.length) return;
+    const warn = (message) => {
+      if (ctx.hasUI) ctx.ui.notify(message, "warning");
+      else console.error(`[pi-agent] warning: ${message}`);
+    };
+    for (const d of decideMcpServers(s.mcpServers, ctx.cwd, mcpEnv)) {
+      if (d.status === "unavailable") warn(`MCP server ${d.name}: ${d.reason}`);
+      if (d.status !== "registered") continue;
+      try {
+        pi.registerMcpServer(d.name, mcpServerConfig(d, ctx.cwd));
+      } catch (err) {
+        warn(`MCP server ${d.name} not registered: ${err.message}`);
+      }
+    }
   };
   pi.events.on(PROJECT_CHANNEL, (data) => {
     if (!started) projectLoadedFirst = true;
@@ -404,6 +500,7 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
     kept.clear();
     pi.events.emit(SCENARIO_CHANNEL, { name });
     pi.setActiveTools(scenarioActiveTools(scenario.tools, pi.getActiveTools(), pi.getAllTools()));
+    registerMcpServers(scenario, ctx);
     announceSkills();
   });
   pi.on("before_agent_start", (event) => {
