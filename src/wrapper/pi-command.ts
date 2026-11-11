@@ -5,6 +5,7 @@ import { TOOL_REF_TOOLS } from "../shared/tool-ref.ts";
 import type { Task } from "../shared/task.ts";
 
 const CODEMODE = "codemode";
+const MCP = "mcp";
 
 export interface PiCommandOptions {
   task: Task;
@@ -43,6 +44,11 @@ export interface PiCommandOptions {
  * `-ne` also turns off pi's built-in extensions, so a scenario with the `codemode` tool loads
  * `builtin:codemode` explicitly (first, as pi loads built-ins). Its mode (`codemode.mode`) comes
  * from the settings in the agent dir.
+ *
+ * MCP stays off (`--no-mcp`) unless the scenario has `mcpServers`: then `builtin:mcp` is loaded
+ * (after codemode) to connect the servers the scenario profile extension registers. It would also
+ * read the agent dir's `mcp.json` (the image's agent dir has none); the project's stays out (`-na`).
+ * `--tools` lists no `mcp__` entries, so it does not remove MCP tools.
  */
 export function piArgs(o: PiCommandOptions): string[] {
   const { task, scenario } = o;
@@ -50,10 +56,11 @@ export function piArgs(o: PiCommandOptions): string[] {
     "--mode", "json",
     "-ne",
     ...(scenario.tools.includes(CODEMODE) ? ["-e", `builtin:${CODEMODE}`] : []),
+    ...(usesMcp(scenario) ? ["-e", `builtin:${MCP}`] : []),
     "-e", o.extensionPath, "-e", o.scenarioProfileExtensionPath,
     "-e", o.projectExtensionPath, "-e", o.metricsExtensionPath,
     "-e", o.tagsExtensionPath, "-e", o.toolRefExtensionPath,
-    "--no-mcp",
+    ...(usesMcp(scenario) ? [] : ["--no-mcp"]),
     "-ns", ...o.skillPaths.flatMap((p) => ["--skill", p]),
     "-np",
     "-nc",
@@ -70,6 +77,11 @@ export function piArgs(o: PiCommandOptions): string[] {
     ...(task.tags?.length ? [`--${TAGS_FLAG}`, task.tags.join(",")] : []),
     "--", task.prompt,
   ];
+}
+
+/** The scenario asks for MCP servers (pi's built-in MCP support is loaded for it). */
+export function usesMcp(scenario: Scenario): boolean {
+  return (scenario.mcpServers?.length ?? 0) > 0;
 }
 
 /** Shell-quoted command line, for logs and for re-running a run by hand. */

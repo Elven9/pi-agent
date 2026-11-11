@@ -106,6 +106,28 @@ test("piArgs loads pi's built-in codemode (off with -ne) first when the scenario
   assert.ok(!extensions(piArgs({ ...base, scenario })).includes("builtin:codemode"));
 });
 
+test("piArgs: MCP off (--no-mcp) unless the scenario has MCP servers; then builtin:mcp after codemode", () => {
+  const base = {
+    task: { taskId: "t", scenario: "s", prompt: "p" },
+    extensionPath: "e.js",
+    scenarioProfileExtensionPath: "s.js",
+    projectExtensionPath: "p.js",
+    metricsExtensionPath: "m.js",
+    tagsExtensionPath: "g.js",
+    toolRefExtensionPath: "t.js",
+    skillPaths: [],
+    sessionDir: "d",
+  };
+  const extensions = (args: string[]) => args.flatMap((a, i) => (a === "-e" ? [args[i + 1]] : []));
+  const plain = piArgs({ ...base, scenario });
+  assert.ok(plain.includes("--no-mcp"));
+  assert.ok(!extensions(plain).includes("builtin:mcp"));
+  const withMcp = piArgs({ ...base, scenario: { ...scenario, tools: ["codemode", "read"], mcpServers: ["gopls"] } });
+  assert.ok(!withMcp.includes("--no-mcp"));
+  assert.deepEqual(extensions(withMcp).slice(0, 3), ["builtin:codemode", "builtin:mcp", "e.js"]);
+  assert.ok(!withMcp[withMcp.indexOf("--tools") + 1].includes("mcp__"));
+});
+
 test("piArgs adds project_read to --tools for a remote project only", () => {
   const base = {
     task: { taskId: "t", scenario: "s", prompt: "p" },

@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadProject } from "../shared/project.ts";
 import { getScenario } from "../shared/scenarios/index.ts";
@@ -22,6 +22,7 @@ type RunExtras = Partial<Pick<RunOptions, "project" | "warnings">> & {
   piBin?: string;
   /** Files written into the workdir before the run. */
   files?: Record<string, string>;
+  scenario?: string;
 };
 
 async function run(env: Record<string, string>, opts: RunExtras = {}) {
@@ -32,7 +33,7 @@ async function run(env: Record<string, string>, opts: RunExtras = {}) {
   Object.assign(process.env, { FAKE_PI_ARGS: argsFile }, env);
   const report = await runTask({
     task,
-    scenario: getScenario("demo"),
+    scenario: getScenario(opts.scenario ?? "demo"),
     workdir: dir,
     out: join(dir, "out"),
     piBin: opts.piBin ?? fakePi,
@@ -114,6 +115,31 @@ test("project context: passed to pi and described in the report", async () => {
   assert.deepEqual(ctx.sections, ["project", "project_rules", "agents_md"]);
   assert.match(ctx.sha256, /^[0-9a-f]{64}$/);
   assert.deepEqual(report.warnings, ["from input"]);
+});
+
+test("mcpServers: [] for a scenario without MCP servers (and MCP stays off)", async () => {
+  const file = await events(header, { type: "agent_start" });
+  const { report, args } = await run({ FAKE_PI_EVENTS: file }, { files: { "go.mod": "module m\n" } });
+  assert.deepEqual(report.mcpServers, []);
+  assert.ok(args.includes("--no-mcp"));
+});
+
+test("mcpServers: code-writer in a Go workdir records gopls as registered and loads builtin:mcp", async () => {
+  const bin = await mkdtemp(join(tmpdir(), "pi-agent-bin-"));
+  await writeFile(join(bin, "gopls"), "#!/bin/sh\n");
+  await chmod(join(bin, "gopls"), 0o755);
+  const saved = process.env.PATH;
+  process.env.PATH = `${bin}${delimiter}${saved}`;
+  try {
+    const file = await events(header, { type: "agent_start" });
+    const { report, args, dir } = await run({ FAKE_PI_EVENTS: file }, { scenario: "code-writer", files: { "go.mod": "module m\n" } });
+    assert.deepEqual(report.mcpServers, [{ name: "gopls", status: "registered", command: join(bin, "gopls"), root: join(dir, "go.mod") }]);
+    assert.ok(!args.includes("--no-mcp"));
+    assert.ok(args.includes("builtin:mcp"));
+    assert.deepEqual(report.warnings, []);
+  } finally {
+    process.env.PATH = saved;
+  }
 });
 
 test("AGENTS.md alone is project context; a large block B is a warning", async () => {

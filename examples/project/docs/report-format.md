@@ -9,6 +9,7 @@ contract is `src/shared/report.ts` (`REPORT_VERSION = 1`).
 | `result` | `summary`, `detailKind`, scenario-specific `detail`; null without a result |
 | `metrics` | wall time and phases, tokens, cost, turns, model latency, tools, retries, compactions, context peak, `cacheMisses` |
 | `projectContext` | project folder and name, prompt sections, size and `sha256` of block B; null without project context |
+| `mcpServers` | the scenario's MCP servers (e.g. gopls) and whether each was `registered`, `skipped` or `unavailable`; `[]` without any |
 | `toolCalls` | every tool call in start order, strings truncated |
 | `session` | pi session id and file (relative to the out folder) |
 | `errors`, `warnings` | wrapper-level problems |

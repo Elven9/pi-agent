@@ -1,3 +1,4 @@
+import type { McpServerDecision } from "./mcp-servers.ts";
 import type { ProjectBlockInfo } from "./project.ts";
 import type { RemoteProject } from "./project-source.ts";
 import type { SubmittedResult } from "./result.ts";
@@ -98,6 +99,11 @@ export interface Report {
   metrics: Metrics;
   /** null when the prompt has no project context (no manifest and no AGENTS.md). */
   projectContext: ProjectContextInfo | null;
+  /**
+   * The scenario's MCP servers (`Scenario.mcpServers`) and whether they were registered for this
+   * workdir; [] for scenarios without any. Absent in reports from older pi-agent versions.
+   */
+  mcpServers: McpServerDecision[];
   /** Every tool call of this run, in start order (strings truncated; see the session file). */
   toolCalls: ToolCallLog[];
   session: {

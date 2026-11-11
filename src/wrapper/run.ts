@@ -8,6 +8,7 @@ import {
   type Project,
 } from "../shared/project.ts";
 import type { JustCommands } from "../shared/just.ts";
+import { decideMcpServers } from "../shared/mcp-servers.ts";
 import {
   REPORT_VERSION,
   type ProjectContextInfo,
@@ -127,6 +128,8 @@ export async function runTask(o: RunOptions): Promise<Report> {
       `project context is ~${context.approxTokens} tokens (over ${PROJECT_TOKEN_WARNING}); it is re-read on every turn`,
     );
   }
+  const mcpServers = decideMcpServers(scenario.mcpServers ?? [], workdir);
+  for (const d of mcpServers) if (d.status === "unavailable") warnings.push(`MCP server ${d.name}: ${d.reason}`);
   for (const w of warnings) log(`[pi-agent] warning: ${w}\n`);
 
   const sessionDir = join(out, "sessions");
@@ -205,6 +208,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
     result: (outcome.result as SubmittedResult | undefined) ?? null,
     metrics: metrics.snapshot(),
     projectContext: context,
+    mcpServers,
     toolCalls: toolLog.entries(),
     session: header
       ? {

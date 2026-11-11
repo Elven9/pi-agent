@@ -226,7 +226,9 @@ context files, MCP or project config (`-na`: the workdir is not trusted). The sc
 the system prompt and tools, the `skills/` layout its skills (shared + the scenario's, one
 `--skill` each); the project extension adds the project context. `-ne` also turns off pi's
 built-in extensions, so `builtin:codemode` is loaded explicitly when the scenario has the
-`codemode` tool; its mode comes from the agent dir's `settings.json`. `submit_result` stays a
+`codemode` tool, and `builtin:mcp` (instead of `--no-mcp`) when it has `mcpServers`, to connect
+the servers the scenario profile registers (the image's agent dir has no `mcp.json`, and the
+project's stays out with `-na`); its mode comes from the agent dir's `settings.json`. `submit_result` stays a
 tool the model calls itself (`exposure: "model-only"`), not one scripts can call. The scenario profile
 extension sets the system prompt and applies the tools and skills in-process, as in personal
 pi; `--tools` and `--skill` stay as the hard limits. It announces the scenario on the
@@ -283,8 +285,15 @@ input (exit 2). They go into the session file only, not `report.json`. A resumed
 ```
 
 `report.json` has `status` (`ok | error | no_result`), `result` (`summary`, `detailKind`,
-scenario-specific `detail`), `metrics`, `projectContext`, `toolCalls`, `session` (paths
-relative to `out`), `errors` and `warnings`. A stale `report.json` is removed when a run starts.
+scenario-specific `detail`), `metrics`, `projectContext`, `mcpServers`, `toolCalls`, `session` (paths
+relative to `out`), `errors` and `warnings`.
+
+`mcpServers` lists the scenario's MCP servers (`[]` for scenarios without any), each with `name`,
+`status` (`registered`, `skipped`: not needed in this workdir, `unavailable`: program missing,
+also a warning), `reason`, `command` and `root` (the `go.mod`/`go.work` that made it apply).
+The wrapper decides it like the extension does, from the same workdir and environment; whether
+the server then connected shows in the session, and its calls in `toolCalls`/`metrics.tools`
+(`mcp__gopls__…`). A stale `report.json` is removed when a run starts.
 
 `status` is `error` when pi cannot start, exits nonzero, stops before the agent starts, the
 final model response failed and there is no result, or the result fails validation. Otherwise
