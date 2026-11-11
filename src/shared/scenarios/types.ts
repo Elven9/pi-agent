@@ -1,5 +1,6 @@
 import type { TObject } from "typebox";
 import { validateExternalSkills, type ExternalSkillsConfig } from "../external-skills.ts";
+import type { McpPresetName } from "../mcp-servers.ts";
 
 /**
  * Scenario = profile (prompt + tools) + detail schema. Its skills come from the folder layout:
@@ -37,6 +38,13 @@ export interface Scenario<TDetail extends TObject = TObject> {
    * bullets too). Leading/trailing whitespace is trimmed; an empty text is an error.
    */
   rules?: string;
+  /**
+   * MCP servers for this scenario (presets in src/shared/mcp-servers.ts), registered by the
+   * scenario profile extension when they apply to the workdir (e.g. gopls in a Go module) and
+   * their program is installed. The wrapper loads pi's built-in MCP support only for scenarios
+   * with servers here.
+   */
+  mcpServers?: readonly McpPresetName[];
 }
 
 /**
