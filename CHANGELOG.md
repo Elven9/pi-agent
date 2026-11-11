@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.9.0](https://github.com/Elven9/pi-agent/compare/v0.8.0...v0.9.0) (2026-11-11)
+
+
+### Features
+
+* **project:** always add the commands section when a justfile and just are present ([9a9b810](https://github.com/Elven9/pi-agent/commit/9a9b810ca19300d4a122df7891a6f725af8a7d37))
+* **project:** append the commands after pi's own context files ([7a72be9](https://github.com/Elven9/pi-agent/commit/7a72be9f6f5886e3d35c28737f8f7be323ef61c2))
+* **scenario-profile:** register the scenario's MCP servers; code-writer gets gopls ([1233b8f](https://github.com/Elven9/pi-agent/commit/1233b8fbfcf9aaf3cb14e9b622733f08435b3cd1))
+* **scenarios:** MCP server presets, starting with gopls ([5f724dc](https://github.com/Elven9/pi-agent/commit/5f724dcaf6d4e4b49af255c155fe429439109222))
+* **skills:** golang skill uses the gopls MCP tools when available ([424def0](https://github.com/Elven9/pi-agent/commit/424def0a1b3cd219cd874251281b3dfd4feca16f))
+* **wrapper:** load built-in MCP for scenarios with MCP servers; report mcpServers ([f9ed4fb](https://github.com/Elven9/pi-agent/commit/f9ed4fb57315295b8a0374c27365f672d45e06b9))
+
+
+### Bug Fixes
+
+* **project:** run each justfile on its own instead of merging them ([26cf28e](https://github.com/Elven9/pi-agent/commit/26cf28eb85423995c9b7d6fe23a9bed4ebf90dc1))
+* **project:** skip just commands with a warning when just is not installed ([7295152](https://github.com/Elven9/pi-agent/commit/7295152d53da8fbd41ff07f3072d865028514710))
+
 ## [0.8.0](https://github.com/Elven9/pi-agent/compare/v0.7.1...v0.8.0) (2026-11-09)
 
 
