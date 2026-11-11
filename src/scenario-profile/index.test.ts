@@ -10,6 +10,8 @@ import { GLOBAL_RULES, GLOBAL_RULES_PRECEDENCE, globalRulesSection } from "./glo
 import { ENTRY, PROJECT_CHANNEL, SCENARIO_CHANNEL, SKILLS_CHANNEL } from "../shared/protocol.ts";
 import { defineScenario, getScenario } from "../shared/scenarios/index.ts";
 import { Type } from "typebox";
+import { chmod } from "node:fs/promises";
+import type { McpEnv } from "../shared/mcp-servers.ts";
 
 const SKILLS = "/pkg/skills";
 const builtin = (name: string) => ({ name, sourceInfo: { path: `builtin:${name}` } });
@@ -17,7 +19,17 @@ const fromExt = (name: string) => ({ name, sourceInfo: { path: "/ext/index.js" }
 const skill = (baseDir: string) => ({ name: baseDir.split("/").pop(), baseDir });
 
 /** Minimal stand-in for the parts of ExtensionAPI the extension uses. */
-function fakePi(flags: Record<string, string | undefined>, externalRoots: string[] = [], globalRules = "", skillsDir = SKILLS) {
+interface FakeOptions {
+  cwd?: string;
+  hasUI?: boolean;
+  mcpEnv?: McpEnv;
+  /** registerMcpServer throws this message. */
+  registerError?: string;
+}
+
+function fakePi(flags: Record<string, string | undefined>, externalRoots: string[] = [], globalRules = "", skillsDir = SKILLS, o: FakeOptions = {}) {
+  const mcp: Array<{ name: string; config: unknown }> = [];
+  const notes: Array<{ message: string; type: string }> = [];
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const listeners = new Map<string, Array<(data: unknown) => void>>();
   const entries: Array<{ customType: string; data: unknown }> = [];
@@ -53,11 +65,22 @@ function fakePi(flags: Record<string, string | undefined>, externalRoots: string
     getAllTools: () => [...["read", "bash", "edit", "write", "grep"].map(builtin), fromExt("my_tool")],
     setActiveTools: (names: string[]) => void (active = names),
     appendEntry: (customType: string, data: unknown) => void entries.push({ customType, data }),
+    registerMcpServer: (name: string, config: unknown) => {
+      if (o.registerError) throw new Error(o.registerError);
+      mcp.push({ name, config });
+    },
   } as unknown as ExtensionAPI;
-  scenarioProfile(pi, skillsDir, externalRoots, globalRules);
-  const ctx = { shutdown: () => (shutdown = true) };
+  scenarioProfile(pi, skillsDir, externalRoots, globalRules, o.mcpEnv ?? { env: { PATH: "" }, home: "/nonexistent" });
+  const ctx = {
+    shutdown: () => (shutdown = true),
+    cwd: o.cwd ?? "/nonexistent",
+    hasUI: o.hasUI ?? false,
+    ui: { notify: (message: string, type: string) => void notes.push({ message, type }) },
+  };
   return {
     entries,
+    mcp,
+    notes,
     announced,
     get active() {
       return active;
@@ -324,4 +347,73 @@ test("keepSkill drops only other scenarios' folders under the skills dir", () =>
   assert.equal(keep(join(SKILLS, "work-request-triage", "x")), false);
   assert.equal(keep("/elsewhere/work-request-triage/x"), true);
   assert.equal(keep(SKILLS), true);
+});
+
+/** A Go module dir and a bin dir with a fake gopls. */
+async function goWorkdir() {
+  const root = await mkdtemp(join(tmpdir(), "pi-agent-go-"));
+  await writeFile(join(root, "go.mod"), "module example.com/m\n");
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "gopls"), "#!/bin/sh\n");
+  await chmod(join(bin, "gopls"), 0o755);
+  return { root, bin };
+}
+
+test("code-writer in a Go module: registers gopls (codemode only, vulncheck hidden)", async () => {
+  const { root, bin } = await goWorkdir();
+  const pi = fakePi({ scenario: "code-writer" }, [], "", SKILLS, { cwd: root, mcpEnv: { env: { PATH: bin }, home: root } });
+  pi.emit("session_start");
+  assert.equal(pi.mcp.length, 1);
+  const { name, config } = pi.mcp[0] as { name: string; config: any };
+  assert.equal(name, "gopls");
+  assert.equal(config.command, join(bin, "gopls"));
+  assert.deepEqual(config.args, ["mcp"]);
+  assert.equal(config.cwd, root);
+  assert.equal(config.exposure, "codemode");
+  assert.deepEqual(config.toolExposure, { go_vulncheck: "hidden" });
+  assert.deepEqual(pi.notes, []);
+});
+
+test("code-writer outside a Go module, or another scenario: no MCP server", async () => {
+  const { root, bin } = await goWorkdir();
+  const env = { env: { PATH: bin }, home: root };
+  const notGo = await mkdtemp(join(tmpdir(), "pi-agent-nogo-"));
+  const a = fakePi({ scenario: "code-writer" }, [], "", SKILLS, { cwd: notGo, mcpEnv: env });
+  a.emit("session_start");
+  const b = fakePi({ scenario: "demo" }, [], "", SKILLS, { cwd: root, mcpEnv: env });
+  b.emit("session_start");
+  const c = fakePi({}, [], "", SKILLS, { cwd: root, mcpEnv: env });
+  c.emit("session_start");
+  for (const pi of [a, b, c]) {
+    assert.deepEqual(pi.mcp, []);
+    assert.deepEqual(pi.notes, []);
+  }
+});
+
+test("code-writer in a Go module without gopls: warns (UI) and continues without it", async () => {
+  const { root } = await goWorkdir();
+  const pi = fakePi({ scenario: "code-writer" }, [], "", SKILLS, { cwd: root, hasUI: true, mcpEnv: { env: { PATH: "" }, home: root } });
+  pi.emit("session_start");
+  assert.deepEqual(pi.mcp, []);
+  assert.equal(pi.shutdown, false);
+  assert.equal(pi.notes.length, 1);
+  assert.equal(pi.notes[0].type, "warning");
+  assert.match(pi.notes[0].message, /gopls is not installed/);
+  assert.deepEqual(pi.entries, []);
+  // The scenario still applies.
+  assert.deepEqual(pi.announced[0], { channel: SCENARIO_CHANNEL, data: { name: "code-writer" } });
+});
+
+test("registerMcpServer failing (e.g. MCP replaced): a warning, not an error", async () => {
+  const { root, bin } = await goWorkdir();
+  const pi = fakePi({ scenario: "code-writer" }, [], "", SKILLS, {
+    cwd: root,
+    hasUI: true,
+    mcpEnv: { env: { PATH: bin }, home: root },
+    registerError: "boom",
+  });
+  pi.emit("session_start");
+  assert.equal(pi.shutdown, false);
+  assert.match(pi.notes[0].message, /gopls not registered: boom/);
 });

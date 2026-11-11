@@ -28,6 +28,9 @@ pi -p --scenario code-writer --project ./my-project "Fix the failing test in src
   package are left out unless the scenario includes them. A project's `skills.include` adds
   its skills on top.
 - Combine it with `--project` to add project rules and commands on top.
+- `code-writer` in a Go module (`go.mod`/`go.work` in the cwd or a parent) registers the gopls
+  MCP server for codemode scripts (`mcp__gopls__go_*`) when `gopls` is installed; without it you
+  get a warning and the session continues. Needs pi's MCP support (not `--no-mcp`).
 
 ## Results
 

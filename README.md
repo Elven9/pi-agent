@@ -55,6 +55,14 @@ session, with or without `--scenario`, the extension adds the global rules
 (`src/scenario-profile/rules/global.md`, as is) as a `<global_rules>` section after `<rules>`;
 without `--scenario` that is all it does.
 
+A scenario can also ask for MCP servers (`mcpServers`, presets in `src/shared/mcp-servers.ts`).
+`code-writer` asks for gopls: when the cwd or a parent has a `go.mod`/`go.work` and `gopls` is
+installed (PATH, `GOBIN`, `GOPATH/bin` or `~/go/bin`), the extension registers `gopls mcp`
+with codemode exposure (scripts call `mcp__gopls__go_*`; `go_vulncheck` is hidden). Without
+gopls it shows a warning and the session goes on without it; outside a Go module nothing
+happens. In personal pi this needs pi's built-in MCP support (on by default; `--no-mcp` turns
+it off).
+
 ```sh
 pi --project ~/path/to/project-folder   # project.yaml + AGENTS.md of cwd and parents; pi's context files off
 pi                                      # extension stays out of the way: pi's own AGENTS.md handling

@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadSkillsFromDir, type ExtensionAPI, type Skill } from "@earendil-works/pi-coding-agent";
+import { loadSkillsFromDir, type ExtensionAPI, type ExtensionContext, type Skill } from "@earendil-works/pi-coding-agent";
 import { externalSkillRoots, findExternalSkills } from "../shared/external-skills.ts";
 import {
   ENTRY,
@@ -13,6 +13,7 @@ import {
   type ScenarioSelected,
   type SkillsAnnounced,
 } from "../shared/protocol.ts";
+import { decideMcpServers, mcpServerConfig, type McpEnv } from "../shared/mcp-servers.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
 import { GLOBAL_RULES, GLOBAL_RULES_SECTION, globalRulesSection } from "./global-rules.ts";
 import { scenarioActiveTools, scenarioRules, skillActive, type SkillRules } from "./profile.ts";
@@ -62,6 +63,9 @@ function real(path: string): string {
  *   its skills stay, with one they are added to the scenario's (profile.ts, skillActive).
  *   Included ones pi did not load are added like the scenario's external ones, looked up in this
  *   package's skills first.
+ * - MCP servers: the scenario's `mcpServers` presets that apply to the workdir are registered
+ *   (`pi.registerMcpServer`, codemode exposure); one whose program is missing is a warning
+ *   (notification in personal pi, stderr in a sandbox run) and the session continues without it.
  * - announces the resulting skill names on SKILLS_CHANNEL at session start (and again when the
  *   project's skills arrive), for the activation hint.
  *
@@ -91,6 +95,7 @@ export default function scenarioProfile(
   skillsDir: string = defaultSkillsDir(),
   externalRoots: readonly string[] = externalSkillRoots(),
   globalRules: string = GLOBAL_RULES,
+  mcpEnv: McpEnv = {},
 ) {
   pi.registerFlag(SCENARIO_FLAG, {
     type: "string",
@@ -153,6 +158,24 @@ export default function scenarioProfile(
     pi.events.emit(SKILLS_CHANNEL, { skills, missing, descriptions } satisfies SkillsAnnounced);
   };
 
+  /** Register the scenario's MCP servers that apply here; warn about missing programs, never fail. */
+  const registerMcpServers = (s: Scenario, ctx: Pick<ExtensionContext, "cwd" | "hasUI" | "ui">) => {
+    if (!s.mcpServers?.length) return;
+    const warn = (message: string) => {
+      if (ctx.hasUI) ctx.ui.notify(message, "warning");
+      else console.error(`[pi-agent] warning: ${message}`);
+    };
+    for (const d of decideMcpServers(s.mcpServers, ctx.cwd, mcpEnv)) {
+      if (d.status === "unavailable") warn(`MCP server ${d.name}: ${d.reason}`);
+      if (d.status !== "registered") continue;
+      try {
+        pi.registerMcpServer(d.name, mcpServerConfig(d, ctx.cwd));
+      } catch (err) {
+        warn(`MCP server ${d.name} not registered: ${(err as Error).message}`);
+      }
+    }
+  };
+
   pi.events.on(PROJECT_CHANNEL, (data) => {
     if (!started) projectLoadedFirst = true;
     // Announced at every session start and every prompt; the skills only change with the project.
@@ -197,6 +220,7 @@ export default function scenarioProfile(
     kept.clear();
     pi.events.emit(SCENARIO_CHANNEL, { name } satisfies ScenarioSelected);
     pi.setActiveTools(scenarioActiveTools(scenario.tools, pi.getActiveTools(), pi.getAllTools()));
+    registerMcpServers(scenario, ctx);
     announceSkills();
   });
 

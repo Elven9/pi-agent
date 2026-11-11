@@ -8,6 +8,7 @@ export const codeWriter = defineScenario({
   detailKind: "code-writer/v1",
   systemPrompt,
   tools: ["codemode", "read", "bash", "edit", "write"],
+  mcpServers: ["gopls"],
   detailSchema: Type.Object(
     {
       filesChanged: Type.Array(Type.String({ minLength: 1 }), { description: "Paths of the files you created or changed" }),
