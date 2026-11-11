@@ -65,14 +65,15 @@ it off).
 
 ```sh
 pi --project ~/path/to/project-folder   # project.yaml + AGENTS.md of cwd and parents; pi's context files off
-pi                                      # pi's own AGENTS.md handling; only the cwd justfile's commands are added
+pi                                      # pi's own AGENTS.md handling, plus the cwd justfile's commands after them
 ```
 
 With `--project`, the extension drops pi's context files (AGENTS.md/CLAUDE.md from the agent
 dir, cwd and parents) from every prompt, as `-nc` would, and adds the `AGENTS.md` files of the
 cwd and its parent folders (not CLAUDE.md, not the agent dir's) in its own section. Startup still lists them under `[Context]`; `/project` shows what is
-actually sent. Without `--project`, while pi loads context files itself, it adds only
-`<project_commands>` (when the cwd has a justfile and `just` is installed).
+actually sent. Without `--project`, while pi loads context files itself, it adds no sections: when the cwd has
+a justfile and `just` is installed, its commands are appended to pi's context files as one more
+file (shown under the justfile's path, last in pi's `<project_context>`).
 
 ### Session upload
 

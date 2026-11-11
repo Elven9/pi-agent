@@ -199,9 +199,10 @@ pi's own context-file loading stays off (`-nc`), because it would place the file
 
 In personal pi (the extension is in the package manifest) pi's context files may be on. With
 `--project`, `before_agent_start` empties `systemPromptOptions.contextFiles` on every prompt, the
-same effect as `-nc`. Without `--project`, if pi loaded any context files, the extension leaves them alone and
-adds only the commands section (the cwd's justfile recipes), which is then block B for the
-cache split; with no justfile it adds nothing and skips the split.
+same effect as `-nc`. Without `--project`, if pi loaded any context files, the extension adds no sections and
+skips the cache split; only the commands section's text (the cwd's justfile recipes), if any, is
+appended to `systemPromptOptions.contextFiles` under the justfile's path, so pi renders it
+after its own files in `<project_context>`.
 
 ### Rendering
 

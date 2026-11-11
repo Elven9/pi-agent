@@ -17,10 +17,6 @@ import { loadJustCommands } from "../shared/just.ts";
 import { execCli, projectPath, projectSetting, settingSource, type CliRunner } from "../shared/project-source.ts";
 import { splitSystemPrompt } from "./cache-split.ts";
 
-/** The named sections that are present, in their order. */
-const pick = (sections: ProjectSections, ...names: string[]): ProjectSections =>
-  Object.fromEntries(Object.entries(sections).filter(([name]) => names.includes(name)));
-
 /** project_read output limits, like pi's read tool. */
 const MAX_LINES = 2000;
 const MAX_BYTES = 50 * 1024;
@@ -60,8 +56,10 @@ export interface ProjectContextOptions {
  * Context files (pi's AGENTS.md/CLAUDE.md discovery, see `-nc`):
  * - With a project, pi's context files are dropped from every prompt (as if `-nc`): the
  *   project decides the context, and the AGENTS.md files (workspace and parents) are in block B instead.
- * - Without a project, if pi loaded context files, the extension leaves them to pi and block B
- *   is only the commands section (the cwd's justfile recipes), if there is one.
+ * - Without a project, if pi loaded context files, the extension leaves them to pi and adds no
+ *   sections. Only the commands (the cwd's justfile recipes), if any, are appended to pi's
+ *   context files, as one more file (the justfile's path, the commands section's text), so they
+ *   render last in pi's `<project_context>`.
  * - Without a project and with no context files from pi (`-nc`, as the wrapper runs), the
  *   AGENTS.md files (workspace and parents) alone are block B.
  */
@@ -75,27 +73,24 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
 
     let project: Project | undefined;
     let sections: ProjectSections = {};
-    /** The sections sent with the last prompt, and their rendered block (empty: nothing sent). */
-    let sent: ProjectSections = {};
     let block = "";
-    /** Whether the last prompt got all of block B (false: no project, pi loads its own context files). */
+    /** Whether the last prompt got block B (false: no project, pi loads its own context files). */
     let applied = false;
+    /** Without a project: the commands, appended to pi's context files when block B is not used. */
+    let commandsFile: { path: string; content: string } | undefined;
     /** A startup error in the TUI, printed on shutdown. */
     let startupError: string | undefined;
 
     /** Block B goes into the prompt unless there is no project and pi loaded context files. */
     const usesBlock = (piContextFiles: number) => project !== undefined || piContextFiles === 0;
-    /** What goes into the prompt: all of block B, or else just the commands (pi has the context). */
-    const toSend = (piContextFiles: number): ProjectSections =>
-      usesBlock(piContextFiles) ? sections : pick(sections, SECTION.commands);
     const remote = () => (project?.source.kind === "remote" ? project.source : undefined);
 
     /** Tell the context view (`/context`) what this extension adds. */
     const announce = () =>
       pi.events.emit(PROJECT_CHANNEL, {
         project: project && { name: project.manifest.name, dir: project.source.label },
-        block,
-        sections: Object.keys(block ? sent : sections),
+        block: applied ? block : "",
+        sections: Object.keys(sections),
         ...(project?.manifest.skills && { skills: [...project.manifest.skills.include] }),
       } satisfies ProjectAnnounced);
 
@@ -166,8 +161,9 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
           ctx.mode === "tui" ? ctx.ui.notify(`[pi-agent] ${message}`, "warning") : console.error(`[pi-agent] warning: ${message}`);
         const just = await loadJustCommands({ cwd: ctx.cwd, project, run, warn });
         sections = renderProjectSections({ cwd: ctx.cwd, project, agentsMd: await readAgentsMdFiles(ctx.cwd), just });
-        sent = {};
-        block = "";
+        block = renderBlock(sections);
+        const commands = sections[SECTION.commands];
+        commandsFile = !project && commands && just ? { path: just.sources[0]!.justfile, content: commands } : undefined;
         applied = false;
         updateTools();
         announce();
@@ -195,28 +191,31 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
     // changes within a session, so pi sees no delta.
     pi.on("before_agent_start", (event) => {
       const options = event.systemPromptOptions;
-      const piContextFiles = options.contextFiles?.length ?? 0;
-      applied = usesBlock(piContextFiles);
-      sent = toSend(piContextFiles);
-      block = renderBlock(sent);
+      applied = usesBlock(options.contextFiles?.length ?? 0);
       announce();
-      if (applied && project) options.contextFiles = [];
-      Object.assign(options.sections, sent);
+      if (!applied) {
+        if (commandsFile) options.contextFiles = [...(options.contextFiles ?? []), commandsFile];
+        return;
+      }
+      if (project) options.contextFiles = [];
+      Object.assign(options.sections, sections);
     });
 
     // Separate cache markers for A (shared by all projects) and B (this project).
-    pi.on("before_provider_request", (event) => (block ? splitSystemPrompt(event.payload, block) : undefined));
+    pi.on("before_provider_request", (event) =>
+      applied ? splitSystemPrompt(event.payload, block) : undefined,
+    );
 
     pi.registerCommand("project", {
       description: "Show the project context in the system prompt (block B) and its size",
       handler: async (_args, ctx) => {
         const piContextFiles = ctx.getSystemPromptOptions().contextFiles?.length ?? 0;
-        const shown = toSend(piContextFiles);
-        const names = Object.keys(shown);
-        if (!usesBlock(piContextFiles) && names.length === 0) {
-          ctx.ui.notify(`No project context: no project, pi loads its own context files (${piContextFiles}).`, "info");
+        if (!usesBlock(piContextFiles)) {
+          const appended = commandsFile ? `; the commands (~${estimateTokens(commandsFile.content)} tokens) are appended to them as ${commandsFile.path}` : "";
+          ctx.ui.notify(`No project context: no project, pi loads its own context files (${piContextFiles})${appended}.`, "info");
           return;
         }
+        const names = Object.keys(sections);
         if (names.length === 0) {
           ctx.ui.notify("No project context: no project and no AGENTS.md in the workspace.", "info");
           return;
@@ -225,11 +224,9 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
         const lines = [
           project
             ? `Project: ${project.manifest.name} (${project.source.label}${r ? ` = ${r.commit.slice(0, 12)}` : ""}); pi's context files are off`
-            : usesBlock(piContextFiles)
-              ? "Project: none (AGENTS.md and justfile only)"
-              : `Project: none; pi loads its own context files (${piContextFiles}), only the commands are added`,
-          ...names.map((name) => `  <${name}>  ~${estimateTokens(shown[name]!)} tokens`),
-          `Block B total: ~${estimateTokens(renderBlock(shown))} tokens`,
+            : "Project: none (AGENTS.md only)",
+          ...names.map((name) => `  <${name}>  ~${estimateTokens(sections[name])} tokens`),
+          `Block B total: ~${estimateTokens(block)} tokens`,
         ];
         ctx.ui.notify(lines.join("\n"), "info");
       },

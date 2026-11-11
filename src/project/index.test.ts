@@ -191,20 +191,19 @@ test("without --project, pi's context files stay and a justfile still adds the c
   const workspace = await tmp({ "AGENTS.md": "Use pnpm.\n", justfile: "# Lint.\nlint:\n  @true\n" });
   const pi = fakePi({}, workspace, [PI_AGENTS_MD]);
   await pi.emit("session_start");
+  const justfile = join(workspace, "justfile");
   await pi.command("project");
-  assert.match(pi.notices[0], /^Project: none; pi loads its own context files \(1\), only the commands are added\n  <project_commands>/);
+  assert.match(pi.notices[0], new RegExp(`^No project context: no project, pi loads its own context files \\(1\\); the commands \\(~\\d+ tokens\\) are appended to them as ${justfile}\\.$`));
 
+  // Appended after pi's own context files; no sections, no cache split.
   const options = promptOptions(pi, [PI_AGENTS_MD]);
-  assert.deepEqual(options.contextFiles, [PI_AGENTS_MD]);
-  assert.deepEqual(Object.keys(options.sections), ["cwd", "project_commands"]);
-  assert.match(options.sections.project_commands!, new RegExp(`\\nFrom ${join(workspace, "justfile")}:\\n- \`just lint\`: Lint\\.$`));
-  const last = pi.announced.at(-1) as { block: string; sections: string[] };
-  assert.deepEqual(last.sections, ["project_commands"]);
-  assert.match(last.block, /^<project_commands>\n[\s\S]*<\/project_commands>$/);
-
-  // The commands are cached as block B.
-  const split = pi.emit("before_provider_request", { payload: payload(`prompt\n\n${last.block}`) }) as { system: { text: string }[] };
-  assert.deepEqual(split.system.map((b) => b.text), ["prompt", last.block]);
+  assert.deepEqual(options.sections, { cwd: "/w" });
+  assert.deepEqual(options.contextFiles.map((f) => f.path), [PI_AGENTS_MD.path, justfile]);
+  assert.match(options.contextFiles[1]!.content, new RegExp(`^Run these commands with \`just\`[^\\n]*\\nFrom ${justfile}:\\n- \`just lint\`: Lint\\.$`));
+  assert.equal((pi.announced.at(-1) as { block: string }).block, "");
+  assert.equal(pi.emit("before_provider_request", { payload: payload("prompt") }), undefined);
+  // Every prompt starts from pi's base options: appended once each time.
+  assert.equal(promptOptions(pi, [PI_AGENTS_MD]).contextFiles.length, 2);
 });
 
 test("reads the AGENTS.md files of the parent folders too, outermost first", async () => {
