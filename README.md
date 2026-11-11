@@ -393,25 +393,32 @@ sources, both optional:
   imports and modules are not fetched);
 - the justfile at the root of the workspace (the cwd).
 
-With both, they are merged: a generated justfile in the temp folder imports the workspace's
-first, then the project's, so the workspace's recipe wins when both have one with the same name
-(`set allow-duplicate-recipes` is added for that). Settings both files set differently (e.g.
-`shell`) can't be merged and stop the run. The extension sets `JUST_JUSTFILE` (the one file or
-the generated one) and `JUST_WORKING_DIRECTORY` (the workspace) in pi's environment, so a plain
-`just <recipe>` works from any folder and every recipe runs in the workspace. With only one
-justfile it is used as is (`justfile_directory()` is then right; in a merge it is the temp
-folder).
+The two are never merged: each justfile runs on its own, so its settings, imports and
+`justfile_directory()` work as when you run it yourself. Every recipe runs in the workspace:
 
-`<project_commands>` lists the public recipes (sorted, then submodules as `module::recipe`) with
-their arguments and doc comment:
+- workspace recipes with a plain `just <recipe>`;
+- project recipes with `just --justfile <project justfile> --working-directory <workspace>
+  <recipe>`. To reach a script next to the project's justfile, use
+  `{{justfile_directory()}}/scripts/x.sh` (`./scripts/x.sh` is relative to the workspace). A
+  recipe that calls another one should use `{{just_executable()}} --justfile {{justfile()}}`.
+
+`<project_commands>` lists each file's public recipes (sorted, then submodules as
+`module::recipe`), with the full command that runs them, their arguments and doc comment. A
+recipe that is in both files is listed twice:
 
 ```
-- `just check`: Typecheck, run all tests and build dist/.
-- `just test-file <file>`: Run one test file, e.g. src/shared/project.test.ts.
+From /sandbox/justfile:
+- `just lint`: Lint the workspace.
+From /project/justfile:
+- `just --justfile /project/justfile --working-directory /sandbox check`: Typecheck, run all tests and build dist/.
+- `just --justfile /project/justfile --working-directory /sandbox test-file <file>`: Run one test file.
 ```
 
-Arguments are shown as `<required>`, `[<optional>]` and `...` for variadic ones; `just --usage
-<recipe>` has the details. The section works with or without `project.yaml`. An invalid
+A remote project's justfile is written to `<temp folder>/pi-agent-just/<source>/justfile`, a
+path that stays the same between runs.
+
+Arguments are shown as `<required>`, `[<optional>]` and `...` for variadic ones; the command
+with `--usage <recipe>` instead of the recipe has the details. The section works with or without `project.yaml`. An invalid
 justfile, or a justfile without `just` installed, is an error (the wrapper exits 2). The image
 includes `just` (`JUST_VERSION` in the Dockerfile).
 

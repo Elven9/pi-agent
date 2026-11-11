@@ -25,7 +25,7 @@ function fakePi(
   flags: Record<string, string | undefined>,
   cwd: string,
   piContextFiles: ContextFile[] = [],
-  o: { settings?: object; run?: CliRunner; active?: string[]; env?: NodeJS.ProcessEnv } = {},
+  o: { settings?: object; run?: CliRunner; active?: string[] } = {},
 ) {
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const tools = new Map<string, { exposure?: string; execute: (...args: any[]) => Promise<any> }>();
@@ -53,7 +53,7 @@ function fakePi(
     getSystemPromptOptions: () => ({ cwd, contextFiles: piContextFiles }),
     ui: { notify: (message: string) => void notices.push(message) },
   };
-  (o.run || o.env ? createProjectContext({ run: o.run, env: o.env }) : projectContext)(pi);
+  (o.run ? createProjectContext({ run: o.run }) : projectContext)(pi);
   return {
     get active() {
       return active;
@@ -119,20 +119,21 @@ test("adds the project sections after pi's own, the same on every prompt", async
   assert.match(pi.notices[0], /Block B total: ~\d+ tokens$/);
 });
 
-test("justfiles: the commands section lists their recipes and just is pointed at them", { skip: hasJust ? false : "just is not installed" }, async () => {
+test("justfiles: the commands section lists each recipe with the full command that runs it", { skip: hasJust ? false : "just is not installed" }, async () => {
   const project = await tmp({ "project.yaml": "version: 1\nname: demo\n", justfile: "# Run the tests.\ntest:\n  npm test\n" });
   const workspace = await tmp({});
-  const env: NodeJS.ProcessEnv = { JUST_JUSTFILE: "/mine" };
-  const pi = fakePi({ project }, workspace, [], { env });
+  const pi = fakePi({ project }, workspace);
   await pi.emit("session_start");
-  assert.match(promptSections(pi).project_commands, /\n- `just test`: Run the tests\.$/);
-  assert.deepEqual(env, { JUST_JUSTFILE: join(project, "justfile"), JUST_WORKING_DIRECTORY: workspace });
+  const justfile = join(project, "justfile");
+  assert.match(
+    promptSections(pi).project_commands,
+    new RegExp(`\\nFrom ${justfile}:\\n- \`just --justfile ${justfile} --working-directory ${workspace} test\`: Run the tests\\.$`),
+  );
 
-  // The next session start (here: with an invalid justfile) restores what was there before.
-  await writeFile(join(project, "justfile"), "oops");
+  // An invalid justfile stops the session.
+  await writeFile(justfile, "oops");
   await pi.emit("session_start");
   assert.equal(pi.shutdown, true);
-  assert.deepEqual(env, { JUST_JUSTFILE: "/mine" });
 });
 
 test("without --project or AGENTS.md it adds nothing", async () => {

@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { justEnv, loadJustCommands, recipesOf, type JustDump } from "./just.ts";
+import { loadJustCommands, recipesOf, type JustDump } from "./just.ts";
 import { loadProject, loadProjectFrom } from "./project.ts";
 import type { ProjectSource } from "./project-source.ts";
 
@@ -28,8 +28,10 @@ async function folder(files: Record<string, string>): Promise<string> {
 }
 
 const MANIFEST = "version: 1\nname: x\n";
-const just = (env: Record<string, string>, ...args: string[]) =>
-  execFileSync("just", args, { env: { ...process.env, ...env }, cwd: tmpdir(), encoding: "utf8" });
+/** Runs a listed command (with its recipe and arguments) through the shell, as the agent would, from `cwd`. */
+const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("JUST_")));
+const sh = (cwd: string, command: string) => execFileSync("sh", ["-c", command], { cwd, env, encoding: "utf8" }).trim();
+const pwd = (dir: string) => execFileSync("pwd", ["-P"], { cwd: dir, encoding: "utf8" }).trim();
 
 test("recipesOf: public recipes sorted, then submodules; arguments as usage", () => {
   const p = (name: string, kind: string, d: unknown = null, extra = {}) => ({ name, kind, default: d, ...extra });
@@ -67,65 +69,92 @@ test("several justfiles in one folder are an error", async () => {
   await assert.rejects(loadJustCommands({ cwd: await folder({ justfile: "", ".justfile": "" }) }), /has several justfiles/);
 });
 
-test("project justfile alone: used as is; recipes run in the workspace", needsJust, async () => {
-  const projectDir = await folder({ "project.yaml": MANIFEST, justfile: "# Where am I?\nwhere:\n  @pwd\n" });
-  const cwd = await folder({});
-  const c = (await loadJustCommands({ cwd, project: await loadProject(projectDir) }))!;
-  assert.deepEqual(c.sources, [join(projectDir, "justfile")]);
-  assert.equal(c.justfile, join(projectDir, "justfile"));
-  assert.deepEqual(c.recipes, [{ name: "where", usage: "", doc: "Where am I?" }]);
-  assert.equal(just(justEnv(c), "where").trim(), execFileSync("pwd", { cwd, encoding: "utf8" }).trim());
-});
-
-test("both justfiles: merged, the workspace's recipe wins a clash", needsJust, async () => {
+test("project justfile alone: run with --justfile and --working-directory, in the workspace", needsJust, async () => {
   const projectDir = await folder({
     "project.yaml": MANIFEST,
-    justfile: "# Project test.\ntest:\n  @echo project\n# Lint.\nlint *files:\n  @echo lint {{files}}\n",
+    justfile: "# Where am I?\nwhere:\n  @pwd -P\n# Its own script.\nhello:\n  @{{justfile_directory()}}/scripts/hello.sh\n",
+    "scripts/hello.sh": "#!/bin/sh\necho hello from the project\n",
   });
-  const cwd = await folder({ Justfile: "# Workspace test.\ntest:\n  @echo workspace\n" });
+  await chmod(join(projectDir, "scripts/hello.sh"), 0o755);
+  const cwd = await folder({});
   const c = (await loadJustCommands({ cwd, project: await loadProject(projectDir) }))!;
-  assert.deepEqual(c.sources, [join(cwd, "Justfile"), join(projectDir, "justfile")]);
-  assert.deepEqual(c.recipes, [
-    { name: "lint", usage: "[<files>]...", doc: "Lint." },
-    { name: "test", usage: "", doc: "Workspace test." },
+  const justfile = join(projectDir, "justfile");
+  assert.equal(c.workdir, cwd);
+  assert.deepEqual(c.sources, [
+    {
+      label: justfile,
+      justfile,
+      command: `just --justfile ${justfile} --working-directory ${cwd}`,
+      recipes: [
+        { name: "hello", usage: "", doc: "Its own script." },
+        { name: "where", usage: "", doc: "Where am I?" },
+      ],
+    },
   ]);
-  assert.match(await readFile(c.justfile, "utf8"), /^set allow-duplicate-recipes$/m);
-  assert.equal(just(justEnv(c), "test", "lint", "a").trim(), "workspace\nlint a");
+  // From any folder: recipes run in the workspace, and justfile_directory() is the project's.
+  assert.equal(sh(tmpdir(), `${c.sources[0]!.command} where`), pwd(cwd));
+  assert.equal(sh(tmpdir(), `${c.sources[0]!.command} hello`), "hello from the project");
 });
 
-test("both justfiles already allowing duplicates: not set twice", needsJust, async () => {
-  const projectDir = await folder({ "project.yaml": MANIFEST, justfile: "set allow-duplicate-recipes\nt:\n  @echo p\n" });
-  const cwd = await folder({ justfile: "t:\n  @echo w\n" });
+test("both justfiles: not merged, each listed and run on its own", needsJust, async () => {
+  const projectDir = await folder({
+    "project.yaml": MANIFEST,
+    // Settings that differ from the workspace's are fine: the files are never combined.
+    justfile: 'set shell := ["bash", "-c"]\n# Project test.\ntest:\n  @echo project\n# Lint.\nlint *files:\n  @echo lint {{files}}\n',
+  });
+  const cwd = await folder({ Justfile: 'set shell := ["sh", "-c"]\n# Workspace test.\ntest:\n  @echo workspace {{justfile_directory()}}\n' });
   const c = (await loadJustCommands({ cwd, project: await loadProject(projectDir) }))!;
-  assert.doesNotMatch(await readFile(c.justfile, "utf8"), /^set /m);
-  assert.equal(just(justEnv(c), "t").trim(), "w");
+  const [ws, proj] = c.sources;
+  assert.deepEqual([ws!.label, proj!.label], [join(cwd, "Justfile"), join(projectDir, "justfile")]);
+  assert.equal(ws!.command, "just");
+  assert.deepEqual(ws!.recipes, [{ name: "test", usage: "", doc: "Workspace test." }]);
+  assert.deepEqual(proj!.recipes, [
+    { name: "lint", usage: "[<files>]...", doc: "Lint." },
+    { name: "test", usage: "", doc: "Project test." },
+  ]);
+  assert.equal(sh(cwd, `${ws!.command} test`), `workspace ${pwd(cwd)}`);
+  assert.equal(sh(cwd, `${proj!.command} test`), "project");
+  assert.equal(sh(cwd, `${proj!.command} lint a`), "lint a");
 });
 
-test("the project folder as the workspace: its justfile counts once", needsJust, async () => {
+test("paths with spaces are quoted in the command", needsJust, async () => {
+  const projectDir = join(await folder({}), "my project");
+  await mkdir(projectDir);
+  await writeFile(join(projectDir, "project.yaml"), MANIFEST);
+  await writeFile(join(projectDir, "justfile"), "where:\n  @pwd -P\n");
+  const cwd = join(await folder({}), "it's here");
+  await mkdir(cwd);
+  const c = (await loadJustCommands({ cwd, project: await loadProject(projectDir) }))!;
+  assert.equal(c.sources[0]!.command, `just --justfile '${join(projectDir, "justfile")}' --working-directory '${cwd.replace("'", "'\\''")}'`);
+  assert.equal(sh(tmpdir(), `${c.sources[0]!.command} where`), pwd(cwd));
+});
+
+test("the project folder as the workspace: its justfile counts once, run with a plain just", needsJust, async () => {
   const dir = await folder({ "project.yaml": MANIFEST, justfile: "a:\n" });
   const c = (await loadJustCommands({ cwd: dir, project: await loadProject(dir) }))!;
-  assert.deepEqual(c.sources, [join(dir, "justfile")]);
+  assert.deepEqual(c.sources.map((s) => [s.label, s.command]), [[join(dir, "justfile"), "just"]]);
 });
 
-test("invalid or unmergeable justfiles name the file", needsJust, async () => {
-  const projectDir = await folder({ "project.yaml": MANIFEST, justfile: "set shell := [\"bash\", \"-c\"]\na:\n" });
+test("an invalid justfile names the file", needsJust, async () => {
+  const projectDir = await folder({ "project.yaml": MANIFEST, justfile: "a:\n" });
   await assert.rejects(
     loadJustCommands({ cwd: await folder({ justfile: "oops" }), project: await loadProject(projectDir) }),
     /Cannot read .*justfile/,
   );
-  await assert.rejects(
-    loadJustCommands({ cwd: await folder({ justfile: "set shell := [\"sh\", \"-c\"]\nb:\n" }), project: await loadProject(projectDir) }),
-    /Cannot merge .*justfile and .*justfile: .*shell/s,
-  );
 });
 
-test("remote project: its justfile is copied to the temp folder and labelled by the source", needsJust, async () => {
+test("remote project: its justfile is written to a fixed path named after the source", needsJust, async () => {
   const files: Record<string, string> = { "project.yaml": MANIFEST, justfile: "# Hi.\nhi:\n  @echo hi\n" };
   const source: ProjectSource = { kind: "remote", label: "https://github.com/o/r@v1", read: async (p: string) => files[p] } as ProjectSource;
-  const c = (await loadJustCommands({ cwd: await folder({}), project: await loadProjectFrom(source) }))!;
-  assert.deepEqual(c.sources, ["justfile in https://github.com/o/r@v1"]);
-  assert.equal(await readFile(c.justfile, "utf8"), files.justfile);
-  assert.equal(just(justEnv(c), "hi").trim(), "hi");
+  const cwd = await folder({});
+  const c = (await loadJustCommands({ cwd, project: await loadProjectFrom(source) }))!;
+  const justfile = join(tmpdir(), "pi-agent-just", "github.com_o_r@v1", "justfile");
+  assert.deepEqual(c.sources.map((s) => [s.label, s.justfile]), [["justfile in https://github.com/o/r@v1", justfile]]);
+  assert.equal(await readFile(justfile, "utf8"), files.justfile);
+  assert.equal(sh(cwd, `${c.sources[0]!.command} hi`), "hi");
+  // Same source, same path: the prompt doesn't change between runs.
+  const again = (await loadJustCommands({ cwd, project: await loadProjectFrom(source) }))!;
+  assert.equal(again.sources[0]!.command, c.sources[0]!.command);
 });
 
 test("just not installed: a clear error", async () => {

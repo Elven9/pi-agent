@@ -176,15 +176,15 @@ test *args:
     npm test -- {{args}}
 ```
 
-The project's justfile and the workspace's (at the cwd root) are both optional. With both, a
-generated justfile in the temp folder imports the workspace's, then the project's; on a name
-clash the workspace's recipe wins (`just` keeps the earlier of two imports at the same depth;
-`set allow-duplicate-recipes` is added unless a file already sets it). `just` cannot read a
-Makefile, so make targets are wrapped in recipes. The extension sets `JUST_JUSTFILE` and
-`JUST_WORKING_DIRECTORY` in its process environment, which pi's bash tool copies for every
-command: `just <recipe>` then works from any folder and runs in the workspace. The recipe list
-comes from `just --dump --dump-format json`; the path of the generated file never appears in the
-prompt, so block B stays the same between runs.
+The project's justfile and the workspace's (at the cwd root) are both optional, and never
+merged: merging moved `justfile_directory()` to a generated file in the temp folder, so a
+project recipe could not reach its own scripts. Each file is listed with the full command that
+runs its recipes in the workspace: `just <recipe>` for the workspace's, `just --justfile
+<project justfile> --working-directory <cwd> <recipe>` for the project's. A recipe in both is
+listed twice. No environment variable is set. `just` cannot read a Makefile, so make targets
+are wrapped in recipes. The recipe list comes from `just --dump --dump-format json`. A remote
+project's justfile is written to a path named after its source (not a hash), so block B stays
+the same between runs.
 
 ### `AGENTS.md`
 
@@ -224,9 +224,10 @@ path: /sandbox/AGENTS.md
 </agents_md>
 
 <project_commands>
-Run the project's commands with `just`, from any folder: recipes run in /sandbox. They come from /project/justfile. Use a recipe instead of typing its commands yourself; `just --usage <recipe>` shows its arguments and `just --show <recipe>` what it runs:
-- `just ci`: Install dependencies from the lockfile.
-- `just test [<args>]...`: Run the tests, or only those matching a pattern.
+Run the project's commands with `just`, typing each command exactly as listed (with its options): every recipe runs in /sandbox. Use a recipe instead of typing its commands yourself. To see a recipe's arguments or what it runs, replace the recipe and its arguments with `--usage <recipe>` or `--show <recipe>`.
+From /project/justfile:
+- `just --justfile /project/justfile --working-directory /sandbox ci`: Install dependencies from the lockfile.
+- `just --justfile /project/justfile --working-directory /sandbox test [<args>]...`: Run the tests, or only those matching a pattern.
 </project_commands>
 
 <project_cli_tools>
@@ -267,7 +268,7 @@ TypeBox schema, strict:
   ones are a warning, not an error (installed skills differ per machine).
 - Unknown keys are errors (a typo must not silently do nothing).
 - `cli_tools` keys are one word (an executable).
-- Justfiles must parse (`just --dump`) and merge; `just` must be installed when there is one.
+- Justfiles must parse (`just --dump`); `just` must be installed when there is one.
 - Every `workflows`/`docs` path must exist inside the project folder; no file listed twice.
 - Warning (not error) when block B is over about 8k tokens: it is paid on every turn.
 

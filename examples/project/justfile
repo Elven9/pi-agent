@@ -1,6 +1,7 @@
 # Example project commands for this repo (pi-agent). The project extension lists these recipes in
-# <project_commands> and points `just` at this file, merged with the workspace's own justfile if
-# it has one (the workspace's recipes win on a name clash). Recipes run in the workspace (cwd).
+# <project_commands>, each with the full command that runs it (`just --justfile <this file>
+# --working-directory <cwd> <recipe>`), next to the workspace's own justfile if it has one (never
+# merged). Recipes run in the workspace (cwd); use {{justfile_directory()}} for files next to this one.
 # A recipe's doc comment (the line above it) is its description in the prompt.
 
 # Install dependencies from the lockfile.

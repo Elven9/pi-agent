@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { JustCommands } from "./just.ts";
 import {
   describeBlock,
   loadProject,
@@ -41,14 +42,21 @@ docs:
     when: Before changing module boundaries.
 `;
 
-const JUST = {
-  sources: ["/sandbox/justfile", "/project/justfile"],
-  justfile: "/tmp/x/justfile",
+const JUST: JustCommands = {
   workdir: "/sandbox",
-  recipes: [
-    { name: "test", usage: "[args]...", doc: "Run all unit tests." },
-    { name: "ci", usage: "" },
-    { name: "db::migrate", usage: "<name>", doc: "Create a migration." },
+  sources: [
+    { label: "/sandbox/justfile", justfile: "/sandbox/justfile", command: "just", recipes: [{ name: "lint", usage: "", doc: "Lint." }] },
+    {
+      label: "/project/justfile",
+      justfile: "/project/justfile",
+      command: "just --justfile /project/justfile --working-directory /sandbox",
+      recipes: [
+        { name: "test", usage: "[args]...", doc: "Run all unit tests." },
+        { name: "ci", usage: "" },
+        { name: "db::migrate", usage: "<name>", doc: "Create a migration." },
+      ],
+    },
+    { label: "/empty/justfile", justfile: "/empty/justfile", command: "just -f /empty/justfile", recipes: [] },
   ],
 };
 
@@ -86,10 +94,13 @@ Use pnpm.
 </agents_md>
 
 <project_commands>
-Run the project's commands with \`just\`, from any folder: recipes run in /sandbox. They come from /sandbox/justfile and /project/justfile. Use a recipe instead of typing its commands yourself; \`just --usage <recipe>\` shows its arguments and \`just --show <recipe>\` what it runs:
-- \`just test [args]...\`: Run all unit tests.
-- \`just ci\`
-- \`just db::migrate <name>\`: Create a migration.
+Run the project's commands with \`just\`, typing each command exactly as listed (with its options): every recipe runs in /sandbox. Use a recipe instead of typing its commands yourself. To see a recipe's arguments or what it runs, replace the recipe and its arguments with \`--usage <recipe>\` or \`--show <recipe>\`.
+From /sandbox/justfile:
+- \`just lint\`: Lint.
+From /project/justfile:
+- \`just --justfile /project/justfile --working-directory /sandbox test [args]...\`: Run all unit tests.
+- \`just --justfile /project/justfile --working-directory /sandbox ci\`
+- \`just --justfile /project/justfile --working-directory /sandbox db::migrate <name>\`: Create a migration.
 </project_commands>
 
 <project_cli_tools>
@@ -140,7 +151,7 @@ test("leaves out empty sections; AGENTS.md alone works without a manifest", asyn
 
 test("commands come from just alone, with or without a manifest; no recipes, no section", () => {
   assert.deepEqual(Object.keys(renderProjectSections({ cwd: "/w", just: JUST })), ["project_commands"]);
-  assert.deepEqual(renderProjectSections({ cwd: "/w", just: { ...JUST, recipes: [] } }), {});
+  assert.deepEqual(renderProjectSections({ cwd: "/w", just: { ...JUST, sources: JUST.sources.map((s) => ({ ...s, recipes: [] })) } }), {});
 });
 
 test("loadProject: missing file is an error unless optional", async () => {

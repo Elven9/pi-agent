@@ -249,13 +249,17 @@ export function renderProjectSections(o: {
   if (o.agentsMd?.length) {
     sections[SECTION.agentsMd] = o.agentsMd.map((f) => `path: ${f.path}\n${normalizeText(f.content)}`).join("\n\n");
   }
-  if (o.just?.recipes.length) {
+  const justSources = o.just?.sources.filter((s) => s.recipes.length) ?? [];
+  if (justSources.length) {
     sections[SECTION.commands] = [
-      `Run the project's commands with \`just\`, from any folder: recipes run in ${o.just.workdir}. They come from ${o.just.sources.join(" and ")}. Use a recipe instead of typing its commands yourself; \`just --usage <recipe>\` shows its arguments and \`just --show <recipe>\` what it runs:`,
-      ...o.just.recipes.map((r) => {
-        const command = code(["just", r.name, r.usage].filter(Boolean).join(" "));
-        return r.doc ? `- ${command}: ${normalizeText(r.doc).replaceAll("\n", " ")}` : `- ${command}`;
-      }),
+      `Run the project's commands with \`just\`, typing each command exactly as listed (with its options): every recipe runs in ${o.just!.workdir}. Use a recipe instead of typing its commands yourself. To see a recipe's arguments or what it runs, replace the recipe and its arguments with \`--usage <recipe>\` or \`--show <recipe>\`.`,
+      ...justSources.flatMap((s) => [
+        `From ${s.label}:`,
+        ...s.recipes.map((r) => {
+          const command = code([s.command, r.name, r.usage].filter(Boolean).join(" "));
+          return r.doc ? `- ${command}: ${normalizeText(r.doc).replaceAll("\n", " ")}` : `- ${command}`;
+        }),
+      ]),
     ].join("\n");
   }
   if (m) {
