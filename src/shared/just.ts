@@ -1,7 +1,7 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execCli, type CliRunner } from "./project-source.ts";
+import { CliError, execCli, type CliRunner } from "./project-source.ts";
 import type { Project } from "./project.ts";
 
 /**
@@ -93,8 +93,12 @@ export interface JustDump {
   settings: { allow_duplicate_recipes?: boolean };
 }
 
+/** Thrown by dump when the `just` binary is missing (execCli's ENOENT). */
+class JustMissing extends Error {}
+
 async function dump(run: CliRunner, justfile: string): Promise<JustDump> {
   const out = await run("just", ["--justfile", justfile, "--dump", "--dump-format", "json"]).catch((err: Error) => {
+    if (err instanceof CliError && err.missing) throw new JustMissing(err.message);
     throw new Error(`Cannot read ${justfile}: ${err.message}`);
   });
   return JSON.parse(out) as JustDump;
@@ -130,11 +134,18 @@ export function recipesOf(d: JustDump): JustRecipe[] {
 
 /**
  * Finds the workspace's and the project's justfiles and loads their recipes. Undefined when
- * neither has one. Throws when a justfile is invalid or `just` is not installed. A remote
+ * neither has one, or when `just` is not installed (then `warn` gets a message and no justfile
+ * is read: there are no project commands). Throws when a justfile is invalid. A remote
  * project's justfile is copied to the temp folder (it must be self-contained: its imports,
  * modules and scripts are not fetched).
  */
-export async function loadJustCommands(o: { cwd: string; project?: Project; run?: CliRunner }): Promise<JustCommands | undefined> {
+export async function loadJustCommands(o: {
+  cwd: string;
+  project?: Project;
+  run?: CliRunner;
+  /** Gets a message when `just` is not installed. */
+  warn?: (message: string) => void;
+}): Promise<JustCommands | undefined> {
   const run = o.run ?? execCli;
   const files: Omit<JustSource, "recipes">[] = [];
   const workspace = await findJustfile(o.cwd);
@@ -152,6 +163,13 @@ export async function loadJustCommands(o: { cwd: string; project?: Project; run?
   }
   if (files.length === 0) return undefined;
   // Errors name the file at fault (dump).
-  const dumps = await Promise.all(files.map((f) => dump(run, f.justfile)));
+  let dumps: JustDump[];
+  try {
+    dumps = await Promise.all(files.map((f) => dump(run, f.justfile)));
+  } catch (err) {
+    if (!(err instanceof JustMissing)) throw err;
+    o.warn?.(`${err.message}: skipped the commands from ${files.map((f) => f.label).join(", ")}`);
+    return undefined;
+  }
   return { workdir: o.cwd, sources: files.map((f, i) => ({ ...f, recipes: recipesOf(dumps[i]!) })) };
 }

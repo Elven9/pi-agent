@@ -252,7 +252,7 @@ export function renderProjectSections(o: {
   const justSources = o.just?.sources.filter((s) => s.recipes.length) ?? [];
   if (justSources.length) {
     sections[SECTION.commands] = [
-      `Run the project's commands with \`just\`, typing each command exactly as listed (with its options): every recipe runs in ${o.just!.workdir}. Use a recipe instead of typing its commands yourself. To see a recipe's arguments or what it runs, replace the recipe and its arguments with \`--usage <recipe>\` or \`--show <recipe>\`.`,
+      `Run these commands with \`just\`, typing each one exactly as listed (with its options): every recipe runs in ${o.just!.workdir}. Use a recipe instead of typing its commands yourself. To see a recipe's arguments or what it runs, replace the recipe and its arguments with \`--usage <recipe>\` or \`--show <recipe>\`.`,
       ...justSources.flatMap((s) => [
         `From ${s.label}:`,
         ...s.recipes.map((r) => {

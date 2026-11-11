@@ -136,6 +136,20 @@ test("justfiles: the commands section lists each recipe with the full command th
   assert.equal(pi.shutdown, true);
 });
 
+test("just not installed: no commands section, a warning, the session goes on", async (t) => {
+  const project = await tmp({ "project.yaml": "version: 1\nname: demo\n", justfile: "test:\n  npm test\n" });
+  const run: CliRunner = async (command) => {
+    throw new CliError(`${command} is not installed (or not on PATH)`, "", true);
+  };
+  const errors: string[] = [];
+  t.mock.method(console, "error", (m: string) => void errors.push(m));
+  const pi = fakePi({ project }, await tmp({}), [], { run });
+  await pi.emit("session_start");
+  assert.equal(pi.shutdown, false);
+  assert.deepEqual(Object.keys(promptSections(pi)), ["cwd", "project"]);
+  assert.deepEqual(errors, [`[pi-agent] warning: just is not installed (or not on PATH): skipped the commands from ${join(project, "justfile")}`]);
+});
+
 test("without --project or AGENTS.md it adds nothing", async () => {
   const pi = fakePi({}, await tmp({}));
   await pi.emit("session_start");

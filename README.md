@@ -436,7 +436,8 @@ path that stays the same between runs.
 
 Arguments are shown as `<required>`, `[<optional>]` and `...` for variadic ones; the command
 with `--usage <recipe>` instead of the recipe has the details. The section works with or without `project.yaml`. An invalid
-justfile, or a justfile without `just` installed, is an error (the wrapper exits 2). The image
+justfile is an error (the wrapper exits 2). Without `just` installed, the justfiles are skipped
+with a warning and there is no commands section. The image
 includes `just` (`JUST_VERSION` in the Dockerfile).
 
 #### Project in settings.json (local folder, GitHub, GitLab)

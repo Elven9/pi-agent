@@ -94,7 +94,7 @@ Use pnpm.
 </agents_md>
 
 <project_commands>
-Run the project's commands with \`just\`, typing each command exactly as listed (with its options): every recipe runs in /sandbox. Use a recipe instead of typing its commands yourself. To see a recipe's arguments or what it runs, replace the recipe and its arguments with \`--usage <recipe>\` or \`--show <recipe>\`.
+Run these commands with \`just\`, typing each one exactly as listed (with its options): every recipe runs in /sandbox. Use a recipe instead of typing its commands yourself. To see a recipe's arguments or what it runs, replace the recipe and its arguments with \`--usage <recipe>\` or \`--show <recipe>\`.
 From /sandbox/justfile:
 - \`just lint\`: Lint.
 From /project/justfile:

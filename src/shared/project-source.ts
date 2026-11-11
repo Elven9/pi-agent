@@ -178,9 +178,12 @@ export type CliRunner = (command: string, args: string[]) => Promise<string>;
 
 export class CliError extends Error {
   readonly stderr: string;
-  constructor(message: string, stderr: string) {
+  /** The command itself is not installed (or not on PATH). */
+  readonly missing: boolean;
+  constructor(message: string, stderr: string, missing = false) {
     super(message);
     this.stderr = stderr;
+    this.missing = missing;
   }
 }
 
@@ -191,7 +194,7 @@ export const execCli: CliRunner = (command, args) =>
     execFile(command, args, { maxBuffer: 256 * 1024 * 1024, timeout: CLI_TIMEOUT_MS, encoding: "utf8" }, (err, stdout, stderr) => {
       if (!err) return resolve(stdout);
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        return reject(new CliError(`${command} is not installed (or not on PATH)`, ""));
+        return reject(new CliError(`${command} is not installed (or not on PATH)`, "", true));
       }
       // gh prints the API's JSON body on stdout and its summary on stderr.
       const detail = [stderr, stdout].map((s) => s.trim()).filter(Boolean).join("\n");

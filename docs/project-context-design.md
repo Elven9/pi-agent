@@ -224,7 +224,7 @@ path: /sandbox/AGENTS.md
 </agents_md>
 
 <project_commands>
-Run the project's commands with `just`, typing each command exactly as listed (with its options): every recipe runs in /sandbox. Use a recipe instead of typing its commands yourself. To see a recipe's arguments or what it runs, replace the recipe and its arguments with `--usage <recipe>` or `--show <recipe>`.
+Run these commands with `just`, typing each one exactly as listed (with its options): every recipe runs in /sandbox. Use a recipe instead of typing its commands yourself. To see a recipe's arguments or what it runs, replace the recipe and its arguments with `--usage <recipe>` or `--show <recipe>`.
 From /project/justfile:
 - `just --justfile /project/justfile --working-directory /sandbox ci`: Install dependencies from the lockfile.
 - `just --justfile /project/justfile --working-directory /sandbox test [<args>]...`: Run the tests, or only those matching a pattern.

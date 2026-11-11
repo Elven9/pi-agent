@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { loadJustCommands, recipesOf, type JustDump } from "./just.ts";
 import { loadProject, loadProjectFrom } from "./project.ts";
-import type { ProjectSource } from "./project-source.ts";
+import { CliError, type ProjectSource } from "./project-source.ts";
 
 const hasJust = (() => {
   try {
@@ -157,9 +157,19 @@ test("remote project: its justfile is written to a fixed path named after the so
   assert.equal(again.sources[0]!.command, c.sources[0]!.command);
 });
 
-test("just not installed: a clear error", async () => {
+test("just not installed: no commands, a warning naming the justfiles", async () => {
   const run = async () => {
-    throw new Error("just is not installed (or not on PATH)");
+    throw new CliError("just is not installed (or not on PATH)", "", true);
   };
-  await assert.rejects(loadJustCommands({ cwd: await folder({ justfile: "a:\n" }), run }), /Cannot read .*justfile: just is not installed/);
+  const cwd = await folder({ justfile: "a:\n" });
+  const warnings: string[] = [];
+  assert.equal(await loadJustCommands({ cwd, run, warn: (w) => warnings.push(w) }), undefined);
+  assert.deepEqual(warnings, [`just is not installed (or not on PATH): skipped the commands from ${join(cwd, "justfile")}`]);
+});
+
+test("just failing for another reason is still an error", async () => {
+  const run = async () => {
+    throw new CliError("just --dump failed: boom", "boom");
+  };
+  await assert.rejects(loadJustCommands({ cwd: await folder({ justfile: "a:\n" }), run, warn: () => assert.fail("no warning") }), /Cannot read .*justfile: just --dump failed/);
 });

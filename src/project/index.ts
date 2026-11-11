@@ -151,7 +151,10 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
           const setting = projectSetting(pi.getSettings());
           project = setting ? await loadProjectFrom(await settingSource(setting, ctx.cwd, run)) : undefined;
         }
-        const just = await loadJustCommands({ cwd: ctx.cwd, project, run });
+        // Without just installed there are no commands: warn and go on.
+        const warn = (message: string) =>
+          ctx.mode === "tui" ? ctx.ui.notify(`[pi-agent] ${message}`, "warning") : console.error(`[pi-agent] warning: ${message}`);
+        const just = await loadJustCommands({ cwd: ctx.cwd, project, run, warn });
         sections = renderProjectSections({ cwd: ctx.cwd, project, agentsMd: await readAgentsMdFiles(ctx.cwd), just });
         block = renderBlock(sections);
         applied = false;
