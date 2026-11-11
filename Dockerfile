@@ -6,6 +6,10 @@ ARG NODE_VERSION=26.10.0
 ARG PI_VERSION=1.5.0
 # just runs the project commands (justfile recipes, see README "Project commands").
 ARG JUST_VERSION=1.59.0
+# Go toolchain and gopls for the code-writer scenario's gopls MCP server (src/shared/mcp-servers.ts).
+# gopls needs the go command at run time to load packages.
+ARG GO_VERSION=1.27.3
+ARG GOPLS_VERSION=v0.23.0
 
 # ---- build: bundle the wrapper and the extension ----
 FROM node:${NODE_VERSION}-bookworm-slim AS build
@@ -32,6 +36,11 @@ RUN apt-get update \
  && tar -xzf "${file}" just \
  && install -m 755 just /usr/local/bin/just
 
+# ---- gopls: built with the pinned Go toolchain (module checksums verified via sum.golang.org) ----
+FROM golang:${GO_VERSION}-bookworm AS gopls
+ARG GOPLS_VERSION
+RUN CGO_ENABLED=0 GOBIN=/out go install "golang.org/x/tools/gopls@${GOPLS_VERSION}"
+
 # ---- runtime: node + stock pi CLI + two bundled files ----
 FROM node:${NODE_VERSION}-bookworm-slim
 ARG PI_VERSION
@@ -43,6 +52,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=just /usr/local/bin/just /usr/local/bin/just
+# Go (PATH and the writable GOPATH/GOCACHE are set in docker/pi-agent.sh) and gopls.
+COPY --from=gopls /usr/local/go /usr/local/go
+COPY --from=gopls /out/gopls /usr/local/bin/gopls
 
 # pi installs its own dependencies (typebox included, which the extension uses).
 RUN npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}" \

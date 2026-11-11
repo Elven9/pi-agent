@@ -14,6 +14,9 @@
 #   else the run continues without project context (with a warning).
 #   `pi-agent run --project <dir>` overrides both.
 # - PI_OFFLINE etc.: the sandbox blocks pi.dev anyway; don't try.
+# - Go (for gopls and the agent's go commands): the toolchain in /usr/local/go on PATH; module
+#   and build caches under /tmp (writable); GOTOOLCHAIN=local so a newer go directive fails
+#   instead of downloading a toolchain.
 : "${NODE_ENV:=production}"
 : "${PI_CODING_AGENT_DIR:=/tmp/pi-agent}"
 : "${PI_AGENT_MODELS:=/usr/local/lib/pi-agent/config/models.json}"
@@ -22,7 +25,12 @@
 : "${PI_OFFLINE:=1}"
 : "${PI_SKIP_VERSION_CHECK:=1}"
 : "${PI_TELEMETRY:=0}"
+: "${GOPATH:=/tmp/go}"
+: "${GOCACHE:=/tmp/go-cache}"
+: "${GOTOOLCHAIN:=local}"
+PATH="/usr/local/go/bin:$PATH"
 export NODE_ENV PI_CODING_AGENT_DIR PI_AGENT_PROJECT PI_OFFLINE PI_SKIP_VERSION_CHECK PI_TELEMETRY
+export GOPATH GOCACHE GOTOOLCHAIN PATH
 
 mkdir -p "$PI_CODING_AGENT_DIR" || exit 1
 if [ -f "$PI_AGENT_MODELS" ]; then
