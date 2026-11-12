@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/Elven9/pi-agent/compare/v0.9.0...v0.10.0) (2026-11-12)
+
+
+### Features
+
+* **code-writer:** add a testing policy to the system prompt ([5c1bbd3](https://github.com/Elven9/pi-agent/commit/5c1bbd3646fb72aa00620b95be4adaa17a5d8226))
+
 ## [0.9.0](https://github.com/Elven9/pi-agent/compare/v0.8.0...v0.9.0) (2026-11-11)
 
 
