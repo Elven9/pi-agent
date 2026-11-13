@@ -18,6 +18,8 @@ Or set it once in `settings.json` (`~/.pi/agent/settings.json` or `.pi/settings.
 ```
 
 - `--project` wins over the settings entry.
+- Optional `worktreeDir` (any type): where the worktree extension creates worktrees; see
+  `pi --pi-agent-docs worktree`.
 - A relative `dir` is resolved against the cwd pi runs in, not the settings file. `~` is not
   expanded.
 - `github` / `gitlab` read the repo at the tag through the logged-in `gh` / `glab` (nothing is

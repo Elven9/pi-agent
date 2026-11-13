@@ -13,6 +13,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
 | `src/tags/` | pi extension: session tags (`--tags`, `/tags`) as `pi-agent.tags` entries in the session file (runner and personal pi) |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
+| `src/worktree/` | pi extension (personal pi only): git worktrees (`worktree_*` tools, `/worktree`); an entered worktree confines the session's tools to it |
 | `src/agent-docs/` | pi extension (personal pi only): `pi --pi-agent-docs [topic]` prints usage docs for agents (`docs/*.md`) and exits; the flag is listed in `pi --help` |
 | `src/activation-hint/` | pi extension (personal pi only): a startup widget with the active scenario, project and skills; UI only (never in the session or the model's context), cleared on the first prompt |
 | `src/herdr-session-name/` | pi extension (personal pi only): the pi session name as the herdr pane label and agent name |
@@ -32,7 +33,7 @@ pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /r
 ```
 
 The manifest exposes `skills/`, `prompts/*.md` and these extensions: project context
-(`src/project/`), activation hint (`src/activation-hint/`, after project), context view (`src/context-view/`), session metrics (`src/metrics/`), session
+(`src/project/`), worktrees (`src/worktree/`, after project), activation hint (`src/activation-hint/`, after project), context view (`src/context-view/`), session metrics (`src/metrics/`), session
 upload (`src/session-upload/`), herdr session name (`src/herdr-session-name/`), session tags (`src/tags/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
 and the scenario profile, loaded from `dist/scenario-profile.js` because
 scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`

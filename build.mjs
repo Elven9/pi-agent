@@ -3,7 +3,7 @@
 // - dist/pi-agent.js: the wrapper. Everything it imports is bundled in; it only needs node and
 //   a `pi` executable at runtime.
 // - dist/extension.js (runner), dist/scenario-profile.js (scenario prompt/tools/skills),
-//   dist/project.js (project context), dist/metrics.js (session metrics), dist/tags.js (session
+//   dist/project.js (project context), dist/worktree.js (git worktrees), dist/metrics.js (session metrics), dist/tags.js (session
 //   tags), dist/agent-docs.js (--pi-agent-docs) and dist/tool-ref.js
 //   (tool-call handles, loaded last): loaded by pi (-e). pi
 //   provides typebox and its own packages to extensions, so those stay external (bundling a
@@ -47,6 +47,7 @@ await build({
     extension: "src/extension/index.ts",
     "scenario-profile": "src/scenario-profile/index.ts",
     project: "src/project/index.ts",
+    worktree: "src/worktree/index.ts",
     metrics: "src/metrics/index.ts",
     tags: "src/tags/index.ts",
     "tool-ref": "src/tool-ref/index.ts",

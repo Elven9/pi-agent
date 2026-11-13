@@ -8,6 +8,7 @@ Print one with `pi --pi-agent-docs <topic>`:
 
 - `project`: give the agent a project's rules, commands, workflows and docs (`--project`).
 - `scenario`: run the agent in a fixed role, with its own prompt, tools and skills (`--scenario`).
+- `worktree`: create git worktrees and confine a session to one (`worktree_*` tools, `/worktree`).
 
 ## Flags
 

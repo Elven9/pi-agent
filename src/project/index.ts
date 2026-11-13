@@ -15,6 +15,7 @@ import {
 } from "../shared/project.ts";
 import { loadJustCommands } from "../shared/just.ts";
 import { execCli, projectPath, projectSetting, settingSource, type CliRunner } from "../shared/project-source.ts";
+import { resolveFrom } from "../shared/worktree.ts";
 import { splitSystemPrompt } from "./cache-split.ts";
 
 /** project_read output limits, like pi's read tool. */
@@ -80,6 +81,8 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
     let commandsFile: { path: string; content: string } | undefined;
     /** A startup error in the TUI, printed on shutdown. */
     let startupError: string | undefined;
+    /** `project.worktreeDir` from settings.json, resolved (for the worktree extension). */
+    let worktreeDir: string | undefined;
 
     /** Block B goes into the prompt unless there is no project and pi loaded context files. */
     const usesBlock = (piContextFiles: number) => project !== undefined || piContextFiles === 0;
@@ -92,6 +95,8 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
         block: applied ? block : "",
         sections: Object.keys(sections),
         ...(project?.manifest.skills && { skills: [...project.manifest.skills.include] }),
+        ...(project?.dir !== undefined && { folder: project.dir }),
+        ...(worktreeDir !== undefined && { worktreeDir }),
       } satisfies ProjectAnnounced);
 
     /**
@@ -148,6 +153,7 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
 
     pi.on("session_start", async (_event, ctx) => {
       const dir = pi.getFlag(PROJECT_FLAG);
+      worktreeDir = undefined;
       try {
         // The flag wins; otherwise the project entry in settings.json, if any.
         if (typeof dir === "string" && dir !== "") {
@@ -155,6 +161,8 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
         } else {
           const setting = projectSetting(pi.getSettings());
           project = setting ? await loadProjectFrom(await settingSource(setting, ctx.cwd, run)) : undefined;
+          // Relative: against a local project's folder, else the cwd.
+          if (setting?.worktreeDir) worktreeDir = resolveFrom(project?.dir ?? ctx.cwd, setting.worktreeDir);
         }
         // Without just installed there are no commands: warn and go on.
         const warn = (message: string) =>

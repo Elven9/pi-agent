@@ -42,8 +42,13 @@ test("projectSetting: absent, valid, and every kind of invalid", () => {
   assert.throws(() => projectSetting({ project: { ...ok, repo: "https://x:y@github.com/acme/proj" } }), /credentials/);
 });
 
-test("projectSetting: local takes a dir only", () => {
+test("projectSetting: local takes a dir (and an optional worktreeDir)", () => {
   assert.deepEqual(projectSetting({ project: { type: "local", dir: "../proj" } }), { type: "local", dir: "../proj" });
+  const withWorktrees = { type: "local", dir: "../proj", worktreeDir: "~/wt" };
+  assert.deepEqual(projectSetting({ project: withWorktrees }), withWorktrees);
+  const remote = { type: "github", repo: "https://github.com/acme/proj", tag: "v1", worktreeDir: "wt" };
+  assert.deepEqual(projectSetting({ project: remote }), remote);
+  assert.throws(() => projectSetting({ project: { type: "local", dir: "x", worktreeDir: "" } }), /\/worktreeDir/);
   assert.throws(() => projectSetting({ project: { type: "local" } }), /:\n\/ must have required properties dir$/);
   assert.throws(() => projectSetting({ project: { type: "local", dir: "" } }), /\/dir/);
   assert.throws(() => projectSetting({ project: { type: "local", dir: "x", tag: "v1" } }), /:\n\/tag is not a known key$/);

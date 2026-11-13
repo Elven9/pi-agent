@@ -108,7 +108,7 @@ test("adds the project sections after pi's own, the same on every prompt", async
 
   // Announced for /context: at session start (not applied yet), then on each prompt.
   const atStart = pi.announced[0] as { sections: string[] };
-  assert.deepEqual(atStart, { project: { name: "demo", dir: project }, block: "", sections: atStart.sections });
+  assert.deepEqual(atStart, { project: { name: "demo", dir: project }, block: "", sections: atStart.sections, folder: project });
   // Block B's section names are announced before any prompt (for /context in resumed sessions).
   assert.equal(atStart.sections[0], "project");
   assert.ok(atStart.sections.includes("project_rules"));
@@ -364,3 +364,21 @@ test("settings.json local project: a missing or invalid project.yaml is an error
     assert.match((pi.entries[0].data as { message: string }).message, message);
   }
 });
+
+test("announces a local project's folder and the resolved project.worktreeDir for the worktree extension", async () => {
+  const project = await tmp({ "project.yaml": "version: 1\nname: demo\n" });
+  const workspace = await tmp({});
+  const viaFlag = fakePi({ project }, workspace);
+  await viaFlag.emit("session_start");
+  const flagged = viaFlag.announced.at(-1) as { folder?: string; worktreeDir?: string };
+  assert.equal(flagged.folder, project);
+  assert.equal(flagged.worktreeDir, undefined);
+
+  const settings = { project: { type: "local", dir: project, worktreeDir: "wt" } };
+  const viaSettings = fakePi({}, workspace, [], { settings });
+  await viaSettings.emit("session_start");
+  const announced = viaSettings.announced.at(-1) as { folder?: string; worktreeDir?: string };
+  assert.equal(announced.folder, project);
+  assert.equal(announced.worktreeDir, join(project, "wt"));
+});
+

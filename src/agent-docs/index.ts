@@ -4,6 +4,7 @@ import { getScenario, scenarioNames } from "../shared/scenarios/index.ts";
 import overview from "./docs/overview.md";
 import project from "./docs/project.md";
 import scenario from "./docs/scenario.md";
+import worktree from "./docs/worktree.md";
 
 export const DOCS_FLAG = "pi-agent-docs";
 
@@ -11,6 +12,7 @@ const TOPICS: Record<string, () => string> = {
   overview: () => overview,
   project: () => project,
   scenario: () => `${scenario.trimEnd()}\n\n${scenarioTable()}`,
+  worktree: () => worktree,
 };
 export const TOPIC_NAMES = Object.keys(TOPICS);
 

@@ -58,6 +58,10 @@ export interface ProjectAnnounced {
    * extension, which selects the skills.
    */
   skills?: string[];
+  /** A local project's folder (absolute); undefined for a remote project or none. Read by the worktree extension. */
+  folder?: string;
+  /** The project setting's `worktreeDir`, resolved to an absolute path; undefined when not set. Read by the worktree extension. */
+  worktreeDir?: string;
 }
 
 /**
@@ -116,6 +120,8 @@ export const ENTRY = {
   error: "pi-agent.error",
   /** `custom` entry with `TagsEntry` data (tags extension); the last one in the file is the session's tags. */
   tags: "pi-agent.tags",
+  /** `custom` entry with `WorktreeEntry` data (worktree extension); the last one on the branch is the entered worktree. */
+  worktree: "pi-agent.worktree",
 } as const;
 
 /** `pi.events` channel: the metrics extension appends a `pi-agent.metrics` entry now (if changed). */

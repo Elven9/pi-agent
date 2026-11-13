@@ -44,7 +44,7 @@ test("unknown topic: error on stderr, exit 2", () => {
   const r = run([`--${DOCS_FLAG}`, "nope"]);
   assert.deepEqual(r.codes, [2]);
   assert.equal(r.out, "");
-  assert.match(r.err, /Unknown docs topic "nope" \(known: overview, project, scenario\)/);
+  assert.match(r.err, /Unknown docs topic "nope" \(known: overview, project, scenario, worktree\)/);
 });
 
 test("scenario docs: every registered scenario is described and listed in the generated table", () => {

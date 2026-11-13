@@ -27,6 +27,8 @@ const remoteSchema = <T extends "github" | "gitlab">(type: T) =>
       tag: Line,
       /** Folder in the repository with `project.yaml` (default: the root). Several projects can share a repo. */
       path: Type.Optional(Line),
+      /** Where worktrees are created (worktree extension); a relative path is resolved against the working directory pi runs in. */
+      worktreeDir: Type.Optional(Line),
     },
     { additionalProperties: false },
   );
@@ -36,6 +38,8 @@ const LocalSettingSchema = Type.Object(
     type: Type.Literal("local"),
     /** Folder with `project.yaml`; a relative path is resolved against the working directory pi runs in. */
     dir: Line,
+    /** Where worktrees are created (worktree extension); a relative path is resolved against `dir`. Default: `<dir>/.pi/worktree`. */
+    worktreeDir: Type.Optional(Line),
   },
   { additionalProperties: false },
 );
