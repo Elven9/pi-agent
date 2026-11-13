@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/Elven9/pi-agent/compare/v0.10.0...v0.11.0) (2026-11-13)
+
+
+### Features
+
+* **worktree:** add git worktree extension with worktree_* tools and /worktree ([63145b3](https://github.com/Elven9/pi-agent/commit/63145b3eb56441905bac0e7042caaa0f51a17f92))
+
 ## [0.10.0](https://github.com/Elven9/pi-agent/compare/v0.9.0...v0.10.0) (2026-11-12)
 
 
