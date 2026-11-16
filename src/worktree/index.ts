@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { footerSessionStart, setFooterPart } from "../shared/footer.ts";
 import { ENTRY, PROJECT_CHANNEL, type ProjectAnnounced } from "../shared/protocol.ts";
 import { execCli, projectSetting, type CliRunner } from "../shared/project-source.ts";
 import {
@@ -38,6 +39,9 @@ export interface WorktreeEntry {
   version: typeof WORKTREE_ENTRY_VERSION;
   worktree?: ActiveWorktree;
 }
+
+/** Key of the footer part (TUI) or status (other UIs) naming the entered worktree. */
+const UI_KEY = "pi-agent.worktree";
 
 /** System prompt section shown while a worktree is entered. */
 export const SECTION = "worktree";
@@ -145,6 +149,7 @@ export interface WorktreeOptions {
  *   in `tool_call`, which also sees the calls from codemode scripts.
  * - `write` and `edit` outside the worktree (and the temp folder) are blocked. Reads and bash are not.
  * - The prompt gets a `<worktree>` section. Only the user leaves (`/worktree exit`).
+ * - The footer shows `wt:<branch>` in front of the cwd (TUI; a status in other UIs).
  */
 export function createWorktree(options: WorktreeOptions = {}) {
   const git = new Git(options.run ?? execCli);
@@ -177,13 +182,21 @@ export function createWorktree(options: WorktreeOptions = {}) {
       pi.appendEntry<WorktreeEntry>(ENTRY.worktree, { version: WORKTREE_ENTRY_VERSION, ...(next && { worktree: next }) });
     };
 
-    const enter = async (repo: string, branch: string) => {
+    /** The entered worktree's branch in front of the footer's cwd (TUI), else a status. */
+    const showActive = (ctx: ExtensionContext) => {
+      if (ctx.mode === "tui") setFooterPart(pi, ctx, UI_KEY, "left", active && `wt:${active.branch}`);
+      else if (ctx.hasUI) ctx.ui.setStatus(UI_KEY, active && `worktree: ${active.branch}`);
+    };
+
+    const enter = async (repo: string, branch: string, ctx: ExtensionContext) => {
       const w = await findWorktree(repo, branch);
       setActive({ path: await realpathNearest(w.path), repo, branch });
+      showActive(ctx);
       return active!;
     };
 
-    const add = async (p: { branch: string; repo?: string; base?: string; enter?: boolean }, cwd: string) => {
+    const add = async (p: { branch: string; repo?: string; base?: string; enter?: boolean }, ctx: ExtensionContext) => {
+      const cwd = ctx.cwd;
       const repo = await repoOf(p.repo, cwd);
       const path = worktreePath(worktreeDir(cwd), repo, p.branch);
       const from = await git.add({ repo, branch: p.branch, path, base: p.base });
@@ -193,7 +206,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
       if (settings === "copied") lines.push(`Copied ${join(repo, ".pi", "settings.json")} into it.`);
       if (settings === "written") lines.push("Wrote .pi/settings.json with this session's project into it.");
       if (p.enter) {
-        await enter(repo, p.branch);
+        await enter(repo, p.branch, ctx);
         lines.push("Entered it: tools now run there.");
       }
       return { text: lines.join("\n"), details: { path, repo, branch: p.branch, from, settings, entered: Boolean(p.enter) } };
@@ -244,7 +257,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
       parameters: ADD_PARAMETERS,
       executionMode: "sequential",
       async execute(_id, params, _signal, _onUpdate, ctx) {
-        return result(await add(params, ctx.cwd));
+        return result(await add(params, ctx));
       },
     });
 
@@ -257,7 +270,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
       parameters: ENTER_PARAMETERS,
       executionMode: "sequential",
       async execute(_id, params, _signal, _onUpdate, ctx) {
-        const w = await enter(await repoOf(params.repo, ctx.cwd), params.branch);
+        const w = await enter(await repoOf(params.repo, ctx.cwd), params.branch, ctx);
         return result({ text: `Entered worktree ${w.path} (branch ${w.branch}). Tools now run there.`, details: w });
       },
     });
@@ -297,6 +310,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
         setActive(undefined);
         notify(ctx, `Worktree ${gone} no longer exists; left it.`, "warning");
       }
+      showActive(ctx);
     };
 
     const notify = (ctx: ExtensionContext, message: string, level: "info" | "warning" | "error") => {
@@ -305,6 +319,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
     };
 
     pi.on("session_start", async (_event, ctx) => {
+      footerSessionStart(pi, ctx);
       try {
         setting = worktreeSetting(pi.getSettings());
       } catch (err) {
@@ -375,10 +390,10 @@ export function createWorktree(options: WorktreeOptions = {}) {
               ctx.ui.notify((await list(ctx.cwd)).text, "info");
               return;
             case "add":
-              ctx.ui.notify((await add(parsed, ctx.cwd)).text, "info");
+              ctx.ui.notify((await add(parsed, ctx)).text, "info");
               return;
             case "enter": {
-              const w = await enter(await repoOf(parsed.repo, ctx.cwd), parsed.branch);
+              const w = await enter(await repoOf(parsed.repo, ctx.cwd), parsed.branch, ctx);
               ctx.ui.notify(`Entered worktree ${w.path} (branch ${w.branch}).`, "info");
               return;
             }
@@ -392,6 +407,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
               }
               const left = active.path;
               setActive(undefined);
+              showActive(ctx);
               ctx.ui.notify(`Left worktree ${left}; tools run in ${ctx.cwd} again.`, "info");
               return;
             }

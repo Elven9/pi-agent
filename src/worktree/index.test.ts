@@ -29,6 +29,7 @@ function fakePi(cwd: string, o: { settings?: object; entries?: Entry[]; hasUI?: 
   const commands = new Map<string, any>();
   const entries: Entry[] = [...(o.entries ?? [])];
   const notices: Array<[string, string]> = [];
+  const statuses = new Map<string, string | undefined>();
   let shutdown = false;
   const pi = {
     events: {
@@ -46,13 +47,17 @@ function fakePi(cwd: string, o: { settings?: object; entries?: Entry[]; hasUI?: 
     hasUI: o.hasUI ?? true,
     shutdown: () => (shutdown = true),
     sessionManager: { getBranch: () => [...entries] },
-    ui: { notify: (message: string, level: string) => void notices.push([message, level]) },
+    ui: {
+      notify: (message: string, level: string) => void notices.push([message, level]),
+      setStatus: (key: string, text: string | undefined) => void statuses.set(key, text),
+    },
   };
   // The test repositories are in the OS temp folder, so a separate one stands in for it.
   createWorktree({ tempDir: o.tempDir ?? "/nonexistent-temp" })(pi);
   return {
     entries,
     notices,
+    statuses,
     get shutdown() {
       return shutdown;
     },
@@ -167,13 +172,16 @@ test("remove: refused for the entered worktree and the main checkout; after /wor
   const repo = await makeRepo(join(await tmp(), "app"));
   const pi = fakePi(repo);
   await pi.start();
+  assert.equal(pi.statuses.get("pi-agent.worktree"), undefined);
   await pi.tool(TOOL.add, { branch: "feat/x", enter: true });
+  assert.equal(pi.statuses.get("pi-agent.worktree"), "worktree: feat/x");
   await assert.rejects(pi.tool(TOOL.remove, { branch: "feat/x" }), /session is in .*\/worktree exit/);
   await assert.rejects(pi.tool(TOOL.remove, { branch: "master" }), /is the main checkout/);
 
   await pi.command("exit");
   assert.match(pi.notices.at(-1)![0], /^Left worktree/);
   assert.deepEqual(pi.worktreeEntries().at(-1), { version: 1 });
+  assert.equal(pi.statuses.get("pi-agent.worktree"), undefined);
   assert.deepEqual((await pi.call("read", { path: "a" })).input, { path: "a" });
 
   assert.match(await pi.tool(TOOL.remove, { branch: "feat/x" }), /branch feat\/x is kept/);
@@ -190,6 +198,7 @@ test("session start restores the entered worktree; a deleted one is left with a 
   const resumed = fakePi(repo, { entries: first.entries });
   await resumed.start();
   assert.ok(resumed.sections()[SECTION]);
+  assert.equal(resumed.statuses.get("pi-agent.worktree"), "worktree: feat/x");
 
   await rm(join(repo, ".pi", "worktree"), { recursive: true });
   const gone = fakePi(repo, { entries: first.entries });

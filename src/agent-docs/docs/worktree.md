@@ -24,6 +24,7 @@ The worktree extension creates git worktrees and can confine a session to one of
   and every `bash` command run in the worktree. Calls from codemode scripts too.
 - `write` and `edit` outside the worktree (and the temp folder) are blocked. Reads and bash are not.
 - The system prompt gets a `<worktree>` section saying so.
+- The footer shows `wt:<branch>` in front of the cwd, dimmed like it (`wt:feat/login ~/repo (main)`).
 - It is kept in the session: `/resume` and `/tree` restore it. A deleted worktree is left
   with a warning.
 
