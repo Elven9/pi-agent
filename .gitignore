@@ -4,6 +4,7 @@ node_modules/
 dist/*
 !dist/scenario-profile.js
 !dist/agent-docs.js
+!dist/subagent.js
 .agent-out/
 .DS_Store
 tmp
