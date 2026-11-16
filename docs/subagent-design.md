@@ -1,6 +1,6 @@
 # Design: scenario subagents
 
-> Status: **draft**, v1 decisions recorded (see "Decisions for v1"). Nothing implemented.
+> Status: **v1 implemented** (`src/subagent/`, see "Implementation notes"). Herds: `docs/subagent-herd-design.md`.
 > Based on pi RPC mode (`docs/rpc.md`, `docs/rpc-commands.md`), pi extension custom messages,
 > renderers and widgets (`docs/extensions.md`, `docs/tui.md`), pi-agent scenarios, and the
 > tool-ref extension (`docs/tool-ref-design.md`), whose lookup tools and `/ref` panel this design
@@ -354,6 +354,32 @@ Integration tests with real child processes (a stub scenario that waits on a too
   reconciles the results.
 - Race: a result that arrives during the shutdown sequence wins over `aborted`.
 
+## Implementation notes
+
+Where v1 differs from or adds to the sections above:
+
+- **Files:** `protocol.ts` (names, records), `records.ts` (branch index, reconciliation),
+  `format.ts` (texts, progress, lookup), `rpc.ts` (JSONL client), `manager.ts` (live children),
+  `child.ts` (`send_to_leader`), `render.ts` (result row), `viewer.ts` (`/agent` panel),
+  `index.ts` (wiring). Loaded from `dist/subagent.js`: scenarios import `.md` files.
+- **Child command:** the leader's own pi (`process.execPath` + `process.argv[1]`), overridable
+  with `PI_AGENT_SUBAGENT_COMMAND` (JSON argv). Args: `--mode rpc --scenario X [--project P]
+  --model <leader provider/id> --name "subagent aN (X)"` and `--session-dir <leader dir>/subagents`
+  (`--no-session` when the leader has none).
+- **Task prompt:** plain text (task, then how to call `send_to_leader` with the scenario's detail
+  schema), not the JSON envelope. The envelope is kept in the result's `details`.
+- **`send_to_leader`:** `{ status: ok|error, summary, detail? }`; `detail` is validated against
+  the scenario's schema when given; `terminate: true`. The leader reads `details.body` from
+  `tool_execution_end`.
+- **Delivery:** results wait in the inbox until the leader is idle (checked at once and on
+  `agent_settled`); all waiting results are sent together, only the last with `triggerTurn`.
+  `killed` results (by user or leader) are recorded without starting a turn.
+- **`subagent-end`** entries carry the full result details (also a real result that arrived during
+  shutdown, and results still waiting in the inbox).
+- **Start record:** no `childSessionFile` (only known after start); it is in the result details.
+- **Panel:** its own `AgentViewer` (sized and keyed like `/ref`, reusing its overlay size), not a
+  generalized `RefViewer`; live pages refresh every second.
+
 ## Open questions
 
 Owner's list; added to as discussion goes.
@@ -365,8 +391,8 @@ Owner's list; added to as discussion goes.
    `default` answer to avoid leader/child deadlock.
 3. **Stuck children:** detecting and reaping children that never settle (needs limits, item 1).
 4. **Child transcript in the popup** (future): read the child's session file on demand.
-5. **Task child settles without `send_to_leader`:** v1 treats it as `failed` ("ended without a
-   result"). Alternative: one reminder `follow_up` first.
+5. **Task child settles without `send_to_leader`:** v1 treats it as `failed` ("ended without
+   calling send_to_leader"). Alternative: one reminder `follow_up` first.
 6. **Herds** (next version): see `docs/subagent-herd-design.md`.
 
 ### Parked (from the first draft)

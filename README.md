@@ -17,14 +17,16 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/agent-docs/` | pi extension (personal pi only): `pi --pi-agent-docs [topic]` prints usage docs for agents (`docs/*.md`) and exits; the flag is listed in `pi --help` |
 | `src/activation-hint/` | pi extension (personal pi only): a startup widget with the active scenario, project and skills; UI only (never in the session or the model's context), cleared on the first prompt |
 | `src/herdr-session-name/` | pi extension (personal pi only): the pi session name as the herdr pane label and agent name |
+| `src/subagent/` | pi extension (personal pi only): subagents, background pi agents (one process each, RPC mode) that run a scenario's task and report into the leader's context (`subagent_*` tools, `/agent`) |
 | `src/tool-ref/` | pi extension: a handle (`[tool-ref #N]`) on every tool result, `tool_ref_get` / `tool_ref_grep` to look calls up (runner and personal pi) |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
 | `examples/` | Example task file and project folder (`project/`: `project.yaml`, a workflow, a doc) |
-| `testdata/` | Recorded pi run + `fake-pi.mjs` for wrapper tests |
+| `testdata/` | Recorded pi run + `fake-pi.mjs` for wrapper tests; `fake-pi-rpc.mjs` and `subagent-*` for subagent tests |
 | `Dockerfile`, `docker/`, `openshell/`, `config/` | Sandbox image and OpenShell setup |
 | `docs/cli-vs-sdk-decision.md` | Why the CLI and not the SDK (from agents-core) |
 | `docs/project-context-design.md` | Project context and prompt-cache placement |
 | `docs/tool-ref-design.md` | Tool-call handles (`tool-ref`) |
+| `docs/subagent-design.md`, `docs/subagent-herd-design.md` | Subagents (v1: one-shot tasks) and the planned resident herds |
 
 ## Personal pi
 
@@ -35,8 +37,8 @@ pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /r
 The manifest exposes `skills/`, `prompts/*.md` and these extensions: project context
 (`src/project/`), worktrees (`src/worktree/`, after project), activation hint (`src/activation-hint/`, after project), context view (`src/context-view/`), session metrics (`src/metrics/`), session
 upload (`src/session-upload/`), herdr session name (`src/herdr-session-name/`), session tags (`src/tags/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
-and the scenario profile, loaded from `dist/scenario-profile.js` because
-scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`
+and the scenario profile and subagents, loaded from `dist/scenario-profile.js` and
+`dist/subagent.js` because scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`
 after cloning and after changing a scenario. Not the runner extension.
 
 ```sh
@@ -168,6 +170,22 @@ calls are still numbered. Read at session start (`/reload` applies a change).
 turns on quick summaries in the `/ref` panel: `s` switches to one summary per call, streamed
 from that model, and `r` summarizes them again. Summaries are kept in memory for the pi
 process only (reopening a ref shows them at once); nothing is written to the session.
+
+### Subagents
+
+The subagent extension (`src/subagent/`, design in `docs/subagent-design.md`) gives the model
+`subagent_spawn`: a background pi agent (`pi --mode rpc --scenario <name>`, one process each, the
+leader's model) runs one task and reports once with `send_to_leader`. The result becomes a
+`[subagent aN]` message in the leader's context and starts a turn when the leader is idle.
+`subagent_kill`, `subagent_restart` (a fresh agent with the same task), `subagent_get` and
+`subagent_grep` complete the set. Children get only `send_to_leader`, so they cannot spawn.
+
+While they run, a widget above the editor shows each one's state and current step (its codemode
+`// intent:` line); display only. `/agent` opens a panel over all subagents (`x` kills a running
+one); `/agent a3`, `/agent grep <regex>`, `/agent kill a3`, `/agent restart a3`. Ending the
+session stops them all (`/new` and `/resume` ask first); unfinished tasks get an `aborted` result
+the next time the session is opened. Child sessions go to `subagents/` next to the leader's
+session file. `PI_AGENT_SUBAGENT_COMMAND` (a JSON argv) overrides how a child pi is started.
 
 Never put
 `~/.pi/agent` itself under git: it mixes secrets (`auth.json`, `models.json` keys), state
