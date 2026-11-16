@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.12.0](https://github.com/Elven9/pi-agent/compare/v0.11.0...v0.12.0) (2026-11-16)
+
+
+### Features
+
+* **go:** add session-parser package for pi session files ([3283243](https://github.com/Elven9/pi-agent/commit/32832436f10b6b9681f617b723fa02a5203c4bc0))
+* **session-version:** record the pi-agent release in session files ([c69c4fb](https://github.com/Elven9/pi-agent/commit/c69c4fbed31536fc76c6dafae456ad0bc8568879))
+* **worktree:** add worktree_exit tool ([1af59c0](https://github.com/Elven9/pi-agent/commit/1af59c0c633154a0b25c9bcaa148187693a33bc7))
+
 ## [0.11.0](https://github.com/Elven9/pi-agent/compare/v0.10.0...v0.11.0) (2026-11-16)
 
 
