@@ -34,8 +34,8 @@ function fakeCtx(mode = "tui") {
 const pi = { getSettings: () => ({}), getThinkingLevel: () => "off" } as unknown as ExtensionAPI;
 
 test("setFooterPart: one footer for several parts; pi's own footer back when the last part goes", () => {
-  footerSessionStart();
   const { ctx, calls } = fakeCtx();
+  footerSessionStart(pi, ctx);
   setFooterPart(pi, ctx, "tags", "left", "[a]");
   setFooterPart(pi, ctx, "subagents", "right", "🤖 1 busy");
   setFooterPart(pi, ctx, "subagents", "right", "🤖 2 busy");
@@ -47,11 +47,27 @@ test("setFooterPart: one footer for several parts; pi's own footer back when the
   assert.deepEqual(calls.slice(1), [undefined], "restored");
   // A new session installs again.
   setFooterPart(pi, ctx, "tags", "left", "[b]");
-  footerSessionStart();
+  footerSessionStart(pi, ctx);
   setFooterPart(pi, ctx, "subagents", "right", "🤖 1 busy");
   assert.equal(calls.filter((c) => typeof c === "function").length, 3);
   setFooterPart(pi, ctx, "tags", "left", undefined);
   setFooterPart(pi, ctx, "subagents", "right", undefined);
+});
+
+test("footerSessionStart: parts set earlier in the session start are installed in the new UI", () => {
+  const old = fakeCtx();
+  footerSessionStart(pi, old.ctx);
+  setFooterPart(pi, old.ctx, "worktree", "left", "wt:a");
+  // A new session: an extension loaded first sets its part, a later one starts the footer.
+  const next = fakeCtx();
+  setFooterPart(pi, next.ctx, "worktree", "left", "wt:b");
+  footerSessionStart(pi, next.ctx);
+  assert.equal(next.calls.filter((c) => typeof c === "function").length, 2);
+  setFooterPart(pi, next.ctx, "tags", "left", "[t]");
+  assert.equal(next.calls.length, 2, "same UI: not installed again");
+  assert.deepEqual(parts().left, ["wt:b", "[t]"]);
+  setFooterPart(pi, next.ctx, "tags", "left", undefined);
+  setFooterPart(pi, next.ctx, "worktree", "left", undefined);
 });
 
 test("setFooterPart: nothing outside the TUI", () => {

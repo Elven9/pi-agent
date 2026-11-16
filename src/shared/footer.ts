@@ -3,7 +3,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 /**
  * pi's footer with pi-agent additions on its first line (cwd, branch, session name): text left
- * of the cwd (tags) and text right-aligned at the end of the line (subagents), all dimmed like
+ * of the cwd (worktree, tags) and text right-aligned at the end of the line (subagents), all dimmed like
  * the footer. Several extensions add parts, but pi has one footer: the parts live in a store
  * shared through `globalThis` (extensions are separate bundles), and whichever extension updates
  * a part (re)installs the same footer, which reads the store on every render. Without parts pi's
@@ -28,9 +28,14 @@ function store(): Store {
   return (g[STORE] ??= { parts: new Map() });
 }
 
-/** Call from `session_start`: a new session may come with a new UI, so install again. */
-export function footerSessionStart(): void {
-  store().ui = undefined;
+/**
+ * Call from `session_start`: a new session may come with a new UI, so install again. Parts set
+ * earlier in this `session_start` (by an extension loaded before) are installed right away.
+ */
+export function footerSessionStart(pi: ExtensionAPI, ctx: ExtensionContext): void {
+  const s = store();
+  s.ui = undefined;
+  if (ctx.mode === "tui" && s.parts.size > 0) install(pi, ctx);
 }
 
 /** Sets (`text`) or removes (undefined/empty) one part, and installs or restores the footer as needed. */
@@ -50,6 +55,12 @@ export function setFooterPart(pi: ExtensionAPI, ctx: ExtensionContext, key: stri
     if (before?.text !== text) s.requestRender?.();
     return;
   }
+  install(pi, ctx);
+}
+
+/** Installs the footer in `ctx.ui`; it reads the parts on every render. */
+function install(pi: ExtensionAPI, ctx: ExtensionContext): void {
+  const s = store();
   s.ui = ctx.ui;
   ctx.ui.setFooter((tui, theme, footerData) => {
     const inner = new FooterComponent(footerSession(pi, ctx) as never, footerData);

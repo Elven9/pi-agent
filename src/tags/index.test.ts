@@ -99,7 +99,8 @@ test("no --tags and no entries: nothing written, no footer", async () => {
   const pi = fakePi();
   await pi.start();
   assert.equal(pi.entries.length, 0);
-  assert.equal(pi.footerCalls, 0);
+  // pi's own footer (a part left by an earlier test may be installed, then removed).
+  assert.equal(pi.footer, undefined);
 });
 
 test("resuming with --tags replaces the tags; the same list writes nothing", async () => {

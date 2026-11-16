@@ -245,7 +245,7 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
   pi.on("session_start", (_event, c) => {
     ctx = c;
     closing = false;
-    footerSessionStart();
+    footerSessionStart(pi, c);
     nextId = maxAgentId(c.sessionManager.getEntries() as unknown as EntryLike[]) + 1;
     // Results recorded at the last session end, and tasks the leader left without any record
     // (crash, SIGKILL): written now as messages, without starting a turn.

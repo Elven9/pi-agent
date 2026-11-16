@@ -69,7 +69,7 @@ export default function sessionTags(pi: ExtensionAPI) {
 
   pi.on("session_start", (event, ctx) => {
     // A new session may come with a new UI context: install the footer again.
-    footerSessionStart();
+    footerSessionStart(pi, ctx);
     const entries = ctx.sessionManager.getEntries();
     tags = currentTags(entries);
     ownHistory = [...new Set(tagHistory(entries).flat())];

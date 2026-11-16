@@ -13,8 +13,10 @@ function store() {
   const g = globalThis;
   return g[STORE] ??= { parts: /* @__PURE__ */ new Map() };
 }
-function footerSessionStart() {
-  store().ui = void 0;
+function footerSessionStart(pi, ctx) {
+  const s = store();
+  s.ui = void 0;
+  if (ctx.mode === "tui" && s.parts.size > 0) install(pi, ctx);
 }
 function setFooterPart(pi, ctx, key, side, text2) {
   if (ctx.mode !== "tui") return;
@@ -32,6 +34,10 @@ function setFooterPart(pi, ctx, key, side, text2) {
     if (before?.text !== text2) s.requestRender?.();
     return;
   }
+  install(pi, ctx);
+}
+function install(pi, ctx) {
+  const s = store();
   s.ui = ctx.ui;
   ctx.ui.setFooter((tui, theme, footerData) => {
     const inner = new FooterComponent(footerSession(pi, ctx), footerData);
@@ -1327,7 +1333,7 @@ function registerLeader(pi, options) {
   pi.on("session_start", (_event, c) => {
     ctx = c;
     closing = false;
-    footerSessionStart();
+    footerSessionStart(pi, c);
     nextId = maxAgentId(c.sessionManager.getEntries()) + 1;
     const pending = pendingResults(index(c), now(), manager.ids());
     for (const r of pending) pi.sendMessage(message(r));
