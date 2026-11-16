@@ -244,7 +244,7 @@ codemode rows of tool-ref:
 
 ```
 [subagent] a3 · review · ok · 2m14s
-<first line of summary>
+<task, one line, at most 120 chars, ... when cut>
 /agent a3 for details
 ```
 

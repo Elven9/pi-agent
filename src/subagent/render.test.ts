@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { headerLine, resultRenderer, resultRowLines } from "./render.ts";
+import { capText, headerLine, resultRenderer, resultRowLines, TASK_CHARS } from "./render.ts";
 import type { ResultBody, ResultDetails } from "./protocol.ts";
 
 const th = { fg: (color: string, text: string) => `<${color}>${text}`, bold: (text: string) => text };
@@ -24,14 +24,23 @@ test("header: label like codemode's (accent), ID, scenario, coloured status, dur
 });
 
 test("a row is the header and the summary's first line with where to see the rest; it never expands", () => {
-  assert.deepEqual(resultRowLines(result(), th).slice(1), ["first line", "<dim>/agent a3 for details"]);
+  assert.deepEqual(resultRowLines(result(), th).slice(1), ["check auth", "<dim>/agent a3 for details"]);
   const render = resultRenderer(() => {});
   const plain = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
   const message = { role: "custom", customType: "subagent-result", content: "x", display: true, details: result(), timestamp: 0 } as any;
   const collapsed = render(message, { expanded: false, outputPad: 0 } as any, plain)!.render(80);
   const expanded = render(message, { expanded: true, outputPad: 0 } as any, plain)!.render(80);
   assert.deepEqual(expanded, collapsed);
-  assert.ok(!collapsed.join("\n").includes("second line"));
+  assert.ok(!collapsed.join("\n").includes("first line"), "the summary is not in the row");
+});
+
+test("capText: one line, cut with ... when longer than the cap", () => {
+  assert.equal(capText("fix\n  the   bug", 50), "fix the bug");
+  assert.equal(capText("x".repeat(10), 10), "x".repeat(10));
+  assert.equal(capText("abcdefghijk", 10), "abcdefg...");
+  const long = resultRowLines({ ...result(), task: "word ".repeat(100) }, th)[1]!;
+  assert.ok(long.endsWith("..."));
+  assert.ok(long.length <= TASK_CHARS);
 });
 
 test("the row sits between two amber rules; the label stays accent (pink)", () => {

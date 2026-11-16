@@ -22,12 +22,21 @@ export function headerLine(d: ResultDetails, th: Styler): string {
 }
 
 /**
- * Lines of a result row: the header, the summary's first line, then on its own line where to see
- * the rest (`/agent a3`, or a click on the row). Rows do not expand; the panel shows the whole result.
+ * Lines of a result row: the header, the task (one line, at most TASK_CHARS, `...` when cut), then
+ * on its own line where to see the result (`/agent a3`, or a click on the row). Rows do not expand;
+ * the panel shows the whole result. The model's copy (`content`) is unchanged.
  */
 export function resultRowLines(d: ResultDetails, th: Styler): string[] {
-  const first = d.envelope.body.summary.split("\n", 1)[0] ?? "";
-  return [headerLine(d, th), first, th.fg("dim", `/agent ${d.resultId} for details`)];
+  return [headerLine(d, th), capText(d.task, TASK_CHARS), th.fg("dim", `/agent ${d.resultId} for details`)];
+}
+
+/** Characters of the task shown in a result row. */
+export const TASK_CHARS = 120;
+
+/** `text` on one line (whitespace collapsed), cut to `max` characters with `...` when longer. */
+export function capText(text: string, max: number): string {
+  const one = text.replace(/\s+/g, " ").trim();
+  return one.length <= max ? one : `${one.slice(0, max - 3).trimEnd()}...`;
 }
 
 /**

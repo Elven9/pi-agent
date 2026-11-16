@@ -182,7 +182,7 @@ leader's model) runs one task and reports once with `send_to_leader`. The result
 
 While they run, a widget above the editor shows each one's state and current step (its codemode
 `// intent:` line), and the end of the footer's cwd line a count (`🤖 2 busy`); display only. A
-result row shows the summary's first line; `/agent` opens a panel over all subagents (a click on a
+result row shows the task (cut with `...`); `/agent` opens a panel over all subagents (a click on a
 row opens its result, `x` kills a running one); `/agent a3`, `/agent grep <regex>`, `/agent kill a3`, `/agent restart a3`. Ending the
 session stops them all (`/new` and `/resume` ask first); unfinished tasks get an `aborted` result
 the next time the session is opened. Child sessions go to `subagents/` next to the leader's

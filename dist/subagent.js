@@ -985,8 +985,12 @@ function headerLine(d, th) {
   ].join(" ");
 }
 function resultRowLines(d, th) {
-  const first = d.envelope.body.summary.split("\n", 1)[0] ?? "";
-  return [headerLine(d, th), first, th.fg("dim", `/agent ${d.resultId} for details`)];
+  return [headerLine(d, th), capText(d.task, TASK_CHARS), th.fg("dim", `/agent ${d.resultId} for details`)];
+}
+var TASK_CHARS = 120;
+function capText(text2, max) {
+  const one = text2.replace(/\s+/g, " ").trim();
+  return one.length <= max ? one : `${one.slice(0, max - 3).trimEnd()}...`;
 }
 var ResultRow = class extends Container {
   onClick;
