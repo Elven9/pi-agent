@@ -27,7 +27,7 @@ export function headerLine(d: ResultDetails, th: Styler): string {
  * the panel shows the whole result. The model's copy (`content`) is unchanged.
  */
 export function resultRowLines(d: ResultDetails, th: Styler): string[] {
-  return [headerLine(d, th), capText(d.task, TASK_CHARS), th.fg("dim", `/agent ${d.resultId} for details`)];
+  return [headerLine(d, th), capText(d.task, TASK_CHARS), "", th.fg("dim", `/agent ${d.resultId} for details`)];
 }
 
 /** Characters of the task shown in a result row. */

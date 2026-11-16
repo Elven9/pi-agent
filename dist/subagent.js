@@ -985,7 +985,7 @@ function headerLine(d, th) {
   ].join(" ");
 }
 function resultRowLines(d, th) {
-  return [headerLine(d, th), capText(d.task, TASK_CHARS), th.fg("dim", `/agent ${d.resultId} for details`)];
+  return [headerLine(d, th), capText(d.task, TASK_CHARS), "", th.fg("dim", `/agent ${d.resultId} for details`)];
 }
 var TASK_CHARS = 120;
 function capText(text2, max) {
