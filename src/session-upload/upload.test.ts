@@ -37,7 +37,7 @@ test("resolveHeaders: $NAME and ${NAME} from the environment, others literal", (
 
 test("uploadUrl joins the endpoint, machine id and session id", () => {
   const settings = { machineId: "mac-1", endpoint: "https://x.example/api/" };
-  assert.equal(uploadUrl(settings, "abc-123"), "https://x.example/api/sessions/mac-1/abc-123");
+  assert.equal(uploadUrl(settings, "abc-123"), "https://x.example/api/v1/sessions/mac-1/abc-123");
 });
 
 test("uploadSession PUTs the raw file with the headers; non-2xx is an error", async () => {
@@ -50,7 +50,7 @@ test("uploadSession PUTs the raw file with the headers; non-2xx is an error", as
     assert.equal(bytes, 48);
     const [req] = ok.requests;
     assert.equal(req.method, "PUT");
-    assert.equal(req.url, "/sessions/mac-1/s1");
+    assert.equal(req.url, "/v1/sessions/mac-1/s1");
     assert.equal(req.headers["cf-access-client-id"], "id-1");
     assert.equal(req.headers["content-type"], "application/x-ndjson");
     assert.equal(req.body, '{"type":"session","id":"s1"}\n{"type":"message"}\n');
@@ -62,7 +62,7 @@ test("uploadSession PUTs the raw file with the headers; non-2xx is an error", as
   try {
     await assert.rejects(
       uploadSession({ machineId: "m", endpoint: denied.endpoint }, "s1", file),
-      /PUT http:\/\/127\.0\.0\.1:\d+\/sessions\/m\/s1 failed: HTTP 403: denied by test/,
+      /PUT http:\/\/127\.0\.0\.1:\d+\/v1\/sessions\/m\/s1 failed: HTTP 403: denied by test/,
     );
   } finally {
     denied.close();

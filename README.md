@@ -91,7 +91,7 @@ redirect uploads):
 }
 ```
 
-It sends the raw session file as `PUT <endpoint>/sessions/<machineId>/<sessionId>`
+It sends the raw session file as `PUT <endpoint>/v1/sessions/<machineId>/<sessionId>`
 (`Content-Type: application/x-ndjson`); the server replaces what it has. `headers` are optional;
 a value of `$NAME`/`${NAME}` comes from that environment variable. When: `/upload` (with a
 notification), and on `/quit`, `/new`, `/resume` and `/fork` for the session being left

@@ -55,7 +55,7 @@ test("uploads on quit, new, resume and fork, not on reload; flushes metrics firs
     for (const reason of ["reload", "quit", "new", "resume", "fork"]) await pi.shutdown(reason);
     assert.equal(srv.requests.length, 4);
     assert.equal(pi.flushes.length, 4);
-    assert.equal(srv.requests[0].url, "/sessions/mac-1/sess-1");
+    assert.equal(srv.requests[0].url, "/v1/sessions/mac-1/sess-1");
     assert.equal(srv.requests[0].headers["cf-access-client-id"], "id-1");
   } finally {
     srv.close();

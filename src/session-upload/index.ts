@@ -10,7 +10,7 @@ const UPLOAD_ON = new Set(["quit", "new", "resume", "fork"]);
 /**
  * Session upload extension (personal pi only: package manifest; sandbox runs start pi with `-ne`,
  * so it never loads there and the orchestrator uploads instead). Uploads the raw session file
- * to `PUT <endpoint>/sessions/<machineId>/<sessionId>`, configured in
+ * to `PUT <endpoint>/v1/sessions/<machineId>/<sessionId>`, configured in
  * `<agent dir>/extensions/session-upload.json` (no file: off):
  *
  * - `/upload`: now, with a notification,

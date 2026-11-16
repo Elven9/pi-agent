@@ -10,7 +10,7 @@ export const UPLOAD_TIMEOUT_MS = 15_000;
 
 export const UploadSettingsSchema = Type.Object(
   {
-    /** Identifies this machine on the server: `PUT /sessions/<machineId>/<sessionId>`. */
+    /** Identifies this machine on the server: `PUT /v1/sessions/<machineId>/<sessionId>`. */
     machineId: Type.String({ pattern: "^[A-Za-z0-9._-]+$" }),
     /** Server base URL, e.g. `https://sessions.example.com`. */
     endpoint: Type.String({ pattern: "^https?://[^\\s]+$" }),
@@ -70,11 +70,11 @@ export function resolveHeaders(headers: Record<string, string> = {}, env: NodeJS
 
 export function uploadUrl(settings: UploadSettings, sessionId: string): string {
   const base = settings.endpoint.replace(/\/+$/, "");
-  return `${base}/sessions/${encodeURIComponent(settings.machineId)}/${encodeURIComponent(sessionId)}`;
+  return `${base}/v1/sessions/${encodeURIComponent(settings.machineId)}/${encodeURIComponent(sessionId)}`;
 }
 
 /**
- * Uploads the raw session file: `PUT <endpoint>/sessions/<machineId>/<sessionId>`, body = the
+ * Uploads the raw session file: `PUT <endpoint>/v1/sessions/<machineId>/<sessionId>`, body = the
  * JSONL file as is. The server replaces what it has. Throws on a non-2xx status, a timeout or a
  * network error. Returns the number of bytes sent.
  */
