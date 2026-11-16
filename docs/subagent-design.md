@@ -272,7 +272,7 @@ script's `// intent:` comment (tool-ref's `scriptIntent()`); other tools show
 | failed | `failed · exit <code>` |
 | killed | `killed by user` |
 
-**Widget** above the editor (`ctx.ui.setWidget`), one line per live child, at most ~5 lines then
+**Widget** above the editor (`ctx.ui.setWidget`), in the footer's grey (theme `dim`), one line per live child, at most ~5 lines then
 `+k more`:
 
 ```

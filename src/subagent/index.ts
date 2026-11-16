@@ -155,7 +155,9 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     if (closing || !ctx?.hasUI) return;
     const views = manager.views();
     try {
-      ctx.ui.setWidget(UI_KEY, views.length ? widgetLines(views, now()) : undefined);
+      // Grey like the footer.
+      const dim = (l: string) => ctx!.ui.theme.fg("dim", l);
+      ctx.ui.setWidget(UI_KEY, views.length ? widgetLines(views, now()).map(dim) : undefined);
       setStatus(ctx, statusText(views));
     } catch {
       return;

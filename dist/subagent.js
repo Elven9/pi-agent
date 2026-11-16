@@ -1229,7 +1229,8 @@ function registerLeader(pi, options) {
     if (closing || !ctx?.hasUI) return;
     const views = manager.views();
     try {
-      ctx.ui.setWidget(UI_KEY, views.length ? widgetLines(views, now()) : void 0);
+      const dim = (l) => ctx.ui.theme.fg("dim", l);
+      ctx.ui.setWidget(UI_KEY, views.length ? widgetLines(views, now()).map(dim) : void 0);
       setStatus(ctx, statusText(views));
     } catch {
       return;
