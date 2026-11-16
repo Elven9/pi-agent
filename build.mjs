@@ -4,7 +4,7 @@
 //   a `pi` executable at runtime.
 // - dist/extension.js (runner), dist/scenario-profile.js (scenario prompt/tools/skills),
 //   dist/project.js (project context), dist/worktree.js (git worktrees), dist/metrics.js (session metrics), dist/tags.js (session
-//   tags), dist/agent-docs.js (--pi-agent-docs), dist/subagent.js (subagents) and dist/tool-ref.js
+//   tags), dist/session-version.js (pi-agent version entries), dist/agent-docs.js (--pi-agent-docs), dist/subagent.js (subagents) and dist/tool-ref.js
 //   (tool-call handles, loaded last): loaded by pi (-e). pi
 //   provides typebox and its own packages to extensions, so those stay external (bundling a
 //   copy would bypass pi's module mapping). yaml is bundled.
@@ -15,9 +15,12 @@
 // Source maps (linked, with embedded sources) are on by default for local debugging. Set
 // PI_AGENT_SOURCEMAP=0 to omit them (the Docker image does, so no sources ship in it).
 import { build } from "esbuild";
-import { chmod, rm } from "node:fs/promises";
+import { chmod, readFile, rm } from "node:fs/promises";
 
 await rm("dist", { recursive: true, force: true });
+
+// The release in package.json, for src/shared/session-version.ts (from source it reads the file).
+const { version } = JSON.parse(await readFile("package.json", "utf8"));
 
 // yaml's Node entry is CommonJS and calls require("process"); ESM bundles have no `require`.
 const requireShim = 'import { createRequire as __piAgentCreateRequire } from "node:module";\nconst require = __piAgentCreateRequire(import.meta.url);';
@@ -31,6 +34,7 @@ const common = {
   legalComments: "none",
   loader: { ".md": "text" },
   logLevel: "info",
+  define: { __PI_AGENT_VERSION__: JSON.stringify(version) },
 };
 
 await build({
@@ -50,6 +54,7 @@ await build({
     worktree: "src/worktree/index.ts",
     metrics: "src/metrics/index.ts",
     tags: "src/tags/index.ts",
+    "session-version": "src/session-version/index.ts",
     "tool-ref": "src/tool-ref/index.ts",
     subagent: "src/subagent/index.ts",
     "agent-docs": "src/agent-docs/index.ts",

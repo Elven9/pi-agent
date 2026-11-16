@@ -12,6 +12,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
 | `src/tags/` | pi extension: session tags (`--tags`, `/tags`) as `pi-agent.tags` entries in the session file (runner and personal pi) |
+| `src/session-version/` | pi extension: the pi-agent release that wrote the session, as `pi-agent.session-version` entries (runner and personal pi) |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
 | `src/worktree/` | pi extension (personal pi only): git worktrees (`worktree_*` tools, `/worktree`); an entered worktree confines the session's tools to it |
 | `src/agent-docs/` | pi extension (personal pi only): `pi --pi-agent-docs [topic]` prints usage docs for agents (`docs/*.md`) and exits; the flag is listed in `pi --help` |
@@ -36,7 +37,7 @@ pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /r
 
 The manifest exposes `skills/`, `prompts/*.md` and these extensions: project context
 (`src/project/`), worktrees (`src/worktree/`, after project), activation hint (`src/activation-hint/`, after project), context view (`src/context-view/`), session metrics (`src/metrics/`), session
-upload (`src/session-upload/`), herdr session name (`src/herdr-session-name/`), session tags (`src/tags/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
+upload (`src/session-upload/`), herdr session name (`src/herdr-session-name/`), session tags (`src/tags/`), session version (`src/session-version/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
 and the scenario profile and subagents, loaded from `dist/scenario-profile.js` and
 `dist/subagent.js` because scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`
 after cloning and after changing a scenario. Not the runner extension.
@@ -141,6 +142,19 @@ pi --tags bug,ui            # at startup (also with -c / --session): replaces th
   tags of the session they open. `--tags` cannot be repeated (pi keeps the last one): use one
   comma-separated list. An invalid `--tags` stops pi with an error.
 
+### Session version
+
+The header's `version` (`{"type":"session","version":3,…}`) is pi's session format: pi
+writes it and migrates older files on load, so pi-agent must not change it. The session-version
+extension (`src/session-version/`) records pi-agent's own version next to it: at every session
+start it appends a `pi-agent.session-version` custom entry, `{ "version": "0.11.0" }` (the
+release in package.json, inlined into `dist/` at build time), unless the file's latest one
+already has that version.
+
+- A session resumed by a newer release gets a second entry: entries after one were written by
+  that release. `src/shared/session-version.ts` reads the latest (`latestSessionVersion`).
+- Files without any entry were written by releases up to 0.11.0.
+
 ### Tool references
 
 The tool-ref extension (`src/tool-ref/`, design in `docs/tool-ref-design.md`) appends
@@ -232,13 +246,14 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 ### How a run works
 
 ```
-pi-agent run ──spawn──▶ pi --mode json -ne -e builtin:codemode -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/tags.js -e dist/tool-ref.js
+pi-agent run ──spawn──▶ pi --mode json -ne -e builtin:codemode -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/tags.js -e dist/session-version.js -e dist/tool-ref.js
      ▲                    │    --scenario <name> [--project <dir>] [--tags <a,b>] … -- <prompt>
      │                    │  scenario-profile: owns --scenario; system prompt, tools, skills
      │                    │  extension: submit_result + instruction, nudge once
      │                    │  project:   project sections in the system prompt, cache split
      │                    │  metrics:   pi-agent.metrics entry at every settle
      │                    │  tags:      pi-agent.tags entry with the task's tags
+     │                    │  session-version: pi-agent.session-version entry (pi-agent release)
      │                    │  tool-ref:  [tool-ref #N] on every tool result, tool_ref_get/grep (last)
      └──── JSONL events ──┘  (stdout, read continuously; split on LF only)
 ```

@@ -42,6 +42,7 @@ async function run(env: Record<string, string>, opts: RunExtras = {}) {
     projectExtensionPath: "/app/dist/project.js",
     metricsExtensionPath: "/app/dist/metrics.js",
     tagsExtensionPath: "/app/dist/tags.js",
+    sessionVersionExtensionPath: "/app/dist/session-version.js",
     toolRefExtensionPath: "/app/dist/tool-ref.js",
     skillPaths: [],
     project: opts.project,

@@ -50,6 +50,8 @@ export interface RunOptions {
   metricsExtensionPath: string;
   /** Bundled tags extension (dist/tags.js). */
   tagsExtensionPath: string;
+  /** Bundled session version extension (dist/session-version.js). */
+  sessionVersionExtensionPath: string;
   /** Bundled tool-ref extension (dist/tool-ref.js). */
   toolRefExtensionPath: string;
   /** Skill directories to load (absolute), see resolveSkills. */
@@ -142,6 +144,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
     projectExtensionPath: o.projectExtensionPath,
     metricsExtensionPath: o.metricsExtensionPath,
     tagsExtensionPath: o.tagsExtensionPath,
+    sessionVersionExtensionPath: o.sessionVersionExtensionPath,
     toolRefExtensionPath: o.toolRefExtensionPath,
     projectDir: o.project?.dir,
     projectRead: o.project?.source.kind === "remote",

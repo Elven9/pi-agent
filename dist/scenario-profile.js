@@ -48,7 +48,9 @@ var ENTRY = {
   /** `custom` entry with `TagsEntry` data (tags extension); the last one in the file is the session's tags. */
   tags: "pi-agent.tags",
   /** `custom` entry with `WorktreeEntry` data (worktree extension); the last one on the branch is the entered worktree. */
-  worktree: "pi-agent.worktree"
+  worktree: "pi-agent.worktree",
+  /** `custom` entry with `SessionVersionEntry` data (session-version extension): the pi-agent release that wrote what follows. */
+  sessionVersion: "pi-agent.session-version"
 };
 
 // src/shared/mcp-servers.ts

@@ -21,6 +21,7 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     projectExtensionPath: "/app/dist/project.js",
     metricsExtensionPath: "/app/dist/metrics.js",
     tagsExtensionPath: "/app/dist/tags.js",
+    sessionVersionExtensionPath: "/app/dist/session-version.js",
     toolRefExtensionPath: "/app/dist/tool-ref.js",
     projectDir: "/project",
     skillPaths: ["/app/skills/shared", "/app/skills/s/own"],
@@ -32,7 +33,8 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     "-ne",
     "-e", "/app/dist/extension.js", "-e", "/app/dist/scenario-profile.js",
     "-e", "/app/dist/project.js", "-e", "/app/dist/metrics.js",
-    "-e", "/app/dist/tags.js", "-e", "/app/dist/tool-ref.js",
+    "-e", "/app/dist/tags.js", "-e", "/app/dist/session-version.js",
+    "-e", "/app/dist/tool-ref.js",
     "--no-mcp",
     "-ns", "--skill", "/app/skills/shared", "--skill", "/app/skills/s/own",
     "-np", "-nc", "--no-themes", "-na", "--offline",
@@ -57,6 +59,7 @@ test("piArgs omits optional flags", () => {
     projectExtensionPath: "p.js",
     metricsExtensionPath: "m.js",
     tagsExtensionPath: "g.js",
+    sessionVersionExtensionPath: "v.js",
     toolRefExtensionPath: "t.js",
     skillPaths: [],
     sessionDir: "d",
@@ -77,6 +80,7 @@ test("piArgs loads tool-ref last and allows its tools", () => {
     projectExtensionPath: "p.js",
     metricsExtensionPath: "m.js",
     tagsExtensionPath: "g.js",
+    sessionVersionExtensionPath: "v.js",
     toolRefExtensionPath: "t.js",
     skillPaths: [],
     sessionDir: "d",
@@ -95,13 +99,14 @@ test("piArgs loads pi's built-in codemode (off with -ne) first when the scenario
     projectExtensionPath: "p.js",
     metricsExtensionPath: "m.js",
     tagsExtensionPath: "g.js",
+    sessionVersionExtensionPath: "v.js",
     toolRefExtensionPath: "t.js",
     skillPaths: [],
     sessionDir: "d",
   };
   const extensions = (args: string[]) => args.flatMap((a, i) => (a === "-e" ? [args[i + 1]] : []));
   const withCodemode = piArgs({ ...base, scenario: { ...scenario, tools: ["codemode", "read"] } });
-  assert.deepEqual(extensions(withCodemode), ["builtin:codemode", "e.js", "s.js", "p.js", "m.js", "g.js", "t.js"]);
+  assert.deepEqual(extensions(withCodemode), ["builtin:codemode", "e.js", "s.js", "p.js", "m.js", "g.js", "v.js", "t.js"]);
   assert.ok(withCodemode[withCodemode.indexOf("--tools") + 1].split(",").includes("codemode"));
   assert.ok(!extensions(piArgs({ ...base, scenario })).includes("builtin:codemode"));
 });
@@ -114,6 +119,7 @@ test("piArgs: MCP off (--no-mcp) unless the scenario has MCP servers; then built
     projectExtensionPath: "p.js",
     metricsExtensionPath: "m.js",
     tagsExtensionPath: "g.js",
+    sessionVersionExtensionPath: "v.js",
     toolRefExtensionPath: "t.js",
     skillPaths: [],
     sessionDir: "d",
@@ -137,6 +143,7 @@ test("piArgs adds project_read to --tools for a remote project only", () => {
     projectExtensionPath: "p.js",
     metricsExtensionPath: "m.js",
     tagsExtensionPath: "g.js",
+    sessionVersionExtensionPath: "v.js",
     toolRefExtensionPath: "t.js",
     skillPaths: [],
     sessionDir: "d",

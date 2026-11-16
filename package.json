@@ -24,6 +24,7 @@
       "./src/session-upload/index.ts",
       "./src/herdr-session-name/index.ts",
       "./src/tags/index.ts",
+      "./src/session-version/index.ts",
       "./dist/agent-docs.js",
       "./dist/subagent.js",
       "./src/tool-ref/index.ts"

@@ -122,6 +122,8 @@ export const ENTRY = {
   tags: "pi-agent.tags",
   /** `custom` entry with `WorktreeEntry` data (worktree extension); the last one on the branch is the entered worktree. */
   worktree: "pi-agent.worktree",
+  /** `custom` entry with `SessionVersionEntry` data (session-version extension): the pi-agent release that wrote what follows. */
+  sessionVersion: "pi-agent.session-version",
 } as const;
 
 /** `pi.events` channel: the metrics extension appends a `pi-agent.metrics` entry now (if changed). */
