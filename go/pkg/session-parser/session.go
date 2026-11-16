@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"time"
 )
 
@@ -23,8 +24,15 @@ const (
 // entries after it (src/shared/session-version.ts).
 const CustomTypeSessionVersion = "pi-agent.session-version"
 
-// ErrNoHeader is returned when the first line of a file is not a session header.
-var ErrNoHeader = errors.New("no session header")
+// SupportedFormatVersion is the pi session format this package reads ([Header.Version]).
+const SupportedFormatVersion = 3
+
+var (
+	// ErrNoHeader is returned when the first line of a file is not a session header.
+	ErrNoHeader = errors.New("no session header")
+	// ErrUnsupportedFormat is returned for a header whose format is not [SupportedFormatVersion].
+	ErrUnsupportedFormat = errors.New("unsupported session format")
+)
 
 // LineError is a line that is not valid JSON or not a valid entry.
 type LineError struct {
@@ -75,24 +83,29 @@ type Session struct {
 	Entries []Entry
 }
 
-// AgentVersion is the pi-agent release in the file's last valid session-version entry, or ""
-// when it has none (written by pi-agent 0.11.0 or older, or without pi-agent).
-func (s *Session) AgentVersion() string {
-	for i := len(s.Entries) - 1; i >= 0; i-- {
-		e := s.Entries[i]
-		if e.Type != TypeCustom || e.CustomType != CustomTypeSessionVersion {
-			continue
-		}
-		var v struct {
-			Data struct {
-				Version string `json:"version"`
-			} `json:"data"`
-		}
-		if json.Unmarshal(e.Raw, &v) == nil && v.Data.Version != "" {
-			return v.Data.Version
-		}
+// Branch is the current branch: from the root to the leaf, the last entry in the file (where
+// pi continues when it loads the file). Entries on other branches are left out. Empty when the
+// file has no entries.
+func (s *Session) Branch() []Entry {
+	if len(s.Entries) == 0 {
+		return nil
 	}
-	return ""
+	index := make(map[string]int, len(s.Entries))
+	for i, e := range s.Entries {
+		index[e.ID] = i
+	}
+	var branch []Entry
+	// Parse checked that every parent is an earlier entry, so this ends at a root.
+	for i := len(s.Entries) - 1; ; {
+		branch = append(branch, s.Entries[i])
+		parent := s.Entries[i].ParentID
+		if parent == "" {
+			break
+		}
+		i = index[parent]
+	}
+	slices.Reverse(branch)
+	return branch
 }
 
 // ParseFile parses the session file at path.
@@ -110,10 +123,13 @@ func ParseFile(path string) (*Session, error) {
 }
 
 // Parse reads a session file. Blank lines are skipped. The first line must be a session
-// header ([ErrNoHeader]); a line that is not valid JSON or has no type is a [*LineError].
+// header ([ErrNoHeader]) of format [SupportedFormatVersion] ([ErrUnsupportedFormat]). Every
+// other line must be an entry with a type, a unique id and a parentId naming an earlier entry
+// (or null); a line that is not is a [*LineError].
 func Parse(r io.Reader) (*Session, error) {
 	br := bufio.NewReader(r)
 	var s *Session
+	seen := map[string]bool{}
 	for n := 1; ; n++ {
 		line, readErr := br.ReadBytes('\n')
 		if readErr != nil && !errors.Is(readErr, io.EOF) {
@@ -128,9 +144,13 @@ func Parse(r io.Reader) (*Session, error) {
 				s = &Session{Header: h}
 			} else {
 				e, err := parseEntry(line)
+				if err == nil {
+					err = checkLinks(e, seen)
+				}
 				if err != nil {
 					return nil, &LineError{Line: n, Err: err}
 				}
+				seen[e.ID] = true
 				s.Entries = append(s.Entries, e)
 			}
 		}
@@ -152,7 +172,23 @@ func parseHeader(line []byte) (Header, error) {
 	if h.Type != TypeSession || h.ID == "" {
 		return Header{}, ErrNoHeader
 	}
+	if v := h.FormatVersion(); v != SupportedFormatVersion {
+		return Header{}, fmt.Errorf("%w: version %d, want %d", ErrUnsupportedFormat, v, SupportedFormatVersion)
+	}
 	return h, nil
+}
+
+// checkLinks checks that e's id is new and its parent is an earlier entry.
+func checkLinks(e Entry, seen map[string]bool) error {
+	switch {
+	case e.ID == "":
+		return errors.New("entry has no id")
+	case seen[e.ID]:
+		return fmt.Errorf("duplicate entry id %q", e.ID)
+	case e.ParentID != "" && !seen[e.ParentID]:
+		return fmt.Errorf("entry %q: parent %q is not an earlier entry", e.ID, e.ParentID)
+	}
+	return nil
 }
 
 func parseEntry(line []byte) (Entry, error) {
