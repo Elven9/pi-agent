@@ -12,6 +12,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
 | `src/tags/` | pi extension: session tags (`--tags`, `/tags`) as `pi-agent.tags` entries in the session file (runner and personal pi) |
+| `go/pkg/session-parser/` | Go package (module `github.com/Elven9/pi-agent/go`): parses session files for the session server; `cd go && go test ./...` |
 | `src/session-version/` | pi extension: the pi-agent release that wrote the session, as `pi-agent.session-version` entries (runner and personal pi) |
 | `src/project/` | pi extension: project context (`project.yaml` + `AGENTS.md`) in the system prompt, cache split |
 | `src/worktree/` | pi extension (personal pi only): git worktrees (`worktree_*` tools, `/worktree`); an entered worktree confines the session's tools to it |
