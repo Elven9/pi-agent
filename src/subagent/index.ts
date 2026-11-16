@@ -19,6 +19,7 @@ import {
   statusLabel,
   statusText,
   taskPrompt,
+  userStartContent,
   widgetLines,
 } from "./format.ts";
 import { SubagentManager } from "./manager.ts";
@@ -29,13 +30,14 @@ import {
   parseAgentId,
   type ResultDetails,
   type StartRecord,
+  type StartedBy,
   SUBAGENT_COMMAND_ENV,
   SUBAGENT_ENV,
   TOOL,
   UI_KEY,
 } from "./protocol.ts";
 import { type EntryLike, enteredWorktree, indexBranch, maxAgentId, pendingResults, type SubagentIndex } from "./records.ts";
-import { resultRenderer } from "./render.ts";
+import { resultRenderer, userStartRenderer } from "./render.ts";
 import { type ChildHandle, RpcChild } from "./rpc.ts";
 import { type AgentPage, AgentViewer, VIEWER_OVERLAY } from "./viewer.ts";
 
@@ -187,7 +189,11 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
   const index = (c: ExtensionContext): SubagentIndex => indexBranch(c.sessionManager.getBranch() as unknown as EntryLike[]);
 
   /** Records and starts a child. */
-  const spawn = (c: ExtensionContext, spec: { scenario: string; task: string; project?: string; restartOf?: number }): number => {
+  const spawn = (
+    c: ExtensionContext,
+    spec: { scenario: string; task: string; project?: string; restartOf?: number },
+    startedBy: StartedBy,
+  ): number => {
     ctx = c;
     const id = nextId++;
     const start: StartRecord = {
@@ -198,19 +204,31 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
       ...(spec.project && { project: spec.project }),
       startedAt: now(),
       ...(spec.restartOf !== undefined && { restartOf: spec.restartOf }),
+      ...(startedBy === "user" && { startedBy }),
       taskMessageId: messageId(now()),
     };
     pi.appendEntry(ENTRY.start, start);
+    // The model sees its own spawns as tool calls; a user's start needs a notice in context. No
+    // turn: stored now when idle, appended after the current turn when busy.
+    if (startedBy === "user") {
+      const content = userStartContent({
+        id: agentId(id),
+        scenario: start.scenario,
+        task: start.task,
+        ...(start.restartOf !== undefined && { restartOf: agentId(start.restartOf) }),
+      });
+      pi.sendMessage({ customType: ENTRY.userStart, content, display: true, details: { agentId: agentId(id), start } });
+    }
     manager.spawn(start);
     return id;
   };
 
-  const restart = (c: ExtensionContext, id: number): string => {
+  const restart = (c: ExtensionContext, id: number, by: StartedBy): string => {
     if (manager.has(id)) throw new Error(`${agentId(id)} is still running; kill it first`);
     const recorded = index(c).get(id);
     if (!recorded) throw new Error(`${agentId(id)}: no such subagent on this branch`);
     const s = recorded.start;
-    const next = spawn(c, { scenario: s.scenario, task: s.task, ...(s.project && { project: s.project }), restartOf: id });
+    const next = spawn(c, { scenario: s.scenario, task: s.task, ...(s.project && { project: s.project }), restartOf: id }, by);
     return `Restarted ${agentId(id)} as ${agentId(next)} (${s.scenario}).`;
   };
 
@@ -267,6 +285,8 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
 
   pi.on("agent_settled", () => flush());
 
+  pi.registerMessageRenderer(ENTRY.userStart, userStartRenderer);
+
   // A click on a result row (fullscreen mode) opens its panel, like `/agent aN`.
   pi.registerMessageRenderer(
     ENTRY.result,
@@ -298,7 +318,7 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     }),
     async execute(_id, params: { scenario: string; task: string; project?: string }, _signal, _update, c) {
       if (!names.includes(params.scenario)) throw new Error(`Unknown scenario "${params.scenario}". Scenarios: ${names.join(", ")}`);
-      const id = spawn(c, params);
+      const id = spawn(c, params, "model");
       return text(
         `Started subagent ${agentId(id)} (${params.scenario}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; ` +
           "do not wait or poll: continue with other work or end your turn.",
@@ -326,7 +346,7 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     async execute(_id, params: { id: string }, _signal, _update, c) {
       const n = parseAgentId(params.id);
       if (n === undefined) throw new Error(`Not an agent ID: ${params.id}`);
-      return text(restart(c, n));
+      return text(restart(c, n, "model"));
     },
   } as ToolDefinition<TSchema>);
 
@@ -418,7 +438,7 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
         const n = parseAgentId(arg);
         if (n === undefined) return notifyError(new Error(`Usage: /agent ${verb} <id>, e.g. /agent ${verb} a3`));
         try {
-          c.ui.notify(verb === "kill" ? await kill(n, "user", c) : restart(c, n), "info");
+          c.ui.notify(verb === "kill" ? await kill(n, "user", c) : restart(c, n, "user"), "info");
         } catch (err) {
           notifyError(err);
         }

@@ -139,6 +139,47 @@ test("restart: a fresh child with a new ID, the same task, and restartOf", async
   session.dispose();
 });
 
+test("/agent restart by the user: a notice in context without a turn; the result says restart and user", async () => {
+  const { session, faux, sessionManager, children, starts } = await makeSession();
+  faux.setResponses([call("subagent_spawn", { scenario: "demo", task: "list files" }, "s1"), fauxAssistantMessage(fauxText("ok"))]);
+  await session.prompt("go");
+  faux.setResponses([fauxAssistantMessage(fauxText("noted"))]);
+  children.get(1)!.exitNow({ code: 1, signal: null });
+  await until(() => faux.getPendingResponseCount() === 0);
+  await new Promise((r) => setTimeout(r, 50));
+
+  await session.prompt("/agent restart a1");
+  assert.equal(starts.at(-1)!.startedBy, "user");
+  assert.equal(starts.at(-1)!.restartOf, 1);
+  const k = kinds(sessionManager);
+  assert.equal(k.at(-1), "custom_message:subagent-user-start", "no turn started");
+  const notice = sessionManager.getBranch().at(-1) as any;
+  assert.match(notice.content, /^\[subagent a2\] started by user: restart of a1 \(demo\)\nTask: list files/);
+
+  faux.setResponses([fauxAssistantMessage(fauxText("a2 done"))]);
+  children.get(2)!.sendResult("ok", "listed");
+  await until(() => faux.getPendingResponseCount() === 0);
+  await new Promise((r) => setTimeout(r, 50));
+  const result = sessionManager.getBranch().filter((e: any) => e.customType === ENTRY.result).at(-1) as any;
+  assert.match(result.content, /^\[subagent a2\] demo · ok · \d+s · restart of a1 · started by user\nlisted/);
+  session.dispose();
+});
+
+test("subagent_restart by the model: restart of, no notice, not started by user", async () => {
+  const { session, faux, sessionManager, children, starts } = await makeSession();
+  faux.setResponses([call("subagent_spawn", { scenario: "demo", task: "t" }, "s1"), fauxAssistantMessage(fauxText("ok"))]);
+  await session.prompt("go");
+  faux.setResponses([fauxAssistantMessage(fauxText("hm"))]);
+  children.get(1)!.exitNow({ code: 1, signal: null });
+  await until(() => faux.getPendingResponseCount() === 0);
+  await new Promise((r) => setTimeout(r, 50));
+  faux.setResponses([call("subagent_restart", { id: "a1" }, "r1"), fauxAssistantMessage(fauxText("restarted"))]);
+  await session.prompt("again");
+  assert.equal(starts.at(-1)!.startedBy, undefined);
+  assert.ok(!kinds(sessionManager).includes("custom_message:subagent-user-start"));
+  session.dispose();
+});
+
 test("session start: tasks left without a result (leader crash) get aborted results, once, and IDs continue", async () => {
   const first = await makeSession();
   first.faux.setResponses([call("subagent_spawn", { scenario: "demo", task: "long job" }, "s1"), fauxAssistantMessage(fauxText("ok"))]);

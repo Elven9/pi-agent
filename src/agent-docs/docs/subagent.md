@@ -17,7 +17,9 @@ A subagent works in the background and reports once; its result lands in the lea
 - Results arrive by themselves as `[subagent a3] <scenario> · <status> · <duration>` messages and
   start a new turn when the leader is idle. Do not poll or wait for them.
 - Statuses: `ok` and `error` from the subagent; `failed` (crashed or stopped without a result),
-  `killed` and `aborted` (the leader session ended) written by the leader. A result that did not
+  `killed` and `aborted` (the leader session ended) written by the leader. The header adds
+  `· restart of a2` and `· started by user` when they apply; a subagent the user starts is announced
+  with a `[subagent a5] started by user` message. A result that did not
   finish by itself also repeats the task, for `subagent_restart`.
 - A subagent runs with the leader's model, its own scenario prompt and tools, and only one extra
   tool: `send_to_leader`. Subagents cannot start subagents.

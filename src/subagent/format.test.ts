@@ -7,7 +7,9 @@ import {
   grepResults,
   compilePattern,
   progressLine,
+  provenance,
   resultContent,
+  userStartContent,
   statusText,
   taskPrompt,
   widgetLines,
@@ -43,6 +45,17 @@ test("resultContent: header and summary; abnormal results also carry the task an
   assert.match(aborted, /^\[subagent a5\] review · aborted · 2m14s\naborted: the leader session ended\n\nTask \(review, project \/p\):\ncheck the auth middleware\nfor token reuse\n\nRestart it with subagent_restart/);
   assert.match(resultContent(result(6, { status: "killed", reason: "user", summary: "killed by user" })), /review · killed by user ·/);
   assert.match(resultContent(result(7, { status: "aborted", reason: "reload" })), /review · aborted \(reload\) ·/);
+});
+
+test("provenance: restart and user starts in the model's result header", () => {
+  assert.equal(provenance({}), "");
+  assert.equal(provenance({ restartOf: "a2" }), " · restart of a2");
+  assert.equal(provenance({ restartOf: "a2", startedBy: "user" }), " · restart of a2 · started by user");
+  assert.match(resultContent(result(5, {}, { restartOf: "a2", startedBy: "user" })), /^\[subagent a5\] review · ok · 2m14s · restart of a2 · started by user\n/);
+  assert.match(
+    userStartContent({ id: "a5", scenario: "demo", task: "list files", restartOf: "a2" }),
+    /^\[subagent a5\] started by user: restart of a2 \(demo\)\nTask: list files\n/,
+  );
 });
 
 test("taskPrompt: the task, how to report, and the scenario's detail schema", () => {

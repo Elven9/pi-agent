@@ -21,6 +21,7 @@ test("header: label like codemode's (accent), ID, scenario, coloured status, dur
   assert.match(headerLine(result({ status: "error" }), th), /<error>error/);
   assert.match(headerLine(result({ status: "killed", reason: "user" }), th), /<error>killed by user/);
   assert.match(headerLine(result({ status: "aborted", reason: "leader_exit" }), th), /<error>aborted /);
+  assert.match(headerLine({ ...result(), restartOf: "a2" }, th), /<dim>2m14s <muted>· <dim>↻ a2$/);
 });
 
 test("a row is the header and the summary's first line with where to see the rest; it never expands", () => {

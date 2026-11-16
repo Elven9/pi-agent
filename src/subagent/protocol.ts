@@ -29,7 +29,12 @@ export const ENTRY = {
   start: "subagent-start",
   end: "subagent-end",
   result: "subagent-result",
+  /** Custom message (in context): a subagent the user started, so the model knows about it. */
+  userStart: "subagent-user-start",
 } as const;
+
+/** Who started a subagent: the model (`subagent_spawn`/`subagent_restart`) or the user (`/agent restart`). */
+export type StartedBy = "model" | "user";
 
 /** Widget and status key for the progress display. */
 export const UI_KEY = "subagents";
@@ -73,6 +78,8 @@ export interface StartRecord {
   startedAt: number;
   /** Agent number this one restarts. */
   restartOf?: number;
+  /** Missing in older records: the model. */
+  startedBy?: StartedBy;
   /** Id of the `task` envelope sent to the child. */
   taskMessageId: string;
 }
@@ -87,6 +94,8 @@ export interface ResultDetails {
   task: string;
   project?: string;
   restartOf?: string;
+  /** Set when the user started it (older records and model starts: none). */
+  startedBy?: StartedBy;
   /** Epoch ms. */
   startedAt: number;
   endedAt: number;

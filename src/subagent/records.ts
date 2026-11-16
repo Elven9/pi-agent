@@ -101,6 +101,7 @@ export function baseDetails(start: StartRecord): Omit<ResultDetails, "endedAt" |
     task: start.task,
     ...(start.project !== undefined && { project: start.project }),
     ...(start.restartOf !== undefined && { restartOf: agentId(start.restartOf) }),
+    ...(start.startedBy === "user" && { startedBy: "user" as const }),
     startedAt: start.startedAt,
   };
 }

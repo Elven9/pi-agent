@@ -384,6 +384,12 @@ Where v1 differs from or adds to the sections above:
 - **`subagent-end`** entries carry the full result details (also a real result that arrived during
   shutdown, and results still waiting in the inbox).
 - **Start record:** no `childSessionFile` (only known after start); it is in the result details.
+  `startedBy: "user"` when the user started it (`/agent restart`); missing means the model.
+- **Who started it:** the model sees its own starts as `subagent_spawn`/`subagent_restart` calls,
+  so those stay out of context. A user start also sends a `subagent-user-start` custom message
+  (`[subagent a5] started by user: restart of a2 (demo)` + the task), without a turn. Every result
+  header the model gets adds `· restart of a2` and `· started by user` when they apply; the row in
+  the TUI shows `↻ a2`.
 - **Panel:** its own `AgentViewer` (sized and keyed like `/ref`, reusing its overlay size), not a
   generalized `RefViewer`; live pages refresh every second.
 

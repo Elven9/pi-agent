@@ -343,7 +343,9 @@ var TOOL = {
 var ENTRY2 = {
   start: "subagent-start",
   end: "subagent-end",
-  result: "subagent-result"
+  result: "subagent-result",
+  /** Custom message (in context): a subagent the user started, so the model knows about it. */
+  userStart: "subagent-user-start"
 };
 var UI_KEY = "subagents";
 var agentId = (n) => `a${n}`;
@@ -471,12 +473,22 @@ function resultHeader(d) {
 }
 function resultContent(d) {
   const body = d.envelope.body;
-  const lines = [`[subagent ${d.resultId}] ${d.scenario} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}`, body.summary];
+  const lines = [`[subagent ${d.resultId}] ${d.scenario} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}${provenance(d)}`, body.summary];
   if (body.detail !== void 0) lines.push(`(structured detail: ${TOOL.get} ${d.resultId})`);
   if (isAbnormal(d)) {
     lines.push("", `Task (${d.scenario}${d.project ? `, project ${d.project}` : ""}):`, d.task, "", `Restart it with ${TOOL.restart} if it is still needed.`);
   }
   return lines.join("\n");
+}
+function provenance(d) {
+  return (d.restartOf ? ` \xB7 restart of ${d.restartOf}` : "") + (d.startedBy === "user" ? " \xB7 started by user" : "");
+}
+function userStartContent(start) {
+  return [
+    `[subagent ${start.id}] started by user${start.restartOf ? `: restart of ${start.restartOf}` : ""} (${start.scenario})`,
+    `Task: ${start.task}`,
+    "Its result arrives later as a message like the subagents you start."
+  ].join("\n");
 }
 function taskPrompt(agent, task, scenario) {
   const lines = [
@@ -516,6 +528,7 @@ function resultLines(d) {
     `started ${new Date(d.startedAt).toISOString()}`,
     `ended ${new Date(d.endedAt).toISOString()}`,
     ...d.restartOf ? [`restart of ${d.restartOf}`] : [],
+    ...d.startedBy === "user" ? ["started by user"] : [],
     ...d.project ? [`project ${d.project}`] : []
   ].join(" \xB7 ");
   const lines = [meta, "", "task:", ...d.task.split("\n"), "", "summary:", ...body.summary.split("\n")];
@@ -783,6 +796,7 @@ function baseDetails(start) {
     task: start.task,
     ...start.project !== void 0 && { project: start.project },
     ...start.restartOf !== void 0 && { restartOf: agentId(start.restartOf) },
+    ...start.startedBy === "user" && { startedBy: "user" },
     startedAt: start.startedAt
   };
 }
@@ -981,7 +995,8 @@ function headerLine(d, th) {
     th.fg("muted", "\xB7"),
     th.fg(color, status),
     th.fg("muted", "\xB7"),
-    th.fg("dim", formatDuration(d.endedAt - d.startedAt))
+    th.fg("dim", formatDuration(d.endedAt - d.startedAt)),
+    ...d.restartOf ? [th.fg("muted", "\xB7"), th.fg("dim", `\u21BB ${d.restartOf}`)] : []
   ].join(" ");
 }
 function resultRowLines(d, th) {
@@ -1006,6 +1021,12 @@ var ResultRow = class extends Container {
     this.onClick();
     return { handled: true, render: false, target: { component: this, originX: 0, originY: 0, width: event.width, height: event.height } };
   }
+};
+var userStartRenderer = (message, options, theme) => {
+  const d = message.details;
+  if (!d?.agentId || !d.start) return new Text(theme.fg("dim", String(message.content)), options.outputPad, 0);
+  const restart = d.start.restartOf !== void 0 ? ` \xB7 \u21BB a${d.start.restartOf}` : "";
+  return new Text(`${theme.fg("accent", theme.bold("[subagent]"))} ${theme.fg("dim", `${d.agentId} started by user${restart} \xB7 ${d.start.scenario}`)}`, options.outputPad, 0);
 };
 function resultRenderer(open) {
   return (message, options, theme) => {
@@ -1259,7 +1280,7 @@ function registerLeader(pi, options) {
     graceMs: options.graceMs ?? GRACE_MS
   });
   const index = (c) => indexBranch(c.sessionManager.getBranch());
-  const spawn2 = (c, spec) => {
+  const spawn2 = (c, spec, startedBy) => {
     ctx = c;
     const id = nextId++;
     const start = {
@@ -1270,18 +1291,28 @@ function registerLeader(pi, options) {
       ...spec.project && { project: spec.project },
       startedAt: now(),
       ...spec.restartOf !== void 0 && { restartOf: spec.restartOf },
+      ...startedBy === "user" && { startedBy },
       taskMessageId: messageId(now())
     };
     pi.appendEntry(ENTRY2.start, start);
+    if (startedBy === "user") {
+      const content = userStartContent({
+        id: agentId(id),
+        scenario: start.scenario,
+        task: start.task,
+        ...start.restartOf !== void 0 && { restartOf: agentId(start.restartOf) }
+      });
+      pi.sendMessage({ customType: ENTRY2.userStart, content, display: true, details: { agentId: agentId(id), start } });
+    }
     manager.spawn(start);
     return id;
   };
-  const restart = (c, id) => {
+  const restart = (c, id, by) => {
     if (manager.has(id)) throw new Error(`${agentId(id)} is still running; kill it first`);
     const recorded = index(c).get(id);
     if (!recorded) throw new Error(`${agentId(id)}: no such subagent on this branch`);
     const s = recorded.start;
-    const next = spawn2(c, { scenario: s.scenario, task: s.task, ...s.project && { project: s.project }, restartOf: id });
+    const next = spawn2(c, { scenario: s.scenario, task: s.task, ...s.project && { project: s.project }, restartOf: id }, by);
     return `Restarted ${agentId(id)} as ${agentId(next)} (${s.scenario}).`;
   };
   const kill = async (id, by, c) => {
@@ -1327,6 +1358,7 @@ function registerLeader(pi, options) {
     }
   });
   pi.on("agent_settled", () => flush());
+  pi.registerMessageRenderer(ENTRY2.userStart, userStartRenderer);
   pi.registerMessageRenderer(
     ENTRY2.result,
     resultRenderer((resultId) => {
@@ -1351,7 +1383,7 @@ function registerLeader(pi, options) {
     }),
     async execute(_id, params, _signal, _update, c) {
       if (!names.includes(params.scenario)) throw new Error(`Unknown scenario "${params.scenario}". Scenarios: ${names.join(", ")}`);
-      const id = spawn2(c, params);
+      const id = spawn2(c, params, "model");
       return text(
         `Started subagent ${agentId(id)} (${params.scenario}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; do not wait or poll: continue with other work or end your turn.`
       );
@@ -1376,7 +1408,7 @@ function registerLeader(pi, options) {
     async execute(_id, params, _signal, _update, c) {
       const n = parseAgentId(params.id);
       if (n === void 0) throw new Error(`Not an agent ID: ${params.id}`);
-      return text(restart(c, n));
+      return text(restart(c, n, "model"));
     }
   });
   pi.registerTool({
@@ -1454,7 +1486,7 @@ function registerLeader(pi, options) {
         const n = parseAgentId(arg);
         if (n === void 0) return notifyError(new Error(`Usage: /agent ${verb} <id>, e.g. /agent ${verb} a3`));
         try {
-          c.ui.notify(verb === "kill" ? await kill(n, "user", c) : restart(c, n), "info");
+          c.ui.notify(verb === "kill" ? await kill(n, "user", c) : restart(c, n, "user"), "info");
         } catch (err) {
           notifyError(err);
         }

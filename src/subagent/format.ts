@@ -44,12 +44,29 @@ export function resultHeader(d: ResultDetails): string {
  */
 export function resultContent(d: ResultDetails): string {
   const body = d.envelope.body;
-  const lines = [`[subagent ${d.resultId}] ${d.scenario} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}`, body.summary];
+  const lines = [`[subagent ${d.resultId}] ${d.scenario} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}${provenance(d)}`, body.summary];
   if (body.detail !== undefined) lines.push(`(structured detail: ${TOOL.get} ${d.resultId})`);
   if (isAbnormal(d)) {
     lines.push("", `Task (${d.scenario}${d.project ? `, project ${d.project}` : ""}):`, d.task, "", `Restart it with ${TOOL.restart} if it is still needed.`);
   }
   return lines.join("\n");
+}
+
+/** ` · restart of a2 · started by user`: where a subagent came from, when it is not a plain model spawn. */
+export function provenance(d: Pick<ResultDetails, "restartOf" | "startedBy">): string {
+  return (d.restartOf ? ` · restart of ${d.restartOf}` : "") + (d.startedBy === "user" ? " · started by user" : "");
+}
+
+/**
+ * The in-context notice for a subagent the user started (the model saw no tool call for it), so a
+ * later result, or the agent in subagent_get, is not a surprise.
+ */
+export function userStartContent(start: { id: string; scenario: string; task: string; restartOf?: string }): string {
+  return [
+    `[subagent ${start.id}] started by user${start.restartOf ? `: restart of ${start.restartOf}` : ""} (${start.scenario})`,
+    `Task: ${start.task}`,
+    "Its result arrives later as a message like the subagents you start.",
+  ].join("\n");
 }
 
 /** The prompt a child gets: the task, then how to report back. */
@@ -95,6 +112,7 @@ export function resultLines(d: ResultDetails): string[] {
     `started ${new Date(d.startedAt).toISOString()}`,
     `ended ${new Date(d.endedAt).toISOString()}`,
     ...(d.restartOf ? [`restart of ${d.restartOf}`] : []),
+    ...(d.startedBy === "user" ? ["started by user"] : []),
     ...(d.project ? [`project ${d.project}`] : []),
   ].join(" · ");
   const lines = [meta, "", "task:", ...d.task.split("\n"), "", "summary:", ...body.summary.split("\n")];

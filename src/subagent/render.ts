@@ -18,6 +18,7 @@ export function headerLine(d: ResultDetails, th: Styler): string {
     th.fg(color, status),
     th.fg("muted", "·"),
     th.fg("dim", formatDuration(d.endedAt - d.startedAt)),
+    ...(d.restartOf ? [th.fg("muted", "·"), th.fg("dim", `↻ ${d.restartOf}`)] : []),
   ].join(" ");
 }
 
@@ -61,6 +62,14 @@ class ResultRow extends Container {
     return { handled: true, render: false, target: { component: this, originX: 0, originY: 0, width: event.width, height: event.height } };
   }
 }
+
+/** The user-start notice: one grey line (`[subagent] a5 started by user · ↻ a2 · demo`); the model gets the full text. */
+export const userStartRenderer: MessageRenderer = (message, options, theme) => {
+  const d = message.details as { agentId?: string; start?: { scenario: string; restartOf?: number } } | undefined;
+  if (!d?.agentId || !d.start) return new Text(theme.fg("dim", String(message.content)), options.outputPad, 0);
+  const restart = d.start.restartOf !== undefined ? ` · ↻ a${d.start.restartOf}` : "";
+  return new Text(`${theme.fg("accent", theme.bold("[subagent]"))} ${theme.fg("dim", `${d.agentId} started by user${restart} · ${d.start.scenario}`)}`, options.outputPad, 0);
+};
 
 /** `pi.registerMessageRenderer` renderer for `subagent-result` messages; `open` shows a result's panel. */
 export function resultRenderer(open: (resultId: string) => void): MessageRenderer {
