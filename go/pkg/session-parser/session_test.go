@@ -84,6 +84,7 @@ func TestParseRequiresASessionHeaderFirst(t *testing.T) {
 func TestParseReportsTheLineOfAnInvalidEntry(t *testing.T) {
 	for name, line := range map[string]string{
 		"not json":       `{"type":"message",`,
+		"no customType":  `{"type":"custom","id":"b","parentId":"a","timestamp":"2026-11-16T06:46:36Z"}`,
 		"no type":        `{"id":"a"}`,
 		"bad time":       `{"type":"message","id":"b","parentId":"a","timestamp":"yesterday"}`,
 		"no id":          `{"type":"message","parentId":"a","timestamp":"2026-11-16T06:46:36Z"}`,

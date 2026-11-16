@@ -12,18 +12,6 @@ import (
 	"time"
 )
 
-// Entry types that the parser itself needs.
-const (
-	// TypeSession is the header's type.
-	TypeSession = "session"
-	// TypeCustom is an extension's custom entry (never model context).
-	TypeCustom = "custom"
-)
-
-// CustomTypeSessionVersion is the custom entry with the pi-agent release that wrote the
-// entries after it (src/shared/session-version.ts).
-const CustomTypeSessionVersion = "pi-agent.session-version"
-
 // SupportedFormatVersion is the pi session format this package reads ([Header.Version]).
 const SupportedFormatVersion = 3
 
@@ -198,6 +186,9 @@ func parseEntry(line []byte) (Entry, error) {
 	}
 	if e.Type == "" {
 		return Entry{}, errors.New("entry has no type")
+	}
+	if (e.Type == TypeCustom || e.Type == TypeCustomMessage) && e.CustomType == "" {
+		return Entry{}, fmt.Errorf("%s entry %q has no customType", e.Type, e.ID)
 	}
 	e.Raw = bytes.Clone(line)
 	return e, nil
