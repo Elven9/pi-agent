@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.11.0](https://github.com/Elven9/pi-agent/compare/v0.10.0...v0.11.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **session-upload:** uploads go to PUT <endpoint>/v1/sessions/<machineId>/<sessionId>; servers serving only /sessions/... reject them.
+
+### Features
+
+* **session-upload:** upload to /v1/sessions ([4949a7e](https://github.com/Elven9/pi-agent/commit/4949a7eb49e1701115ec39f9d9f72c34f5c388d7))
+* **subagent:** add a pi RPC child process client ([efcada7](https://github.com/Elven9/pi-agent/commit/efcada7f9c04b2fb26ddbcff6cda94120e83be5c))
+* **subagent:** add result records, formatting and the child lifecycle manager ([d721235](https://github.com/Elven9/pi-agent/commit/d721235a344dd80fbb29046db88d4f68417f3ce7))
+* **subagent:** add the subagent extension ([a7c7a71](https://github.com/Elven9/pi-agent/commit/a7c7a712717d54ef3f970bb55144cf2a27ae6fbb))
+* **subagent:** amber top and bottom rules around result rows instead of a background ([309b48f](https://github.com/Elven9/pi-agent/commit/309b48f407171204962e6f3bdadb669f4f4a424d))
+* **subagent:** blank line before the /agent hint in result rows ([06bcd93](https://github.com/Elven9/pi-agent/commit/06bcd93af3b91d2d940293e3746144956780f85c))
+* **subagent:** put the /agent hint on its own line at the bottom of result rows ([1ddb67d](https://github.com/Elven9/pi-agent/commit/1ddb67d78f7dfa45c8d4e824c7518fdafa31ca09))
+* **subagent:** result rows on a warning-colour block with the accent label ([ee5dac9](https://github.com/Elven9/pi-agent/commit/ee5dac906a94fe2fb3a91c2696ebf0e3686191bd))
+* **subagent:** show the running subagents widget in the footer grey ([9269cf0](https://github.com/Elven9/pi-agent/commit/9269cf01ad28678789e2fd572329481587e26eef))
+* **subagent:** show the task instead of the summary in result rows, capped with ... ([c43ae58](https://github.com/Elven9/pi-agent/commit/c43ae58bc5e12378117e20198a548df4363d7a8a))
+* **subagent:** start children in the leader's entered worktree ([de38b81](https://github.com/Elven9/pi-agent/commit/de38b812c582056578450265bd9a4f6080b43764))
+* **subagent:** tell the model about subagents the user starts, and show restarts in results ([4a42625](https://github.com/Elven9/pi-agent/commit/4a426257797d212ee2e528546708a62c171f9ce9))
+* **subagent:** warm result label, /agent hint and click instead of expanding, count in the footer cwd line ([9c6749f](https://github.com/Elven9/pi-agent/commit/9c6749ff649b2ab059507bcc02693cb487124828))
+* **worktree:** add git worktree extension with worktree_* tools and /worktree ([63145b3](https://github.com/Elven9/pi-agent/commit/63145b3eb56441905bac0e7042caaa0f51a17f92))
+* **worktree:** show the entered worktree's branch in front of the footer's cwd ([0be428b](https://github.com/Elven9/pi-agent/commit/0be428bd99f7f8e93508f00cae3efe8b1f25aea9))
+
+
+### Bug Fixes
+
+* **footer:** install parts set before footerSessionStart in the new session's UI ([22a6cdf](https://github.com/Elven9/pi-agent/commit/22a6cdf88fb937d25bc1a8859cbc86f25a82f0d4))
+
 ## [0.10.0](https://github.com/Elven9/pi-agent/compare/v0.9.0...v0.10.0) (2026-11-12)
 
 
