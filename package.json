@@ -25,6 +25,7 @@
       "./src/herdr-session-name/index.ts",
       "./src/tags/index.ts",
       "./dist/agent-docs.js",
+      "./src/subagent/index.ts",
       "./src/tool-ref/index.ts"
     ],
     "skills": [

@@ -4,7 +4,7 @@
 //   a `pi` executable at runtime.
 // - dist/extension.js (runner), dist/scenario-profile.js (scenario prompt/tools/skills),
 //   dist/project.js (project context), dist/worktree.js (git worktrees), dist/metrics.js (session metrics), dist/tags.js (session
-//   tags), dist/agent-docs.js (--pi-agent-docs) and dist/tool-ref.js
+//   tags), dist/agent-docs.js (--pi-agent-docs), dist/subagent.js (subagents) and dist/tool-ref.js
 //   (tool-call handles, loaded last): loaded by pi (-e). pi
 //   provides typebox and its own packages to extensions, so those stay external (bundling a
 //   copy would bypass pi's module mapping). yaml is bundled.
@@ -51,6 +51,7 @@ await build({
     metrics: "src/metrics/index.ts",
     tags: "src/tags/index.ts",
     "tool-ref": "src/tool-ref/index.ts",
+    subagent: "src/subagent/index.ts",
     "agent-docs": "src/agent-docs/index.ts",
   },
   outdir: "dist",
