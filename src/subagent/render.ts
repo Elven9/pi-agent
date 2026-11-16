@@ -22,12 +22,12 @@ export function headerLine(d: ResultDetails, th: Styler): string {
 }
 
 /**
- * Lines of a result row: the header and the summary's first line, then where to see the rest
- * (`/agent a3`, or a click on the row). Rows do not expand; the panel shows the whole result.
+ * Lines of a result row: the header, the summary's first line, then on its own line where to see
+ * the rest (`/agent a3`, or a click on the row). Rows do not expand; the panel shows the whole result.
  */
 export function resultRowLines(d: ResultDetails, th: Styler): string[] {
   const first = d.envelope.body.summary.split("\n", 1)[0] ?? "";
-  return [headerLine(d, th), `${first} ${th.fg("dim", `· /agent ${d.resultId} for details`)}`];
+  return [headerLine(d, th), first, th.fg("dim", `/agent ${d.resultId} for details`)];
 }
 
 /**

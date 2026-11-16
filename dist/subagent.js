@@ -986,7 +986,7 @@ function headerLine(d, th) {
 }
 function resultRowLines(d, th) {
   const first = d.envelope.body.summary.split("\n", 1)[0] ?? "";
-  return [headerLine(d, th), `${first} ${th.fg("dim", `\xB7 /agent ${d.resultId} for details`)}`];
+  return [headerLine(d, th), first, th.fg("dim", `/agent ${d.resultId} for details`)];
 }
 var ResultRow = class extends Container {
   onClick;

@@ -244,7 +244,8 @@ codemode rows of tool-ref:
 
 ```
 [subagent] a3 · review · ok · 2m14s
-<first line of summary> · /agent a3 for details
+<first line of summary>
+/agent a3 for details
 ```
 
 - The row sits between two full-width rules (`DynamicBorder`) in the theme's `warning` colour

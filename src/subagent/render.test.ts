@@ -24,7 +24,7 @@ test("header: label like codemode's (accent), ID, scenario, coloured status, dur
 });
 
 test("a row is the header and the summary's first line with where to see the rest; it never expands", () => {
-  assert.deepEqual(resultRowLines(result(), th).slice(1), ["first line <dim>· /agent a3 for details"]);
+  assert.deepEqual(resultRowLines(result(), th).slice(1), ["first line", "<dim>/agent a3 for details"]);
   const render = resultRenderer(() => {});
   const plain = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
   const message = { role: "custom", customType: "subagent-result", content: "x", display: true, details: result(), timestamp: 0 } as any;
@@ -42,9 +42,10 @@ test("the row sits between two amber rules; the label stays accent (pink)", () =
     th2,
   )!;
   const lines = row.render(120);
-  assert.equal(lines.length, 4, "rule, header, summary, rule");
+  assert.equal(lines.length, 5, "rule, header, summary, hint, rule");
   assert.equal(lines[0], "<warning>" + "─".repeat(120));
-  assert.equal(lines[3], lines[0]);
+  assert.equal(lines[4], lines[0]);
+  assert.match(lines[3]!, /^ <dim>\/agent a3 for details/);
   assert.match(lines[1]!, /^ <accent>\[subagent\]/);
 });
 
