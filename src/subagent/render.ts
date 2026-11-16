@@ -1,16 +1,16 @@
 import type { MessageRenderer, Theme } from "@earendil-works/pi-coding-agent";
-import { Text, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
+import { Box, Text, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { formatDuration, isAbnormal, statusLabel } from "./format.ts";
 import type { ResultDetails } from "./protocol.ts";
 
 type Styler = Pick<Theme, "fg" | "bold">;
 
-/** Header row: `[subagent] a3 · review · ok · 2m14s`, the label warm, the status coloured. */
+/** Header row: `[subagent] a3 · review · ok · 2m14s`, the label like codemode's (accent), the status coloured. */
 export function headerLine(d: ResultDetails, th: Styler): string {
   const status = statusLabel(d);
   const color = isAbnormal(d) || d.envelope.body.status === "error" ? "error" : "success";
   return [
-    th.bold(th.fg("warning", "[subagent]")),
+    th.fg("accent", th.bold("[subagent]")),
     th.bold(d.resultId),
     th.fg("muted", "·"),
     d.scenario,
@@ -30,20 +30,47 @@ export function resultRowLines(d: ResultDetails, th: Styler): string[] {
   return [headerLine(d, th), `${first} ${th.fg("dim", `· /agent ${d.resultId} for details`)}`];
 }
 
-/** A row that opens the result's panel on a left click (fullscreen mode routes mouse events). */
-class ResultRow extends Text {
+/**
+ * A row on a background block (the theme's warning colour)
+ * that opens the result's panel on a left click (fullscreen mode routes mouse events).
+ */
+class ResultRow extends Box {
   private readonly onClick: () => void;
 
-  constructor(text: string, paddingX: number, onClick: () => void) {
-    super(text, paddingX, 0);
+  constructor(text: string, paddingX: number, bg: (text: string) => string, onClick: () => void) {
+    super(paddingX, 1, bg);
+    this.addChild(new Text(text, 0, 0));
     this.onClick = onClick;
   }
 
-  handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+  override handleMouse(event: TuiMouseEvent): ReturnType<Box["handleMouse"]> {
     if (event.type !== "click" || event.button !== "left") return undefined;
     this.onClick();
-    return { handled: true, render: false };
+    return { handled: true, render: false, target: { component: this, originX: 0, originY: 0, width: event.width, height: event.height } };
   }
+}
+
+/**
+ * A foreground escape sequence turned into the same colour as background: `38;…` → `48;…`,
+ * `3N` → `4N`, `9N` → `10N`; faint (SGR 2) dropped. Undefined when it is not a colour.
+ */
+export function fgToBg(fg: string): string | undefined {
+  const m = /^\x1b\[(.*)m$/.exec(fg);
+  if (!m) return undefined;
+  const codes = m[1]!.split(";");
+  while (codes[0] === "2") codes.shift(); // faint, before the colour
+  if (codes[0] === "38") codes[0] = "48";
+  else if (/^3[0-7]$/.test(codes[0] ?? "")) codes[0] = `4${codes[0]![1]}`;
+  else if (/^9[0-7]$/.test(codes[0] ?? "")) codes[0] = `10${codes[0]![1]}`;
+  else return undefined;
+  return `\x1b[${codes.join(";")}m`;
+}
+
+/** A background in the theme's warning colour (kept across full resets inside the line). */
+export function warningBg(theme: Pick<Theme, "getFgAnsi">): (text: string) => string {
+  const bg = fgToBg(theme.getFgAnsi("warning"));
+  if (!bg) return (t) => t;
+  return (t) => `${bg}${t.replaceAll("\x1b[0m", `\x1b[0m${bg}`).replaceAll("\x1b[49m", bg)}\x1b[49m`;
 }
 
 /** `pi.registerMessageRenderer` renderer for `subagent-result` messages; `open` shows a result's panel. */
@@ -51,6 +78,7 @@ export function resultRenderer(open: (resultId: string) => void): MessageRendere
   return (message, options, theme) => {
     const d = message.details as ResultDetails | undefined;
     if (!d?.envelope) return new Text(typeof message.content === "string" ? message.content : "[subagent]", options.outputPad, 0);
-    return new ResultRow(resultRowLines(d, theme).join("\n"), options.outputPad, () => open(d.resultId));
+    const bg = warningBg(theme);
+    return new ResultRow(resultRowLines(d, theme).join("\n"), options.outputPad, bg, () => open(d.resultId));
   };
 }

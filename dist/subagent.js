@@ -968,12 +968,12 @@ ${tail}` : ""}` });
 };
 
 // src/subagent/render.ts
-import { Text } from "@earendil-works/pi-tui";
+import { Box, Text } from "@earendil-works/pi-tui";
 function headerLine(d, th) {
   const status = statusLabel(d);
   const color = isAbnormal(d) || d.envelope.body.status === "error" ? "error" : "success";
   return [
-    th.bold(th.fg("warning", "[subagent]")),
+    th.fg("accent", th.bold("[subagent]")),
     th.bold(d.resultId),
     th.fg("muted", "\xB7"),
     d.scenario,
@@ -987,23 +987,41 @@ function resultRowLines(d, th) {
   const first = d.envelope.body.summary.split("\n", 1)[0] ?? "";
   return [headerLine(d, th), `${first} ${th.fg("dim", `\xB7 /agent ${d.resultId} for details`)}`];
 }
-var ResultRow = class extends Text {
+var ResultRow = class extends Box {
   onClick;
-  constructor(text2, paddingX, onClick) {
-    super(text2, paddingX, 0);
+  constructor(text2, paddingX, bg, onClick) {
+    super(paddingX, 1, bg);
+    this.addChild(new Text(text2, 0, 0));
     this.onClick = onClick;
   }
   handleMouse(event) {
     if (event.type !== "click" || event.button !== "left") return void 0;
     this.onClick();
-    return { handled: true, render: false };
+    return { handled: true, render: false, target: { component: this, originX: 0, originY: 0, width: event.width, height: event.height } };
   }
 };
+function fgToBg(fg) {
+  const m = /^\x1b\[(.*)m$/.exec(fg);
+  if (!m) return void 0;
+  const codes = m[1].split(";");
+  while (codes[0] === "2") codes.shift();
+  if (codes[0] === "38") codes[0] = "48";
+  else if (/^3[0-7]$/.test(codes[0] ?? "")) codes[0] = `4${codes[0][1]}`;
+  else if (/^9[0-7]$/.test(codes[0] ?? "")) codes[0] = `10${codes[0][1]}`;
+  else return void 0;
+  return `\x1B[${codes.join(";")}m`;
+}
+function warningBg(theme) {
+  const bg = fgToBg(theme.getFgAnsi("warning"));
+  if (!bg) return (t) => t;
+  return (t) => `${bg}${t.replaceAll("\x1B[0m", `\x1B[0m${bg}`).replaceAll("\x1B[49m", bg)}\x1B[49m`;
+}
 function resultRenderer(open) {
   return (message, options, theme) => {
     const d = message.details;
     if (!d?.envelope) return new Text(typeof message.content === "string" ? message.content : "[subagent]", options.outputPad, 0);
-    return new ResultRow(resultRowLines(d, theme).join("\n"), options.outputPad, () => open(d.resultId));
+    const bg = warningBg(theme);
+    return new ResultRow(resultRowLines(d, theme).join("\n"), options.outputPad, bg, () => open(d.resultId));
   };
 }
 
