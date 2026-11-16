@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { indexBranch, maxAgentId, pendingResults, type EntryLike } from "./records.ts";
+import { enteredWorktree, indexBranch, maxAgentId, pendingResults, type EntryLike } from "./records.ts";
 import { ENTRY, type ResultDetails, type StartRecord } from "./protocol.ts";
 
 const start = (id: number, extra: Partial<StartRecord> = {}): EntryLike => ({
@@ -64,6 +64,14 @@ test("pendingResults: idempotent once the messages are written", () => {
   const first = pendingResults(indexBranch(entries), 1);
   const written = first.map((d): EntryLike => ({ type: "custom_message", customType: ENTRY.result, details: d }));
   assert.equal(pendingResults(indexBranch([...entries, ...written]), 2).length, 0);
+});
+
+test("enteredWorktree: the last pi-agent.worktree entry on the branch; leaving clears it", () => {
+  const wt = (path?: string): EntryLike => ({ type: "custom", customType: "pi-agent.worktree", data: { version: 1, ...(path && { worktree: { path, repo: "/r", branch: "b" } }) } });
+  assert.equal(enteredWorktree([]), undefined);
+  assert.equal(enteredWorktree([wt("/w/a"), start(1)]), "/w/a");
+  assert.equal(enteredWorktree([wt("/w/a"), wt()]), undefined);
+  assert.equal(enteredWorktree([wt(), wt("/w/b")]), "/w/b");
 });
 
 test("a restart keeps the link to the task it restarts", () => {

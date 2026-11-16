@@ -33,7 +33,7 @@ import {
   TOOL,
   UI_KEY,
 } from "./protocol.ts";
-import { type EntryLike, indexBranch, maxAgentId, pendingResults, type SubagentIndex } from "./records.ts";
+import { type EntryLike, enteredWorktree, indexBranch, maxAgentId, pendingResults, type SubagentIndex } from "./records.ts";
 import { resultRenderer } from "./render.ts";
 import { type ChildHandle, RpcChild } from "./rpc.ts";
 import { type AgentPage, AgentViewer, VIEWER_OVERLAY } from "./viewer.ts";
@@ -97,7 +97,9 @@ export function childArgs(start: StartRecord, model: { provider: string; id: str
 function defaultStartChild(start: StartRecord, ctx: ExtensionContext): ChildHandle {
   const [command, ...prefix] = childCommand();
   const args = [...prefix, ...childArgs(start, ctx.model, ctx.sessionManager.getSessionFile())];
-  return new RpcChild(command!, args, { cwd: ctx.cwd, env: { ...process.env, [SUBAGENT_ENV]: "1" } });
+  // In the leader's entered worktree, if any (the worktree extension keeps ctx.cwd unchanged).
+  const cwd = enteredWorktree(ctx.sessionManager.getBranch() as unknown as EntryLike[]) ?? ctx.cwd;
+  return new RpcChild(command!, args, { cwd, env: { ...process.env, [SUBAGENT_ENV]: "1" } });
 }
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: {} });

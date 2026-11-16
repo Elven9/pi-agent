@@ -365,7 +365,8 @@ Where v1 differs from or adds to the sections above:
 - **Child command:** the leader's own pi (`process.execPath` + `process.argv[1]`), overridable
   with `PI_AGENT_SUBAGENT_COMMAND` (JSON argv). Args: `--mode rpc --scenario X [--project P]
   --model <leader provider/id> --name "subagent aN (X)"` and `--session-dir <leader dir>/subagents`
-  (`--no-session` when the leader has none).
+  (`--no-session` when the leader has none). The child's cwd is the leader's entered worktree
+  (worktree extension), else the leader's cwd.
 - **Task prompt:** plain text (task, then how to call `send_to_leader` with the scenario's detail
   schema), not the JSON envelope. The envelope is kept in the result's `details`.
 - **`send_to_leader`:** `{ status: ok|error, summary, detail? }`; `detail` is validated against

@@ -1,3 +1,4 @@
+import { ENTRY as SHARED_ENTRY } from "../shared/protocol.ts";
 import { ENTRY, type EndRecord, type ResultDetails, type StartRecord, agentId, messageId } from "./protocol.ts";
 
 /** The parts of a session entry the index reads (pi's `SessionEntry` is structurally wider). */
@@ -52,6 +53,20 @@ export function maxAgentId(entries: readonly EntryLike[]): number {
   let max = 0;
   for (const e of entries) if (isStart(e)) max = Math.max(max, e.data.id);
   return max;
+}
+
+/**
+ * The worktree the leader has entered (worktree extension: the last `pi-agent.worktree` entry on
+ * the branch), so children work in the same folder; undefined when none is entered.
+ */
+export function enteredWorktree(entries: readonly EntryLike[]): string | undefined {
+  let path: string | undefined;
+  for (const e of entries) {
+    if (e.type !== "custom" || e.customType !== SHARED_ENTRY.worktree) continue;
+    const p = (e.data as { worktree?: { path?: unknown } } | undefined)?.worktree?.path;
+    path = typeof p === "string" ? p : undefined;
+  }
+  return path;
 }
 
 /** The `aborted` result of a task whose leader went away without recording anything. */

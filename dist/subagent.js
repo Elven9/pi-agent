@@ -214,6 +214,20 @@ import { Type as Type7 } from "typebox";
 
 // src/shared/protocol.ts
 var SCENARIO_CHANNEL = "pi-agent.scenario";
+var ENTRY = {
+  /** `custom_message` with the scenario's result format, sent once after the task prompt. */
+  resultFormat: "pi-agent.result-format",
+  /** `custom_message` with RESUBMIT_PROMPT. */
+  resubmit: "pi-agent.resubmit",
+  /** `custom` entry with `SessionMetricsEntry` data (metrics extension), appended when the agent settles. */
+  metrics: "pi-agent.metrics",
+  /** `custom` entry with `{ message }` when an extension cannot run (scenario, project, load order). */
+  error: "pi-agent.error",
+  /** `custom` entry with `TagsEntry` data (tags extension); the last one in the file is the session's tags. */
+  tags: "pi-agent.tags",
+  /** `custom` entry with `WorktreeEntry` data (worktree extension); the last one on the branch is the entered worktree. */
+  worktree: "pi-agent.worktree"
+};
 
 // src/shared/result.ts
 import { Type as Type6 } from "typebox";
@@ -246,7 +260,7 @@ var TOOL = {
   get: "subagent_get",
   grep: "subagent_grep"
 };
-var ENTRY = {
+var ENTRY2 = {
   start: "subagent-start",
   end: "subagent-end",
   result: "subagent-result"
@@ -629,9 +643,9 @@ function exitText(exit) {
 }
 
 // src/subagent/records.ts
-var isStart = (e) => e.type === "custom" && e.customType === ENTRY.start && typeof e.data?.id === "number";
-var isEnd = (e) => e.type === "custom" && e.customType === ENTRY.end && typeof e.data?.result?.agentId === "string";
-var isResult = (e) => e.type === "custom_message" && e.customType === ENTRY.result && typeof e.details?.agentId === "string";
+var isStart = (e) => e.type === "custom" && e.customType === ENTRY2.start && typeof e.data?.id === "number";
+var isEnd = (e) => e.type === "custom" && e.customType === ENTRY2.end && typeof e.data?.result?.agentId === "string";
+var isResult = (e) => e.type === "custom_message" && e.customType === ENTRY2.result && typeof e.details?.agentId === "string";
 var numberOf = (id) => Number(id.replace(/^a/, ""));
 function indexBranch(entries) {
   const index = /* @__PURE__ */ new Map();
@@ -651,6 +665,15 @@ function maxAgentId(entries) {
   let max = 0;
   for (const e of entries) if (isStart(e)) max = Math.max(max, e.data.id);
   return max;
+}
+function enteredWorktree(entries) {
+  let path;
+  for (const e of entries) {
+    if (e.type !== "custom" || e.customType !== ENTRY.worktree) continue;
+    const p = e.data?.worktree?.path;
+    path = typeof p === "string" ? p : void 0;
+  }
+  return path;
 }
 function abortedResult(start, reason, now) {
   return {
@@ -1069,7 +1092,8 @@ function childArgs(start, model, leaderSessionFile) {
 function defaultStartChild(start, ctx) {
   const [command, ...prefix] = childCommand();
   const args = [...prefix, ...childArgs(start, ctx.model, ctx.sessionManager.getSessionFile())];
-  return new RpcChild(command, args, { cwd: ctx.cwd, env: { ...process.env, [SUBAGENT_ENV]: "1" } });
+  const cwd = enteredWorktree(ctx.sessionManager.getBranch()) ?? ctx.cwd;
+  return new RpcChild(command, args, { cwd, env: { ...process.env, [SUBAGENT_ENV]: "1" } });
 }
 var text = (t) => ({ content: [{ type: "text", text: t }], details: {} });
 function scenarioOf(name) {
@@ -1088,7 +1112,7 @@ function registerLeader(pi, options) {
   let closing = false;
   const inbox = [];
   let ticker;
-  const message = (r) => ({ customType: ENTRY.result, content: resultContent(r), display: true, details: r });
+  const message = (r) => ({ customType: ENTRY2.result, content: resultContent(r), display: true, details: r });
   const flush = () => {
     if (closing || !ctx || inbox.length === 0) return;
     let idle;
@@ -1144,7 +1168,7 @@ function registerLeader(pi, options) {
       ...spec.restartOf !== void 0 && { restartOf: spec.restartOf },
       taskMessageId: messageId(now())
     };
-    pi.appendEntry(ENTRY.start, start);
+    pi.appendEntry(ENTRY2.start, start);
     manager.spawn(start);
     return id;
   };
@@ -1189,8 +1213,8 @@ function registerLeader(pi, options) {
     ticker = void 0;
     const reason = event.reason === "quit" ? "leader_exit" : event.reason;
     const ended = await manager.shutdown(reason);
-    for (const { result } of inbox.splice(0)) pi.appendEntry(ENTRY.end, { result });
-    for (const result of ended) pi.appendEntry(ENTRY.end, { result });
+    for (const { result } of inbox.splice(0)) pi.appendEntry(ENTRY2.end, { result });
+    for (const result of ended) pi.appendEntry(ENTRY2.end, { result });
     try {
       ctx?.ui.setWidget(UI_KEY, void 0);
       ctx?.ui.setStatus(UI_KEY, void 0);
@@ -1198,7 +1222,7 @@ function registerLeader(pi, options) {
     }
   });
   pi.on("agent_settled", () => flush());
-  pi.registerMessageRenderer(ENTRY.result, resultRenderer);
+  pi.registerMessageRenderer(ENTRY2.result, resultRenderer);
   const names = scenarioNames();
   pi.registerTool({
     name: TOOL.spawn,
