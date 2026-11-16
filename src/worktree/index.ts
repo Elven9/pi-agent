@@ -57,6 +57,7 @@ export const TOOL = {
   enter: "worktree_enter",
   remove: "worktree_remove",
   list: "worktree_list",
+  exit: "worktree_exit",
 } as const;
 
 const REPO = Type.Optional(
@@ -76,6 +77,7 @@ const ADD_PARAMETERS = Type.Object({
 const ENTER_PARAMETERS = Type.Object({ branch: BRANCH, repo: REPO });
 const REMOVE_PARAMETERS = Type.Object({ branch: BRANCH, repo: REPO });
 const LIST_PARAMETERS = Type.Object({});
+const EXIT_PARAMETERS = Type.Object({});
 
 /** Single-quoted for sh. */
 const shellQuote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
@@ -95,7 +97,7 @@ export function worktreeSection(active: ActiveWorktree, cwd: string): string {
   return [
     `You are working in the git worktree ${active.path} (repository ${active.repo}, branch ${active.branch}), not in ${cwd}.`,
     "Relative paths of read, write, edit, ls, grep and find, and every bash command, run in the worktree.",
-    "write and edit outside the worktree are blocked. Only the user can leave the worktree (/worktree exit).",
+    "write and edit outside the worktree are blocked. Leave the worktree with worktree_exit (the user: /worktree exit).",
   ].join("\n");
 }
 
@@ -137,7 +139,7 @@ export interface WorktreeOptions {
 
 /**
  * Worktree extension (agent docs: src/agent-docs/docs/worktree.md). Tools `worktree_add`,
- * `worktree_enter`, `worktree_remove`, `worktree_list` and the `/worktree` command; the folder for
+ * `worktree_enter`, `worktree_remove`, `worktree_list`, `worktree_exit` and the `/worktree` command; the folder for
  * new worktrees comes from shared/worktree.ts (`project.worktreeDir`, then `worktree.dir`, then
  * `.pi/worktree` in the local project's folder or the cwd). Must load after the project extension
  * (it reads PROJECT_CHANNEL for the project's folder and `worktreeDir`).
@@ -148,7 +150,7 @@ export interface WorktreeOptions {
  *   is made absolute against the worktree; `bash` commands start with a `cd` into it. This is done
  *   in `tool_call`, which also sees the calls from codemode scripts.
  * - `write` and `edit` outside the worktree (and the temp folder) are blocked. Reads and bash are not.
- * - The prompt gets a `<worktree>` section. Only the user leaves (`/worktree exit`).
+ * - The prompt gets a `<worktree>` section. `worktree_exit` or `/worktree exit` leaves.
  * - The footer shows `wt:<branch>` in front of the cwd (TUI; a status in other UIs).
  */
 export function createWorktree(options: WorktreeOptions = {}) {
@@ -226,7 +228,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
       const w = await findWorktree(repo, p.branch);
       const path = await realpathNearest(w.path);
       if (path === (await realpathNearest(repo))) throw new Error(`${path} is the main checkout of ${basename(repo)}, not a worktree`);
-      if (active && active.path === path) throw new Error(`The session is in ${path}; the user must leave it first (/worktree exit)`);
+      if (active && active.path === path) throw new Error(`The session is in ${path}; leave it first (worktree_exit, or the user: /worktree exit)`);
       await git.remove(repo, w.path);
       await removeEmptyParent(w.path);
       return { text: `Removed worktree ${w.path}; branch ${p.branch} is kept.`, details: { path: w.path, repo, branch: p.branch } };
@@ -243,6 +245,15 @@ export function createWorktree(options: WorktreeOptions = {}) {
       );
       const current = active?.path ?? containing(all.flatMap((r) => r.worktrees.map((w) => w.path)), await realpathNearest(cwd));
       return { text: formatList(all, current), details: { repos: all, current } };
+    };
+
+    /** Leaves the entered worktree; tools run in the session's cwd again. */
+    const exit = (ctx: ExtensionContext) => {
+      if (!active) return { text: "Not in a worktree.", details: { left: undefined } };
+      const left = active;
+      setActive(undefined);
+      showActive(ctx);
+      return { text: `Left worktree ${left.path}; tools run in ${ctx.cwd} again.`, details: { left } };
     };
 
     const result = (r: { text: string; details: unknown }) => ({ content: [{ type: "text" as const, text: r.text }], details: r.details });
@@ -266,7 +277,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
       label: "Worktree: enter",
       description:
         "Enter an existing worktree (by branch) for the rest of the session: relative paths of read/write/edit/ls/grep/find and " +
-        "every bash command run there, and write/edit outside it are blocked. Only the user can leave it.",
+        "every bash command run there, and write/edit outside it are blocked, until worktree_exit.",
       parameters: ENTER_PARAMETERS,
       executionMode: "sequential",
       async execute(_id, params, _signal, _onUpdate, ctx) {
@@ -295,6 +306,17 @@ export function createWorktree(options: WorktreeOptions = {}) {
       annotations: { readOnlyHint: true },
       async execute(_id, _params, _signal, _onUpdate, ctx) {
         return result(await list(ctx.cwd));
+      },
+    });
+
+    pi.registerTool({
+      name: TOOL.exit,
+      label: "Worktree: exit",
+      description: "Leave the entered worktree: tools run in the session's working directory again. Does nothing outside a worktree.",
+      parameters: EXIT_PARAMETERS,
+      executionMode: "sequential",
+      async execute(_id, _params, _signal, _onUpdate, ctx) {
+        return result(exit(ctx));
       },
     });
 
@@ -352,7 +374,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
       if ((await writableRoots()).some((root) => isInside(target, root))) return;
       return {
         block: true,
-        reason: `${target} is outside the worktree ${active.path}: ${event.toolName} is limited to the worktree. Ask the user to leave it (/worktree exit) first.`,
+        reason: `${target} is outside the worktree ${active.path}: ${event.toolName} is limited to the worktree. Leave it first (worktree_exit, or the user: /worktree exit).`,
       };
     });
 
@@ -400,17 +422,9 @@ export function createWorktree(options: WorktreeOptions = {}) {
             case "remove":
               ctx.ui.notify((await remove(parsed, ctx.cwd)).text, "info");
               return;
-            case "exit": {
-              if (!active) {
-                ctx.ui.notify("Not in a worktree.", "info");
-                return;
-              }
-              const left = active.path;
-              setActive(undefined);
-              showActive(ctx);
-              ctx.ui.notify(`Left worktree ${left}; tools run in ${ctx.cwd} again.`, "info");
+            case "exit":
+              ctx.ui.notify(exit(ctx).text, "info");
               return;
-            }
           }
         } catch (err) {
           ctx.ui.notify((err as Error).message, "error");

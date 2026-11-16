@@ -10,7 +10,7 @@ The worktree extension creates git worktrees and can confine a session to one of
 | `worktree_add(branch, repo?, base?, enter?)` | `add <branch> [--repo <dir>] [--base <ref>] [--enter]` | Creates `<folder>/<repo>-wt/<branch, / as ->`. Checks out the local branch if it exists, else tracks `<remote>/<branch>`, else creates the branch from `base` (default: HEAD). |
 | `worktree_enter(branch, repo?)` | `enter <branch> [--repo <dir>]` | Enters the branch's worktree for the rest of the session. |
 | `worktree_remove(branch, repo?)` | `remove <branch> [--repo <dir>]` | Removes the worktree, keeps the branch. Fails with uncommitted changes, or while the session is in it. |
-| (none) | `exit` | Leaves the entered worktree. Only the user can. |
+| `worktree_exit()` | `exit` | Leaves the entered worktree: tools run in the session's cwd again. Does nothing outside a worktree. |
 
 - `repo` is a folder relative to the session's cwd (or absolute). Without it: the entered
   worktree's repo, else the repo the cwd is in.

@@ -142,10 +142,25 @@ test("while entered: paths and bash run in the worktree, write/edit outside it a
   assert.equal((await pi.call("edit", { path: join(temp, "x.txt"), edits: [] })).result, undefined);
   const blocked = (await pi.call("write", { path: join(repo, "a.txt"), content: "" })).result;
   assert.equal(blocked.block, true);
-  assert.match(blocked.reason, /outside the worktree .*\(\/worktree exit\)/);
+  assert.match(blocked.reason, /outside the worktree .*worktree_exit/);
   assert.equal((await pi.call("edit", { path: "../../../../a.txt", edits: [] })).result.block, true);
 
   assert.match(pi.sections()[SECTION]!, new RegExp(`git worktree ${wt} \\(repository ${repo}, branch feat/x\\), not in ${repo}`));
+  assert.match(pi.sections()[SECTION]!, /worktree_exit/);
+});
+
+test("worktree_exit: leaves the entered worktree like /worktree exit; outside one it does nothing", async () => {
+  const repo = await makeRepo(join(await tmp(), "app"));
+  const pi = fakePi(repo);
+  await pi.start();
+  assert.equal(await pi.tool(TOOL.exit, {}), "Not in a worktree.");
+  await pi.tool(TOOL.add, { branch: "feat/x", enter: true });
+  const wt = join(repo, ".pi", "worktree", "app-wt", "feat-x");
+  assert.equal(await pi.tool(TOOL.exit, {}), `Left worktree ${wt}; tools run in ${repo} again.`);
+  assert.deepEqual(pi.worktreeEntries().at(-1), { version: 1 });
+  assert.equal(pi.statuses.get("pi-agent.worktree"), undefined);
+  assert.deepEqual((await pi.call("read", { path: "a" })).input, { path: "a" });
+  assert.deepEqual(pi.sections(), {});
 });
 
 test("list: * on the entered worktree, else on the checkout of the cwd", async () => {
@@ -175,7 +190,7 @@ test("remove: refused for the entered worktree and the main checkout; after /wor
   assert.equal(pi.statuses.get("pi-agent.worktree"), undefined);
   await pi.tool(TOOL.add, { branch: "feat/x", enter: true });
   assert.equal(pi.statuses.get("pi-agent.worktree"), "worktree: feat/x");
-  await assert.rejects(pi.tool(TOOL.remove, { branch: "feat/x" }), /session is in .*\/worktree exit/);
+  await assert.rejects(pi.tool(TOOL.remove, { branch: "feat/x" }), /session is in .*worktree_exit/);
   await assert.rejects(pi.tool(TOOL.remove, { branch: "master" }), /is the main checkout/);
 
   await pi.command("exit");
