@@ -72,8 +72,11 @@ become the extension. `session.ts` and most of `runner.ts` become the wrapper.
 
 ## When to go back to the SDK
 
-Any of these: multi-phase runs that change tools or the prompt mid-task, subagents or several
-agents per sandbox, profiles computed at runtime, or in-process state shared between agents.
+Any of these: multi-phase runs that change tools or the prompt mid-task, profiles computed at
+runtime, or in-process state shared between agents.
+
+Subagents and several agents per sandbox do not need the SDK: they run as separate pi processes
+in RPC mode (see `subagent-design.md`).
 
 ## Carry over from this repo
 
