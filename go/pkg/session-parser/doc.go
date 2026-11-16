@@ -2,13 +2,23 @@
 // extensions.
 //
 // A session file has one JSON object per line. The first line is the [Header]; every other
-// line is an entry that pi links into a tree by id and parentId. Two versions describe a file:
+// line is an entry that pi links into a tree by id and parentId. [Session.Branch] is the
+// current branch: from the root to the last entry in the file. Two versions describe a file:
 //
 //   - [Header.Version] is pi's session format. pi owns it and migrates older files when it
-//     loads them; pi-agent never changes it.
-//   - [Session.AgentVersion] is the pi-agent release that wrote the file, from its
+//     loads them; this package reads format [SupportedFormatVersion] only.
+//   - [Metadata.AgentVersion] is the pi-agent release that wrote the file, from its
 //     "pi-agent.session-version" custom entries.
 //
-// The parser reads every entry's envelope (type, id, parentId, timestamp, customType) and
-// keeps the whole line in [Entry.Raw], so entry types it doesn't know are kept as they are.
+// [Parse] reads every entry's envelope and keeps the whole line in [Entry.Raw]. The data is
+// read in groups, each on its own:
+//
+//   - [Session.Metadata]: header fields, pi-agent version, tags, name, models, errors.
+//   - [Session.ToolCalls]: tool calls with their results and tool-ref handles.
+//   - [Session.Metrics]: the pi-agent.metrics totals and samples.
+//   - [Session.Subagents]: subagents started and their results.
+//
+// Values a file doesn't have are nil. Parsing is strict: an invalid line fails [Parse] with a
+// [*LineError], and an invalid entry fails its group with an [*EntryError] (or an
+// [*UnsupportedVersionError] for a pi-agent payload version this package doesn't know).
 package sessionparser

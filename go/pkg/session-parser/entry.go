@@ -73,6 +73,10 @@ func (e Entry) isCustom(customType string) bool {
 	return e.Type == TypeCustom && e.CustomType == customType
 }
 
+func (e Entry) isCustomMessage(customType string) bool {
+	return e.Type == TypeCustomMessage && e.CustomType == customType
+}
+
 // invalid wraps err as an [*EntryError] of e.
 func (e Entry) invalid(err error) error {
 	return &EntryError{ID: e.ID, Type: e.Type, CustomType: e.CustomType, Err: err}
