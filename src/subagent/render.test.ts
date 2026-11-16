@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fgToBg, headerLine, resultRenderer, resultRowLines, warningBg } from "./render.ts";
+import { headerLine, resultRenderer, resultRowLines } from "./render.ts";
 import type { ResultBody, ResultDetails } from "./protocol.ts";
 
 const th = { fg: (color: string, text: string) => `<${color}>${text}`, bold: (text: string) => text };
@@ -26,7 +26,7 @@ test("header: label like codemode's (accent), ID, scenario, coloured status, dur
 test("a row is the header and the summary's first line with where to see the rest; it never expands", () => {
   assert.deepEqual(resultRowLines(result(), th).slice(1), ["first line <dim>· /agent a3 for details"]);
   const render = resultRenderer(() => {});
-  const plain = { fg: (_c: string, t: string) => t, bold: (t: string) => t, getFgAnsi: () => "" } as any;
+  const plain = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
   const message = { role: "custom", customType: "subagent-result", content: "x", display: true, details: result(), timestamp: 0 } as any;
   const collapsed = render(message, { expanded: false, outputPad: 0 } as any, plain)!.render(80);
   const expanded = render(message, { expanded: true, outputPad: 0 } as any, plain)!.render(80);
@@ -34,23 +34,18 @@ test("a row is the header and the summary's first line with where to see the res
   assert.ok(!collapsed.join("\n").includes("second line"));
 });
 
-test("fgToBg / warningBg: the warning foreground as background, on every line of the block", () => {
-  assert.equal(fgToBg("\x1b[38;5;3m"), "\x1b[48;5;3m");
-  assert.equal(fgToBg("\x1b[38;2;10;20;30m"), "\x1b[48;2;10;20;30m");
-  assert.equal(fgToBg("\x1b[2;38;2;1;2;3m"), "\x1b[48;2;1;2;3m");
-  assert.equal(fgToBg("\x1b[33m"), "\x1b[43m");
-  assert.equal(fgToBg("\x1b[93m"), "\x1b[103m");
-  assert.equal(fgToBg(""), undefined);
-  const bg = warningBg({ getFgAnsi: () => "\x1b[38;5;3m" } as any);
-  assert.equal(bg("a\x1b[0mb"), "\x1b[48;5;3ma\x1b[0m\x1b[48;5;3mb\x1b[49m");
+test("the row sits between two amber rules; the label stays accent (pink)", () => {
+  const th2 = { fg: (color: string, text: string) => `<${color}>${text}`, bold: (text: string) => text } as any;
   const row = resultRenderer(() => {})(
     { role: "custom", customType: "subagent-result", content: "x", display: true, details: result(), timestamp: 0 } as any,
     { expanded: false, outputPad: 1 } as any,
-    { fg: (_c: string, t: string) => t, bold: (t: string) => t, getFgAnsi: () => "\x1b[38;5;3m" } as any,
+    th2,
   )!;
-  const lines = row.render(60);
-  assert.equal(lines.length, 4, "padding line, header, summary, padding line");
-  assert.ok(lines.every((l) => l.startsWith("\x1b[48;5;3m")));
+  const lines = row.render(120);
+  assert.equal(lines.length, 4, "rule, header, summary, rule");
+  assert.equal(lines[0], "<warning>" + "─".repeat(120));
+  assert.equal(lines[3], lines[0]);
+  assert.match(lines[1]!, /^ <accent>\[subagent\]/);
 });
 
 test("a left click on a row opens that result", () => {
@@ -58,7 +53,7 @@ test("a left click on a row opens that result", () => {
   const row = resultRenderer((id) => opened.push(id))(
     { role: "custom", customType: "subagent-result", content: "x", display: true, details: result(), timestamp: 0 } as any,
     { expanded: false, outputPad: 0 } as any,
-    { fg: (_c: string, t: string) => t, bold: (t: string) => t, getFgAnsi: () => "" } as any,
+    { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any,
   ) as any;
   const event = (type: string, button: string) => ({ type, button, x: 0, y: 0, screenX: 0, screenY: 0, width: 80, height: 2, shift: false, alt: false, ctrl: false });
   assert.equal(row.handleMouse(event("press", "left")), undefined);

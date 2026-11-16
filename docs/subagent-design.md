@@ -247,8 +247,9 @@ codemode rows of tool-ref:
 <first line of summary> · /agent a3 for details
 ```
 
-- The row is a block on a background in the theme's `warning` colour (one padding line above and
-  below); the label is bold `accent`, like codemode's; `ok` green, every other status red.
+- The row sits between two full-width rules (`DynamicBorder`) in the theme's `warning` colour
+  (amber); no background. The label is bold `accent` (pink), like codemode's; `ok` green, every
+  other status red.
 - Rows never expand (`ctrl+o` changes nothing): the full result is in the `/agent` panel. A left
   click on the row (fullscreen mode) opens that panel.
 
