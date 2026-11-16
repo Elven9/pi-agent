@@ -5,6 +5,86 @@ const require = __piAgentCreateRequire(import.meta.url);
 import { dirname, join } from "node:path";
 import { Type as Type8 } from "typebox";
 
+// src/shared/footer.ts
+import { FooterComponent } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+var STORE = /* @__PURE__ */ Symbol.for("pi-agent.footer");
+function store() {
+  const g = globalThis;
+  return g[STORE] ??= { parts: /* @__PURE__ */ new Map() };
+}
+function footerSessionStart() {
+  store().ui = void 0;
+}
+function setFooterPart(pi, ctx, key, side, text2) {
+  if (ctx.mode !== "tui") return;
+  const s = store();
+  const before = s.parts.get(key);
+  if (text2) s.parts.set(key, { side, text: text2 });
+  else s.parts.delete(key);
+  if (s.parts.size === 0) {
+    if (s.ui !== void 0) ctx.ui.setFooter(void 0);
+    s.ui = void 0;
+    s.requestRender = void 0;
+    return;
+  }
+  if (s.ui === ctx.ui) {
+    if (before?.text !== text2) s.requestRender?.();
+    return;
+  }
+  s.ui = ctx.ui;
+  ctx.ui.setFooter((tui, theme, footerData) => {
+    const inner = new FooterComponent(footerSession(pi, ctx), footerData);
+    inner.setAutoCompactEnabled(pi.getSettings().compaction?.enabled !== false);
+    const unsubscribe = footerData.onBranchChange(() => tui.requestRender());
+    s.requestRender = () => tui.requestRender();
+    return {
+      render: (width) => decorate(inner.render(width), parts(), theme, width),
+      invalidate: () => inner.invalidate(),
+      dispose: () => {
+        unsubscribe();
+        inner.dispose();
+      }
+    };
+  });
+}
+function parts() {
+  const all = [...store().parts.values()];
+  return { left: all.filter((p) => p.side === "left").map((p) => p.text), right: all.filter((p) => p.side === "right").map((p) => p.text) };
+}
+var MIN_LEFT = 12;
+function decorate(lines, p, theme, width) {
+  if (lines.length === 0 || p.left.length === 0 && p.right.length === 0) return lines;
+  const dim = (t) => theme.fg("dim", t);
+  const left = p.left.map((t) => dim(`${t} `)).join("") + lines[0];
+  const right = p.right.length ? dim(p.right.join("  ")) : "";
+  const rightWidth = visibleWidth(right);
+  let first;
+  if (right && width - rightWidth - 1 >= MIN_LEFT) {
+    const cut = truncateToWidth(left, width - rightWidth - 1, dim("..."));
+    first = cut + " ".repeat(Math.max(1, width - visibleWidth(cut) - rightWidth)) + right;
+  } else {
+    first = truncateToWidth(left, width, dim("..."));
+  }
+  return [first, ...lines.slice(1)];
+}
+function footerSession(pi, ctx) {
+  return {
+    get state() {
+      return { model: ctx.model, thinkingLevel: pi.getThinkingLevel() };
+    },
+    get model() {
+      return ctx.model;
+    },
+    routedModel: void 0,
+    get sessionManager() {
+      return ctx.sessionManager;
+    },
+    getContextUsage: () => ctx.getContextUsage(),
+    modelRuntime: { isUsingSubscription: () => ctx.model ? ctx.modelRegistry.isUsingOAuth(ctx.model) : false }
+  };
+}
+
 // src/shared/scenarios/code-writer.ts
 import { Type } from "typebox";
 
@@ -464,7 +544,7 @@ function statusText(children) {
     const word = c.state === "spawning" ? "starting" : c.state;
     counts.set(word, (counts.get(word) ?? 0) + 1);
   }
-  return `agents: ${[...counts].map(([w, n]) => `${n} ${w}`).join(" \xB7 ")}`;
+  return `\u{1F916} ${[...counts].map(([w, n]) => `${n} ${w}`).join(" \xB7 ")}`;
 }
 function livePage(c, now) {
   const lines = [liveHeader(c, now), ...c.restartOf ? [`restart of ${c.restartOf}`] : [], "", "task:", ...c.task.split("\n"), "", "progress:"];
@@ -891,9 +971,9 @@ ${tail}` : ""}` });
 import { Text } from "@earendil-works/pi-tui";
 function headerLine(d, th) {
   const status = statusLabel(d);
-  const color = isAbnormal(d) ? "error" : d.envelope.body.status === "error" ? "warning" : "success";
+  const color = isAbnormal(d) || d.envelope.body.status === "error" ? "error" : "success";
   return [
-    th.fg("accent", "[subagent]"),
+    th.bold(th.fg("warning", "[subagent]")),
     th.bold(d.resultId),
     th.fg("muted", "\xB7"),
     d.scenario,
@@ -903,26 +983,36 @@ function headerLine(d, th) {
     th.fg("dim", formatDuration(d.endedAt - d.startedAt))
   ].join(" ");
 }
-function resultRowLines(d, expanded, th, expandHint) {
-  const header = headerLine(d, th);
-  if (expanded) return [header, ...resultLines(d).map((l) => th.fg("muted", l))];
-  const summary = d.envelope.body.summary.split("\n");
-  const more = summary.length > 1 || d.envelope.body.detail !== void 0;
-  return [header, summary[0] + (more && expandHint ? ` ${th.fg("dim", `(${expandHint})`)}` : "")];
+function resultRowLines(d, th) {
+  const first = d.envelope.body.summary.split("\n", 1)[0] ?? "";
+  return [headerLine(d, th), `${first} ${th.fg("dim", `\xB7 /agent ${d.resultId} for details`)}`];
 }
-var resultRenderer = (message, options, theme) => {
-  const d = message.details;
-  if (!d?.envelope) return new Text(typeof message.content === "string" ? message.content : "[subagent]", options.outputPad, 0);
-  const hint = options.keyHint?.("app.tools.expand", "to expand");
-  return new Text(resultRowLines(d, options.expanded, theme, hint).join("\n"), options.outputPad, 0);
+var ResultRow = class extends Text {
+  onClick;
+  constructor(text2, paddingX, onClick) {
+    super(text2, paddingX, 0);
+    this.onClick = onClick;
+  }
+  handleMouse(event) {
+    if (event.type !== "click" || event.button !== "left") return void 0;
+    this.onClick();
+    return { handled: true, render: false };
+  }
 };
+function resultRenderer(open) {
+  return (message, options, theme) => {
+    const d = message.details;
+    if (!d?.envelope) return new Text(typeof message.content === "string" ? message.content : "[subagent]", options.outputPad, 0);
+    return new ResultRow(resultRowLines(d, theme).join("\n"), options.outputPad, () => open(d.resultId));
+  };
+}
 
 // src/subagent/viewer.ts
-import { matchesKey as matchesKey2, truncateToWidth as truncateToWidth2, wrapTextWithAnsi as wrapTextWithAnsi2 } from "@earendil-works/pi-tui";
+import { matchesKey as matchesKey2, truncateToWidth as truncateToWidth3, wrapTextWithAnsi as wrapTextWithAnsi2 } from "@earendil-works/pi-tui";
 
 // src/tool-ref/viewer.ts
 import { copyToClipboard, getLanguageFromPath, getMarkdownTheme, highlightCode } from "@earendil-works/pi-coding-agent";
-import { Markdown, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { Markdown, matchesKey, truncateToWidth as truncateToWidth2, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 var VIEWER_HEIGHT = 0.8;
 var VIEWER_OVERLAY = { width: "90%", maxHeight: "80%", anchor: "center" };
 
@@ -987,7 +1077,7 @@ var AgentViewer = class {
     const end = Math.min(lines.length, top + height);
     const th = this.theme;
     const border = (s) => th.fg("border", s);
-    const row = (s) => border("\u2502") + truncateToWidth2(s, inner, "", true) + border("\u2502");
+    const row = (s) => border("\u2502") + truncateToWidth3(s, inner, "", true) + border("\u2502");
     const many = this.ids.length > 1;
     const pager = many ? ` \xB7 \u2039 ${this.page + 1}/${this.ids.length} \u203A` : "";
     const position = lines.length > height ? `  ${top + 1}-${end}/${lines.length}` : "";
@@ -1126,12 +1216,16 @@ function registerLeader(pi, options) {
     const wake = items.some((i) => i.wake);
     items.forEach((item, i) => pi.sendMessage(message(item.result), i === items.length - 1 && wake ? { triggerTurn: true } : void 0));
   };
+  const setStatus = (c, text2) => {
+    if (c.mode === "tui") setFooterPart(pi, c, UI_KEY, "right", text2);
+    else c.ui.setStatus(UI_KEY, text2);
+  };
   const updateUI = () => {
     if (closing || !ctx?.hasUI) return;
     const views = manager.views();
     try {
       ctx.ui.setWidget(UI_KEY, views.length ? widgetLines(views, now()) : void 0);
-      ctx.ui.setStatus(UI_KEY, statusText(views));
+      setStatus(ctx, statusText(views));
     } catch {
       return;
     }
@@ -1192,6 +1286,7 @@ function registerLeader(pi, options) {
   pi.on("session_start", (_event, c) => {
     ctx = c;
     closing = false;
+    footerSessionStart();
     nextId = maxAgentId(c.sessionManager.getEntries()) + 1;
     const pending = pendingResults(index(c), now(), manager.ids());
     for (const r of pending) pi.sendMessage(message(r));
@@ -1217,12 +1312,19 @@ function registerLeader(pi, options) {
     for (const result of ended) pi.appendEntry(ENTRY2.end, { result });
     try {
       ctx?.ui.setWidget(UI_KEY, void 0);
-      ctx?.ui.setStatus(UI_KEY, void 0);
+      if (ctx) setStatus(ctx, void 0);
     } catch {
     }
   });
   pi.on("agent_settled", () => flush());
-  pi.registerMessageRenderer(ENTRY2.result, resultRenderer);
+  pi.registerMessageRenderer(
+    ENTRY2.result,
+    resultRenderer((resultId) => {
+      const n = parseAgentId(resultId);
+      if (n === void 0 || !ctx || ctx.mode !== "tui") return;
+      void openPanel(ctx, [n], `/agent ${resultId}`, 0);
+    })
+  );
   const names = scenarioNames();
   pi.registerTool({
     name: TOOL.spawn,
@@ -1326,6 +1428,10 @@ function registerLeader(pi, options) {
     if (r) return { title: `${agentId(id)} \xB7 ${r.start.scenario}`, lines: ["no result recorded", "", "task:", ...r.start.task.split("\n")], live: false };
     return { title: agentId(id), lines: ["no such subagent on this branch"], live: false };
   };
+  const openPanel = (c, ids, title, start) => c.ui.custom(
+    (tui, theme, _keybindings, done) => new AgentViewer(tui, theme, title, ids, (id) => page(c, id), (id) => kill(id, "user", c), () => done(), { start }),
+    { overlay: true, overlayOptions: VIEWER_OVERLAY }
+  );
   const allIds = (c) => [.../* @__PURE__ */ new Set([...index(c).keys(), ...manager.ids()])].sort((a, b) => a - b);
   pi.registerCommand("agent", {
     description: "Subagents: /agent (browse all) \xB7 /agent a3 \xB7 /agent grep <regex> \xB7 /agent kill a3 \xB7 /agent restart a3",
@@ -1383,10 +1489,7 @@ function registerLeader(pi, options) {
         }).join("\n\n"), "info");
         return;
       }
-      await c.ui.custom(
-        (tui, theme, _keybindings, done) => new AgentViewer(tui, theme, title, ids, (id) => page(c, id), (id) => kill(id, "user", c), () => done(), { start }),
-        { overlay: true, overlayOptions: VIEWER_OVERLAY }
-      );
+      await openPanel(c, ids, title, start);
     }
   });
 }

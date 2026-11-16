@@ -25,7 +25,10 @@ A subagent works in the background and reports once; its result lands in the lea
 ## For the user
 
 - A widget above the editor shows each running subagent's state and what it is doing (the
-  `// intent:` line of its codemode scripts, else the tool and its input); the footer shows a count.
+  `// intent:` line of its codemode scripts, else the tool and its input); the end of the footer's
+  cwd line shows a count (`🤖 2 busy`).
+- A result row shows the first line of the summary; `/agent a3` (or a click on the row in
+  fullscreen mode) opens the whole result.
   Display only: never in the model's context or the session.
 - `/agent` pages through all subagents (newest first), `/agent a3` shows one, `/agent grep <regex>`
   the matching results; `x` in the panel kills a running one. `/agent kill a3` and

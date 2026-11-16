@@ -132,7 +132,7 @@ export function widgetLines(children: readonly LiveView[], now: number): string[
   return [...rows.slice(0, WIDGET_ROWS - 1), `+${rows.length - WIDGET_ROWS + 1} more (/agent)`];
 }
 
-/** Footer status: `agents: 2 busy · 1 starting`. */
+/** Footer status (right end of the cwd line): `🤖 2 busy · 1 starting`. */
 export function statusText(children: readonly LiveView[]): string | undefined {
   if (children.length === 0) return undefined;
   const counts = new Map<string, number>();
@@ -140,7 +140,7 @@ export function statusText(children: readonly LiveView[]): string | undefined {
     const word = c.state === "spawning" ? "starting" : c.state;
     counts.set(word, (counts.get(word) ?? 0) + 1);
   }
-  return `agents: ${[...counts].map(([w, n]) => `${n} ${w}`).join(" · ")}`;
+  return `🤖 ${[...counts].map(([w, n]) => `${n} ${w}`).join(" · ")}`;
 }
 
 /** The `/agent` panel page of a live child. */

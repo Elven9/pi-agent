@@ -73,7 +73,7 @@ test("widgetLines and statusText", () => {
   assert.equal(many.length, 5);
   assert.equal(many[4], "+3 more (/agent)");
   assert.equal(statusText([]), undefined);
-  assert.equal(statusText([live("a1", "busy"), live("a2", "busy"), live("a3", "spawning")]), "agents: 2 busy · 1 starting");
+  assert.equal(statusText([live("a1", "busy"), live("a2", "busy"), live("a3", "spawning")]), "🤖 2 busy · 1 starting");
 });
 
 test("formatGet: numbered lines, ranges and the character cap", () => {

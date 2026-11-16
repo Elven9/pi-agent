@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type, type TSchema } from "typebox";
+import { footerSessionStart, setFooterPart } from "../shared/footer.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
 import { registerChild } from "./child.ts";
 import {
@@ -144,12 +145,18 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     items.forEach((item, i) => pi.sendMessage(message(item.result), i === items.length - 1 && wake ? { triggerTurn: true } : undefined));
   };
 
+  /** The count at the right end of the footer's cwd line (TUI), else a status. */
+  const setStatus = (c: ExtensionContext, text: string | undefined) => {
+    if (c.mode === "tui") setFooterPart(pi, c, UI_KEY, "right", text);
+    else c.ui.setStatus(UI_KEY, text);
+  };
+
   const updateUI = () => {
     if (closing || !ctx?.hasUI) return;
     const views = manager.views();
     try {
       ctx.ui.setWidget(UI_KEY, views.length ? widgetLines(views, now()) : undefined);
-      ctx.ui.setStatus(UI_KEY, statusText(views));
+      setStatus(ctx, statusText(views));
     } catch {
       return;
     }
@@ -218,6 +225,7 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
   pi.on("session_start", (_event, c) => {
     ctx = c;
     closing = false;
+    footerSessionStart();
     nextId = maxAgentId(c.sessionManager.getEntries() as unknown as EntryLike[]) + 1;
     // Results recorded at the last session end, and tasks the leader left without any record
     // (crash, SIGKILL): written now as messages, without starting a turn.
@@ -249,7 +257,7 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     for (const result of ended) pi.appendEntry(ENTRY.end, { result });
     try {
       ctx?.ui.setWidget(UI_KEY, undefined);
-      ctx?.ui.setStatus(UI_KEY, undefined);
+      if (ctx) setStatus(ctx, undefined);
     } catch {
       // UI already gone.
     }
@@ -257,7 +265,15 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
 
   pi.on("agent_settled", () => flush());
 
-  pi.registerMessageRenderer(ENTRY.result, resultRenderer);
+  // A click on a result row (fullscreen mode) opens its panel, like `/agent aN`.
+  pi.registerMessageRenderer(
+    ENTRY.result,
+    resultRenderer((resultId) => {
+      const n = parseAgentId(resultId);
+      if (n === undefined || !ctx || ctx.mode !== "tui") return;
+      void openPanel(ctx, [n], `/agent ${resultId}`, 0);
+    }),
+  );
 
   // ── tools ──
 
@@ -380,6 +396,13 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     return { title: agentId(id), lines: ["no such subagent on this branch"], live: false };
   };
 
+  const openPanel = (c: ExtensionContext, ids: number[], title: string, start: number) =>
+    c.ui.custom<void>(
+      (tui, theme, _keybindings, done) =>
+        new AgentViewer(tui, theme, title, ids, (id) => page(c, id), (id) => kill(id, "user", c), () => done(), { start }),
+      { overlay: true, overlayOptions: VIEWER_OVERLAY },
+    );
+
   const allIds = (c: ExtensionContext): number[] => [...new Set([...index(c).keys(), ...manager.ids()])].sort((a, b) => a - b);
 
   pi.registerCommand("agent", {
@@ -435,11 +458,7 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
         c.ui.notify(shown.map((id) => { const p = page(c, id); return [p.title, ...p.lines].join("\n"); }).join("\n\n"), "info");
         return;
       }
-      await c.ui.custom<void>(
-        (tui, theme, _keybindings, done) =>
-          new AgentViewer(tui, theme, title, ids, (id) => page(c, id), (id) => kill(id, "user", c), () => done(), { start }),
-        { overlay: true, overlayOptions: VIEWER_OVERLAY },
-      );
+      await openPanel(c, ids, title, start);
     },
   });
 }

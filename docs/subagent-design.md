@@ -244,12 +244,12 @@ codemode rows of tool-ref:
 
 ```
 [subagent] a3 · review · ok · 2m14s
-<first line of summary>
+<first line of summary> · /agent a3 for details
 ```
 
-- Collapsed: header + first summary line. Expanded (`ctrl+o` or click): full summary, then
-  `detail`.
-- `killed` and `failed` use the error colour.
+- The label is bold in a warm colour (theme `warning`); `ok` green, every other status red.
+- Rows never expand (`ctrl+o` changes nothing): the full result is in the `/agent` panel. A left
+  click on the row (fullscreen mode) opens that panel.
 
 ### Progress
 
@@ -277,8 +277,10 @@ script's `// intent:` comment (tool-ref's `scriptIntent()`); other tools show
 ● a5 triage   busy  0m12s  starting triage…
 ```
 
-Plus a short footer status (`ctx.ui.setStatus`): `agents: 2 busy`. Both cleared when
-no child is alive.
+Plus a count at the right end of the footer's first line (cwd, branch, session name), dimmed
+like it: `🤖 2 busy · 1 starting`. Both cleared when no child is alive. pi has one footer, so the
+footer is shared with the tags extension (tags left of the cwd) through `src/shared/footer.ts`;
+outside the TUI the count is a `setStatus` status.
 
 The leader keeps the last N progress lines per live child in memory for the popup.
 
