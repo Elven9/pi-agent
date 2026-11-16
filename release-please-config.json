@@ -7,7 +7,19 @@
       "changelog-path": "CHANGELOG.md",
       "release-type": "node",
       "include-component-in-tag": false,
+      "exclude-paths": ["go"],
       "bump-minor-pre-major": true,
+      "draft": false,
+      "prerelease": false
+    },
+    "go": {
+      "release-type": "go",
+      "component": "go",
+      "include-component-in-tag": true,
+      "tag-separator": "/",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "release-as": "0.1.0",
       "draft": false,
       "prerelease": false
     }

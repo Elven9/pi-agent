@@ -1,0 +1,34 @@
+name: Go
+
+# The Go module in go/ (github.com/Elven9/pi-agent/go). Runs on pushes to main and on pull
+# requests (including the release pull request) that change it, so a release tag go/vX.Y.Z is
+# only cut from tested code.
+on:
+  push:
+    branches: [main]
+    paths: ["go/**", ".github/workflows/go.yml"]
+  pull_request:
+    paths: ["go/**", ".github/workflows/go.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go/go.mod
+          cache: false # no dependencies (no go.sum) yet
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test -race ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          working-directory: go

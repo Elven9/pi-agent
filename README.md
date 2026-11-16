@@ -587,3 +587,31 @@ The workflow needs the repository secret `RELEASE_PLEASE_TOKEN`: a token with co
 request write access to this repository (pull requests opened with the default `GITHUB_TOKEN`
 don't trigger other workflows). Versions start at 0.1.0, the commit in `bootstrap-sha` in
 `release-please-config.json`.
+
+### Go module (`go/`)
+
+The Go module `github.com/Elven9/pi-agent/go` (`go/pkg/session-parser`, the session file
+parser for the session server) has its own version, separate from pi-agent's. release-please
+manages it as a second package (`go` in `release-please-config.json`):
+
+- Commits that change files under `go/` bump the Go module; all other commits bump pi-agent
+  (`exclude-paths`). A commit touching both bumps both. Same rules: `feat` minor, `fix`
+  patch, breaking changes minor below 1.0.0.
+- Both go into the one release pull request. Merging it tags `go/vX.Y.Z` (the form Go needs
+  for a module in a subfolder) next to pi-agent's `vX.Y.Z`, and adds a section to
+  `go/CHANGELOG.md`.
+- Import a release with `go get github.com/Elven9/pi-agent/go@v0.1.0` (Go strips the `go/`
+  prefix of the tag).
+- The first release is 0.1.0 (`release-as`); remove `release-as` from the config after it.
+
+Policy:
+
+1. Stay below 1.0.0 while the API changes; breaking changes are allowed there.
+2. Tag 1.0.0 once the server depends on it. After that avoid breaking changes: v2 and later
+   need a new import path (`.../go/v2`).
+3. This version is neither pi's session format (header `version`) nor pi-agent's release.
+   When pi or pi-agent change an entry incompatibly, release a minor version that reads it and
+   note in `go/CHANGELOG.md` which formats it reads.
+
+`.github/workflows/go.yml` runs gofmt, `go vet`, `go test -race` and golangci-lint on
+pushes and pull requests that change `go/`, including the release pull request.
