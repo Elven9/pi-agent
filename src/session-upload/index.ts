@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { METRICS_FLUSH_CHANNEL } from "../shared/protocol.ts";
+import { type ProgressOptions, seconds, startProgress } from "./progress.ts";
 import { loadUploadSettings, SETTINGS_FILE, uploadSession, type UploadSettings } from "./upload.ts";
 
 /** Session changes that leave the current session behind; `reload` keeps it. */
@@ -18,15 +19,19 @@ const UPLOAD_ON = new Set(["quit", "new", "resume", "fork"]);
  *
  * Before each upload it asks the metrics extension to append its latest totals, so the file
  * ends with them. A session with no file yet (nothing said) is skipped.
+ *
+ * While it uploads, a spinner shows the elapsed time (progress.ts): a widget above the editor for
+ * /upload, /new, /resume and /fork; on quit (the TUI is already stopped) a line on stderr, then
+ * `Session uploaded in 1.2s`.
  */
 export default createSessionUpload();
 
 /** The extension factory; `opts` are for tests. */
-export function createSessionUpload(opts: { settingsPath?: string; env?: NodeJS.ProcessEnv } = {}) {
+export function createSessionUpload(opts: { settingsPath?: string; env?: NodeJS.ProcessEnv; progress?: ProgressOptions } = {}) {
   return (pi: ExtensionAPI) => register(pi, opts);
 }
 
-function register(pi: ExtensionAPI, opts: { settingsPath?: string; env?: NodeJS.ProcessEnv }) {
+function register(pi: ExtensionAPI, opts: { settingsPath?: string; env?: NodeJS.ProcessEnv; progress?: ProgressOptions }) {
   const settingsPath = opts.settingsPath ?? join(getAgentDir(), "extensions", SETTINGS_FILE);
   let settings: UploadSettings | undefined;
   let settingsError: string | undefined;
@@ -42,13 +47,26 @@ function register(pi: ExtensionAPI, opts: { settingsPath?: string; env?: NodeJS.
     }
   });
 
-  /** Appends the latest metrics, then uploads. Undefined when there is no session file yet. */
-  const upload = async (ctx: ExtensionContext): Promise<{ id: string; bytes: number } | undefined> => {
+  /**
+   * Appends the latest metrics, then uploads with a spinner (`where`, see progress.ts).
+   * Undefined when there is no session file yet.
+   */
+  const upload = async (
+    ctx: ExtensionContext,
+    where: "widget" | "terminal",
+  ): Promise<{ id: string; bytes: number; ms: number } | undefined> => {
     const file = ctx.sessionManager.getSessionFile();
     if (!settings || !file || !existsSync(file)) return undefined;
     pi.events.emit(METRICS_FLUSH_CHANNEL, undefined);
     const id = ctx.sessionManager.getHeader()?.id ?? ctx.sessionManager.getSessionId();
-    return { id, bytes: await uploadSession(settings, id, file, { env: opts.env }) };
+    const progress = startProgress(ctx, ctx.mode === "tui" ? where : "none", opts.progress);
+    try {
+      const bytes = await uploadSession(settings, id, file, { env: opts.env });
+      return { id, bytes, ms: progress.stop() };
+    } catch (err) {
+      progress.stop();
+      throw err;
+    }
   };
 
   pi.registerCommand("upload", {
@@ -60,9 +78,11 @@ function register(pi: ExtensionAPI, opts: { settingsPath?: string; env?: NodeJS.
         return;
       }
       try {
-        const done = await upload(ctx);
+        const done = await upload(ctx, "widget");
         ctx.ui.notify(
-          done ? `Uploaded session ${done.id} (${Math.ceil(done.bytes / 1024)} KB)` : "Nothing to upload yet: the session has no file.",
+          done
+            ? `Uploaded session ${done.id} (${Math.ceil(done.bytes / 1024)} KB) in ${seconds(done.ms)}`
+            : "Nothing to upload yet: the session has no file.",
           "info",
         );
       } catch (err) {
@@ -73,8 +93,12 @@ function register(pi: ExtensionAPI, opts: { settingsPath?: string; env?: NodeJS.
 
   pi.on("session_shutdown", async (event, ctx) => {
     if (!UPLOAD_ON.has(event.reason)) return;
+    // Quit stops the TUI before session_shutdown: the spinner goes to the terminal then.
+    const quit = event.reason === "quit";
     try {
-      await upload(ctx);
+      const done = await upload(ctx, quit ? "terminal" : "widget");
+      const stream = opts.progress?.stream ?? process.stderr;
+      if (done && quit && ctx.mode === "tui" && stream.isTTY) stream.write(`Session uploaded in ${seconds(done.ms)}\n`);
     } catch (err) {
       console.error(`[session-upload] ${(err as Error).message}`);
     }
