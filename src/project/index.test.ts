@@ -6,6 +6,7 @@ import { join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import projectContext, { createProjectContext } from "./index.ts";
 import { ENTRY, PROJECT_CHANNEL, PROJECT_READ } from "../shared/protocol.ts";
+import { ALLOW_SETUP_CHANGE_CHANNEL } from "../shared/session-setup.ts";
 import { CliError, type CliRunner } from "../shared/project-source.ts";
 import { execFileSync } from "node:child_process";
 
@@ -34,9 +35,13 @@ function fakePi(
   const entries: Array<{ customType: string; data: unknown }> = [];
   const notices: string[] = [];
   const announced: unknown[] = [];
+  const listeners = new Map<string, Array<(data: unknown) => void>>();
   let shutdown = false;
   const pi = {
-    events: { emit: (channel: string, data: unknown) => void (channel === PROJECT_CHANNEL && announced.push(data)) },
+    events: {
+      emit: (channel: string, data: unknown) => void (channel === PROJECT_CHANNEL && announced.push(data)),
+      on: (channel: string, l: (data: unknown) => void) => void listeners.set(channel, [...(listeners.get(channel) ?? []), l]),
+    },
     registerFlag() {},
     getFlag: (name: string) => flags[name],
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.set(event, handler),
@@ -69,6 +74,8 @@ function fakePi(
     },
     emit: (name: string, event: object = {}) => handlers.get(name)?.({ type: name, ...event }, ctx),
     command: (name: string) => commands.get(name)!.handler("", ctx),
+    /** Another extension's announcement (e.g. scenario-profile's --allow-setup-change). */
+    hear: (channel: string, data: unknown) => listeners.get(channel)?.forEach((l) => l(data)),
   };
 }
 
@@ -438,7 +445,8 @@ test("setup rule: resume reads the recorded project at its commit; startup misma
   }
 
   // --allow-setup-change without a project: recorded as none.
-  const dropped = fakePi({ "allow-setup-change": true as unknown as string }, await tmp({}));
+  const dropped = fakePi({}, await tmp({}));
+  dropped.hear(ALLOW_SETUP_CHANGE_CHANNEL, { allow: true });
   dropped.entries.push({ customType: ENTRY.project, data: remoteEntry });
   await dropped.emit("session_start", { reason: "startup" });
   assert.equal(dropped.shutdown, false);

@@ -335,6 +335,7 @@ function getScenario(name) {
 // src/shared/session-setup.ts
 var SCENARIO_ENTRY_VERSION = 1;
 var ALLOW_SETUP_CHANGE_FLAG = "allow-setup-change";
+var ALLOW_SETUP_CHANGE_CHANNEL = "pi-agent.allow-setup-change";
 var ALLOW_SETUP_CHANGE_DESCRIPTION = "Resume a session with another scenario or project than it was recorded with (or none); the new setup is recorded";
 function last(entries, customType, valid) {
   let found;
@@ -525,6 +526,8 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
   });
   pi.on("session_start", (event, ctx) => {
     started = true;
+    const allowChange = pi.getFlag(ALLOW_SETUP_CHANGE_FLAG) === true;
+    pi.events.emit(ALLOW_SETUP_CHANGE_CHANNEL, { allow: allowChange });
     const fail = (message) => {
       if (ctx.mode === "tui") startupError = message;
       else console.error(`[pi-agent] ${message}`);
@@ -541,7 +544,7 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
       current,
       key: (n) => n,
       label: (n) => n,
-      allowChange: pi.getFlag(ALLOW_SETUP_CHANGE_FLAG) === true
+      allowChange
     });
     if ("error" in decision) {
       fail(decision.error);

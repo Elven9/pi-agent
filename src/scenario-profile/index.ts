@@ -16,9 +16,11 @@ import {
 import { decideMcpServers, mcpServerConfig, type McpEnv } from "../shared/mcp-servers.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
 import {
+  ALLOW_SETUP_CHANGE_CHANNEL,
   ALLOW_SETUP_CHANGE_DESCRIPTION,
   ALLOW_SETUP_CHANGE_FLAG,
   decideSetup,
+  type AllowSetupChange,
   sameEntry,
   SCENARIO_ENTRY_VERSION,
   sessionScenario,
@@ -119,7 +121,7 @@ export default function scenarioProfile(
     type: "string",
     description: "pi-agent scenario: use its system prompt, tools and skills",
   });
-  // Also registered by the project extension; pi lists it once and both read the same value.
+  // Owned here; the project extension gets its value on ALLOW_SETUP_CHANGE_CHANNEL.
   pi.registerFlag(ALLOW_SETUP_CHANGE_FLAG, { type: "boolean", description: ALLOW_SETUP_CHANGE_DESCRIPTION });
   /** A startup error in the TUI, printed on shutdown (the TUI would paint over it now). */
   let startupError: string | undefined;
@@ -220,6 +222,8 @@ export default function scenarioProfile(
   // Flags are only parsed after extensions load, so everything happens from session_start on.
   pi.on("session_start", (event, ctx) => {
     started = true;
+    const allowChange = pi.getFlag(ALLOW_SETUP_CHANGE_FLAG) === true;
+    pi.events.emit(ALLOW_SETUP_CHANGE_CHANNEL, { allow: allowChange } satisfies AllowSetupChange);
     const fail = (message: string) => {
       // Startup entries are not streamed in --mode json, so also tell stderr; in the TUI once it stopped.
       if (ctx.mode === "tui") startupError = message;
@@ -238,7 +242,7 @@ export default function scenarioProfile(
       current,
       key: (n) => n,
       label: (n) => n,
-      allowChange: pi.getFlag(ALLOW_SETUP_CHANGE_FLAG) === true,
+      allowChange,
     });
     if ("error" in decision) {
       fail(decision.error);

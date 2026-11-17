@@ -28,9 +28,9 @@ import {
 import { resolveFrom } from "../shared/worktree.ts";
 import { splitSystemPrompt } from "./cache-split.ts";
 import {
-  ALLOW_SETUP_CHANGE_DESCRIPTION,
-  ALLOW_SETUP_CHANGE_FLAG,
+  ALLOW_SETUP_CHANGE_CHANNEL,
   decideSetup,
+  type AllowSetupChange,
   projectEntry,
   projectKey,
   projectLabel,
@@ -108,8 +108,9 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
       type: "string",
       description: "Folder with project.yaml: adds its rules, commands, CLI tools, workflows and docs to the system prompt",
     });
-    // Also registered by the scenario-profile extension; pi lists it once and both read the same value.
-    pi.registerFlag(ALLOW_SETUP_CHANGE_FLAG, { type: "boolean", description: ALLOW_SETUP_CHANGE_DESCRIPTION });
+    /** --allow-setup-change, owned by the scenario-profile extension (sent before our session_start). */
+    let allowSetupChange = false;
+    pi.events.on(ALLOW_SETUP_CHANGE_CHANNEL, (data) => void (allowSetupChange = (data as AllowSetupChange).allow === true));
 
     /** A recorded project, as it was: a local folder, or the repository at the recorded commit. */
     const loadRecorded = async (s: ProjectEntrySource) => {
@@ -215,7 +216,7 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
           current,
           key: projectKey,
           label: projectLabel,
-          allowChange: pi.getFlag(ALLOW_SETUP_CHANGE_FLAG) === true,
+          allowChange: allowSetupChange,
         });
         if ("error" in decision) throw new Error(decision.error);
         const usesSetting = decision.use === "current" ? setting !== undefined : !!current && setting !== undefined && projectKey(current) === projectKey(recorded!);

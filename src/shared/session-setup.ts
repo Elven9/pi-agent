@@ -23,8 +23,18 @@ import type { Project } from "./project.ts";
 export const SCENARIO_ENTRY_VERSION = 1;
 export const PROJECT_ENTRY_VERSION = 1;
 
-/** Extension CLI flag (registered by both extensions): start a session with a setup other than its recorded one. */
+/**
+ * Extension CLI flag: start a session with a setup other than its recorded one. pi rejects a flag
+ * registered by two extensions, so the scenario-profile extension owns it and sends its value
+ * on ALLOW_SETUP_CHANGE_CHANNEL at every session start, before the project extension's (which
+ * loads after it).
+ */
 export const ALLOW_SETUP_CHANGE_FLAG = "allow-setup-change";
+/** `pi.events` channel: `{ allow: boolean }`, the flag's value for this session start. */
+export const ALLOW_SETUP_CHANGE_CHANNEL = "pi-agent.allow-setup-change";
+export interface AllowSetupChange {
+  allow: boolean;
+}
 export const ALLOW_SETUP_CHANGE_DESCRIPTION =
   "Resume a session with another scenario or project than it was recorded with (or none); the new setup is recorded";
 

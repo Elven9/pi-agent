@@ -41,6 +41,7 @@ function fakePi(flags: Record<string, string | undefined>, externalRoots: string
   const pi = {
     events: {
       emit: (channel: string, data: any) => {
+        if (channel === "pi-agent.allow-setup-change") return; // for the project extension, not checked here
         if (channel === SKILLS_CHANNEL) {
           const { descriptions: d, ...rest } = data;
           descriptions = d;

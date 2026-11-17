@@ -14,7 +14,7 @@ type Factory = (pi: ExtensionAPI) => void;
  * Loads the real extensions in the given order on one shared event bus and runs session_start
  * like pi: handlers in load order, each awaited before the next.
  */
-async function startSession(order: Factory[], flags: Record<string, string>) {
+async function startSession(order: Factory[], flags: Record<string, string | boolean>, recorded: unknown[] = []) {
   const cwd = await mkdtemp(join(tmpdir(), "pi-agent-order-"));
   const listeners = new Map<string, Array<(data: unknown) => void>>();
   const events = {
@@ -24,10 +24,12 @@ async function startSession(order: Factory[], flags: Record<string, string>) {
   };
   const handlers: Array<{ event: string; handler: (event: any, ctx: any) => any }> = [];
   const entries: Array<{ customType: string; data: unknown }> = [];
+  /** Flag names in registration order, across all extensions (pi rejects a name registered twice). */
+  const registeredFlags: string[] = [];
   let shutdown = false;
   const pi = {
     events,
-    registerFlag() {},
+    registerFlag: (name: string) => void registeredFlags.push(name),
     getFlag: (name: string) => flags[name],
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.push({ event, handler }),
     registerCommand() {},
@@ -40,7 +42,7 @@ async function startSession(order: Factory[], flags: Record<string, string>) {
     appendEntry: (customType: string, data: unknown) => void entries.push({ customType, data }),
   } as unknown as ExtensionAPI;
   for (const factory of order) factory(pi);
-  const ctx = { cwd, shutdown: () => (shutdown = true), sessionManager: { getEntries: () => [] } };
+  const ctx = { cwd, shutdown: () => (shutdown = true), sessionManager: { getEntries: () => [...recorded] } };
   const original = console.error;
   console.error = () => {};
   try {
@@ -50,11 +52,33 @@ async function startSession(order: Factory[], flags: Record<string, string>) {
   } finally {
     console.error = original;
   }
-  return { entries, shutdown };
+  return { entries, shutdown, registeredFlags };
 }
 
 const scenario: Factory = (pi) => scenarioProfile(pi, "/pkg/skills");
 const project: Factory = (pi) => projectContext(pi);
+
+test("together they register each flag once (pi rejects a flag owned by two extensions)", async () => {
+  const run = await startSession([scenario, project], {});
+  assert.deepEqual(run.registeredFlags, [...new Set(run.registeredFlags)]);
+  assert.ok(run.registeredFlags.includes("allow-setup-change"));
+});
+
+test("--allow-setup-change reaches the project extension too", async () => {
+  const local = await mkdtemp(join(tmpdir(), "pi-agent-order-proj-"));
+  const recorded = [{ type: "custom", customType: ENTRY.project, data: { version: 1, name: "p", source: { kind: "local", dir: local } } }];
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const blocked = await startSession([scenario, project], {}, recorded);
+    assert.equal(blocked.shutdown, true);
+    const allowed = await startSession([scenario, project], { "allow-setup-change": true }, recorded);
+    assert.equal(allowed.shutdown, false);
+    assert.deepEqual(allowed.entries.at(-1), { customType: ENTRY.project, data: { version: 1, name: null } });
+  } finally {
+    console.error = original;
+  }
+});
 
 test("scenario-profile before project: no error", async () => {
   const run = await startSession([scenario, project], { scenario: "work-request-triage" });
