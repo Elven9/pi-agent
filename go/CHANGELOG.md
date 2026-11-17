@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/Elven9/pi-agent/compare/go/v0.1.0...go/v0.1.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* **go:** accept the default tags source in session metadata ([e15f0f6](https://github.com/Elven9/pi-agent/commit/e15f0f6fae98b37a987b9470b672db37e77d9ebf))
+
 ## 0.1.0 (2026-11-16)
 
 
