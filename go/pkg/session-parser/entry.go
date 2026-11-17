@@ -28,6 +28,10 @@ const (
 	CustomTypeSessionVersion = "pi-agent.session-version"
 	// CustomTypeTags: the session's tags; the last one in the file wins.
 	CustomTypeTags = "pi-agent.tags"
+	// CustomTypeScenario: the scenario the session runs with; the last one in the file wins.
+	CustomTypeScenario = "pi-agent.scenario"
+	// CustomTypeProject: the project the session runs with; the last one in the file wins.
+	CustomTypeProject = "pi-agent.project"
 	// CustomTypeError: an extension could not run and pi shut down.
 	CustomTypeError = "pi-agent.error"
 	// CustomTypeMetrics: session metrics, cumulative along the branch.

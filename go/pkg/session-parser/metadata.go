@@ -10,6 +10,19 @@ import (
 // TagsVersion is the pi-agent.tags payload version this package reads.
 const TagsVersion = 1
 
+// ScenarioVersion and ProjectVersion are the pi-agent.scenario and pi-agent.project payload
+// versions this package reads.
+const (
+	ScenarioVersion = 1
+	ProjectVersion  = 1
+)
+
+// Project source kinds ([ProjectSource.Kind]).
+const (
+	ProjectLocal  = "local"
+	ProjectRemote = "remote"
+)
+
 // Metadata describes a session. Pointers and slices are nil when the file has no such entry.
 type Metadata struct {
 	SessionID string
@@ -27,6 +40,12 @@ type Metadata struct {
 	Tags *Tags
 	// Name is the session name of the last session_info entry in the file; nil when unnamed.
 	Name *string
+	// Scenario is the scenario of the last pi-agent.scenario entry in the file; nil without
+	// one, or when that entry records none.
+	Scenario *string
+	// Project is the project of the last pi-agent.project entry in the file; nil without one,
+	// or when that entry records none.
+	Project *Project
 
 	// Models are the model changes on the current branch, in order.
 	Models []ModelChange
@@ -42,6 +61,24 @@ type Tags struct {
 	// last segment of the cwd, for a session never tagged).
 	Source string
 	At     time.Time
+}
+
+// Project is a pi-agent.project entry: the project (project.yaml) the session runs with.
+type Project struct {
+	Name   string
+	Source ProjectSource
+	At     time.Time
+}
+
+// ProjectSource is where a project's files come from.
+type ProjectSource struct {
+	// Kind is ProjectLocal or ProjectRemote.
+	Kind string
+	// Dir is a local project's absolute folder.
+	Dir string
+	// Provider ("github", "gitlab"), Repo, Path (folder in the repository, may be empty), Tag
+	// and Commit (the tag's commit) are a remote project's.
+	Provider, Repo, Path, Tag, Commit string
 }
 
 // ModelChange is a model_change entry.
@@ -79,6 +116,10 @@ func (s *Session) Metadata() (*Metadata, error) {
 			err = m.readTags(e)
 		case e.Type == TypeSessionInfo:
 			err = m.readName(e)
+		case e.isCustom(CustomTypeScenario):
+			err = m.readScenario(e)
+		case e.isCustom(CustomTypeProject):
+			err = m.readProject(e)
 		}
 		if err != nil {
 			return nil, e.invalid(err)
@@ -148,6 +189,69 @@ func (m *Metadata) readName(e Entry) error {
 	if d.Name != nil && *d.Name != "" {
 		m.Name = d.Name
 	}
+	return nil
+}
+
+func (m *Metadata) readScenario(e Entry) error {
+	var d struct {
+		Version *int    `json:"version"`
+		Name    *string `json:"name"`
+	}
+	if err := e.decodeField("data", &d); err != nil {
+		return err
+	}
+	if err := checkVersion(CustomTypeScenario, d.Version, ScenarioVersion); err != nil {
+		return err
+	}
+	if d.Name != nil && *d.Name == "" {
+		return missing("data.name")
+	}
+	m.Scenario = d.Name // null: the session runs without one from here on
+	return nil
+}
+
+func (m *Metadata) readProject(e Entry) error {
+	var d struct {
+		Version *int    `json:"version"`
+		Name    *string `json:"name"`
+		Source  *struct {
+			Kind     string `json:"kind"`
+			Dir      string `json:"dir"`
+			Provider string `json:"provider"`
+			Repo     string `json:"repo"`
+			Path     string `json:"path"`
+			Tag      string `json:"tag"`
+			Commit   string `json:"commit"`
+		} `json:"source"`
+	}
+	if err := e.decodeField("data", &d); err != nil {
+		return err
+	}
+	if err := checkVersion(CustomTypeProject, d.Version, ProjectVersion); err != nil {
+		return err
+	}
+	if d.Name == nil {
+		m.Project = nil // the session runs without one from here on
+		return nil
+	}
+	if *d.Name == "" {
+		return missing("data.name")
+	}
+	if d.Source == nil {
+		return missing("data.source")
+	}
+	s := d.Source
+	switch {
+	case s.Kind == ProjectLocal && s.Dir == "":
+		return missing("data.source.dir")
+	case s.Kind == ProjectRemote && (s.Provider == "" || s.Repo == "" || s.Tag == "" || s.Commit == ""):
+		return errors.New("remote data.source needs provider, repo, tag and commit")
+	case s.Kind != ProjectLocal && s.Kind != ProjectRemote:
+		return fmt.Errorf("data.source.kind %q is not local or remote", s.Kind)
+	}
+	m.Project = &Project{Name: *d.Name, At: e.Timestamp, Source: ProjectSource{
+		Kind: s.Kind, Dir: s.Dir, Provider: s.Provider, Repo: s.Repo, Path: s.Path, Tag: s.Tag, Commit: s.Commit,
+	}}
 	return nil
 }
 

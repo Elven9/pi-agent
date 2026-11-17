@@ -51,6 +51,41 @@ func TestMetadataReadsFileWideValuesAndTheBranchsModelsAndErrors(t *testing.T) {
 	if len(m.Errors) != 1 || m.Errors[0].Message != "--tags: Invalid tag" {
 		t.Errorf("Errors = %+v", m.Errors)
 	}
+	if m.Scenario == nil || *m.Scenario != "code-writer" {
+		t.Errorf("Scenario = %v, want code-writer", m.Scenario)
+	}
+	wantProject := &Project{Name: "pi-agent", Source: ProjectSource{Kind: ProjectLocal, Dir: "/w/project"}, At: time.Date(2026, 11, 16, 7, 1, 0, 0, time.UTC)}
+	if !reflect.DeepEqual(m.Project, wantProject) {
+		t.Errorf("Project = %+v, want %+v", m.Project, wantProject)
+	}
+}
+
+func TestMetadataReadsARemoteProject(t *testing.T) {
+	m, err := parseLines(t,
+		`{"type":"custom","customType":"pi-agent.project","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","data":{"version":1,"name":"p","source":{"kind":"remote","provider":"github","repo":"o/r","path":"proj","tag":"v1","commit":"abc"}}}`,
+	).Metadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ProjectSource{Kind: ProjectRemote, Provider: "github", Repo: "o/r", Path: "proj", Tag: "v1", Commit: "abc"}
+	if m.Project == nil || m.Project.Source != want {
+		t.Errorf("Project = %+v, want source %+v", m.Project, want)
+	}
+}
+
+func TestMetadataHasNoScenarioOrProjectAfterAnEntryThatDropsThem(t *testing.T) {
+	m, err := parseLines(t,
+		`{"type":"custom","customType":"pi-agent.scenario","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","data":{"version":1,"name":"debugger"}}`,
+		`{"type":"custom","customType":"pi-agent.project","id":"b","parentId":"a","timestamp":"2026-11-16T06:46:36Z","data":{"version":1,"name":"p","source":{"kind":"local","dir":"/p"}}}`,
+		`{"type":"custom","customType":"pi-agent.scenario","id":"c","parentId":"b","timestamp":"2026-11-16T06:46:36Z","data":{"version":1,"name":null}}`,
+		`{"type":"custom","customType":"pi-agent.project","id":"d","parentId":"c","timestamp":"2026-11-16T06:46:36Z","data":{"version":1,"name":null}}`,
+	).Metadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Scenario != nil || m.Project != nil {
+		t.Errorf("Scenario = %v, Project = %+v; want nil", m.Scenario, m.Project)
+	}
 }
 
 func TestMetadataLeavesWhatTheFileDoesNotHaveNil(t *testing.T) {
@@ -58,7 +93,8 @@ func TestMetadataLeavesWhatTheFileDoesNotHaveNil(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.ParentSession != nil || m.AgentVersion != nil || m.Tags != nil || m.Name != nil || m.Models != nil || m.Errors != nil {
+	if m.ParentSession != nil || m.AgentVersion != nil || m.Tags != nil || m.Name != nil || m.Models != nil || m.Errors != nil ||
+		m.Scenario != nil || m.Project != nil {
 		t.Errorf("Metadata = %+v, want only header fields", m)
 	}
 }
@@ -115,6 +151,12 @@ func TestMetadataFailsOnAnInvalidEntry(t *testing.T) {
 		"error without text":   custom(CustomTypeError, `{}`),
 		"model without id":     `{"type":"model_change","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","provider":"cpa"}`,
 		"name not a string":    `{"type":"session_info","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","name":1}`,
+		"scenario no version":  custom(CustomTypeScenario, `{"name":"x"}`),
+		"scenario empty name":  custom(CustomTypeScenario, `{"version":1,"name":""}`),
+		"project no source":    custom(CustomTypeProject, `{"version":1,"name":"p"}`),
+		"project bad kind":     custom(CustomTypeProject, `{"version":1,"name":"p","source":{"kind":"ftp"}}`),
+		"local without dir":    custom(CustomTypeProject, `{"version":1,"name":"p","source":{"kind":"local"}}`),
+		"remote without tag":   custom(CustomTypeProject, `{"version":1,"name":"p","source":{"kind":"remote","provider":"github","repo":"o/r","commit":"c"}}`),
 	}
 	for name, line := range tests {
 		t.Run(name, func(t *testing.T) {
