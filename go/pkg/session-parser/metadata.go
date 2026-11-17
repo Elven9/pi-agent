@@ -38,7 +38,8 @@ type Metadata struct {
 type Tags struct {
 	// Tags in the order given; empty when cleared.
 	Tags []string
-	// Source is what set them: "flag" (--tags or task.json) or "command" (/tags).
+	// Source is what set them: "flag" (--tags or task.json), "command" (/tags) or "default" (the
+	// last segment of the cwd, for a session never tagged).
 	Source string
 	At     time.Time
 }
@@ -127,8 +128,10 @@ func (m *Metadata) readTags(e Entry) error {
 	if d.Tags == nil {
 		return missing("data.tags")
 	}
-	if d.Source != "flag" && d.Source != "command" {
-		return fmt.Errorf("data.source %q is not flag or command", d.Source)
+	switch d.Source {
+	case "flag", "command", "default":
+	default:
+		return fmt.Errorf("data.source %q is not flag, command or default", d.Source)
 	}
 	m.Tags = &Tags{Tags: d.Tags, Source: d.Source, At: e.Timestamp}
 	return nil

@@ -75,6 +75,19 @@ func TestMetadataKeepsClearedTagsAsAnEmptyList(t *testing.T) {
 	}
 }
 
+func TestMetadataReadsTheDefaultTagsSource(t *testing.T) {
+	m, err := parseLines(t,
+		`{"type":"custom","customType":"pi-agent.tags","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","data":{"version":1,"tags":["my-repo"],"source":"default"}}`,
+	).Metadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &Tags{Tags: []string{"my-repo"}, Source: "default", At: time.Date(2026, 11, 16, 6, 46, 36, 0, time.UTC)}
+	if !reflect.DeepEqual(m.Tags, want) {
+		t.Errorf("Tags = %+v, want %+v", m.Tags, want)
+	}
+}
+
 func TestMetadataNameIsNilAfterTheNameIsCleared(t *testing.T) {
 	m, err := parseLines(t,
 		`{"type":"session_info","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","name":"x"}`,
