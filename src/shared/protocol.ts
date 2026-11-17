@@ -130,6 +130,9 @@ export const ENTRY = {
   project: "pi-agent.project",
 } as const;
 
+/** `pi.events` channel: `{ message }`, an extension could not run and is shutting pi down (shared/abort.ts). */
+export const SESSION_ABORTED_CHANNEL = "pi-agent.session-aborted";
+
 /** `pi.events` channel: the metrics extension appends a `pi-agent.metrics` entry now (if changed). */
 export const METRICS_FLUSH_CHANNEL = "pi-agent.metrics.flush";
 

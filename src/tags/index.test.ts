@@ -31,6 +31,7 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
     on: (event: string, handler: any) => void handlers.set(event, handler),
     registerCommand: (name: string, options: any) => void commands.set(name, options),
     appendEntry: (customType: string, data: unknown) => void entries.push({ type: "custom", customType, data }),
+    events: { emit: () => {}, on: () => {} },
     getSettings: () => ({}),
     getThinkingLevel: () => "off",
   } as unknown as ExtensionAPI;

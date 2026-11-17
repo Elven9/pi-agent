@@ -7,30 +7,6 @@ import { basename, dirname as dirname2, join as join3 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 
-// src/shared/external-skills.ts
-import { homedir } from "node:os";
-import { join } from "node:path";
-function validateExternalSkills(scenario, config) {
-  const names = config?.include ?? [];
-  const dup = names.find((n, i) => names.indexOf(n) !== i);
-  if (dup !== void 0) throw new Error(`scenario "${scenario}": external skill "${dup}" is listed twice in include`);
-  if (names.some((n) => n.trim() === "")) throw new Error(`scenario "${scenario}": empty external skill name in include`);
-}
-function externalSkillRoots(env = process.env, home = homedir()) {
-  const raw = env.PI_CODING_AGENT_DIR;
-  const agentDir = raw ? raw === "~" ? home : raw.startsWith("~/") ? join(home, raw.slice(2)) : raw : join(home, ".pi", "agent");
-  return [join(agentDir, "skills"), join(home, ".agents", "skills")];
-}
-function findExternalSkills(names, roots, scanRoot) {
-  if (names.length === 0) return [];
-  const wanted = new Set(names);
-  const found = /* @__PURE__ */ new Map();
-  for (const root of roots) {
-    for (const skill of scanRoot(root)) if (wanted.has(skill.name) && !found.has(skill.name)) found.set(skill.name, skill);
-  }
-  return names.flatMap((n) => found.get(n) ?? []);
-}
-
 // src/shared/protocol.ts
 var SCENARIO_FLAG = "scenario";
 var SCENARIO_CHANNEL = "pi-agent.scenario";
@@ -56,6 +32,38 @@ var ENTRY = {
   /** `custom` entry with `ProjectEntry` data (project extension); the last one in the file is the session's project. */
   project: "pi-agent.project"
 };
+var SESSION_ABORTED_CHANNEL = "pi-agent.session-aborted";
+
+// src/shared/abort.ts
+function abortSession(pi, ctx, message) {
+  pi.appendEntry(ENTRY.error, { message });
+  pi.events.emit(SESSION_ABORTED_CHANNEL, { message });
+  ctx.shutdown();
+}
+
+// src/shared/external-skills.ts
+import { homedir } from "node:os";
+import { join } from "node:path";
+function validateExternalSkills(scenario, config) {
+  const names = config?.include ?? [];
+  const dup = names.find((n, i) => names.indexOf(n) !== i);
+  if (dup !== void 0) throw new Error(`scenario "${scenario}": external skill "${dup}" is listed twice in include`);
+  if (names.some((n) => n.trim() === "")) throw new Error(`scenario "${scenario}": empty external skill name in include`);
+}
+function externalSkillRoots(env = process.env, home = homedir()) {
+  const raw = env.PI_CODING_AGENT_DIR;
+  const agentDir = raw ? raw === "~" ? home : raw.startsWith("~/") ? join(home, raw.slice(2)) : raw : join(home, ".pi", "agent");
+  return [join(agentDir, "skills"), join(home, ".agents", "skills")];
+}
+function findExternalSkills(names, roots, scanRoot) {
+  if (names.length === 0) return [];
+  const wanted = new Set(names);
+  const found = /* @__PURE__ */ new Map();
+  for (const root of roots) {
+    for (const skill of scanRoot(root)) if (wanted.has(skill.name) && !found.has(skill.name)) found.set(skill.name, skill);
+  }
+  return names.flatMap((n) => found.get(n) ?? []);
+}
 
 // src/shared/mcp-servers.ts
 import { accessSync, constants, statSync } from "node:fs";
@@ -531,8 +539,7 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
     const fail = (message) => {
       if (ctx.mode === "tui") startupError = message;
       else console.error(`[pi-agent] ${message}`);
-      pi.appendEntry(ENTRY.error, { message });
-      ctx.shutdown();
+      abortSession(pi, ctx, message);
     };
     const flag = pi.getFlag(SCENARIO_FLAG);
     const current = typeof flag === "string" && flag !== "" ? flag : void 0;

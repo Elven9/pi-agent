@@ -4,6 +4,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { footerSessionStart, setFooterPart } from "../shared/footer.ts";
+import { abortSession } from "../shared/abort.ts";
 import { ENTRY, PROJECT_CHANNEL, type ProjectAnnounced } from "../shared/protocol.ts";
 import { execCli, projectSetting, type CliRunner } from "../shared/project-source.ts";
 import {
@@ -347,8 +348,7 @@ export function createWorktree(options: WorktreeOptions = {}) {
       } catch (err) {
         const message = (err as Error).message;
         console.error(`[pi-agent] ${message}`);
-        pi.appendEntry(ENTRY.error, { message });
-        ctx.shutdown();
+        abortSession(pi, ctx, message);
         return;
       }
       await restore(ctx);

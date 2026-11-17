@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { METRICS_FLUSH_CHANNEL } from "../shared/protocol.ts";
+import { METRICS_FLUSH_CHANNEL, SESSION_ABORTED_CHANNEL } from "../shared/protocol.ts";
 import { type ProgressOptions, seconds, startProgress } from "./progress.ts";
 import { loadUploadSettings, SETTINGS_FILE, uploadSession, type UploadSettings } from "./upload.ts";
 
@@ -20,6 +20,9 @@ const UPLOAD_ON = new Set(["quit", "new", "resume", "fork"]);
  * Before each upload it asks the metrics extension to append its latest totals, so the file
  * ends with them. A session with no file yet (nothing said) is skipped.
  *
+ * When an extension aborted the session (shared/abort.ts: an error that shuts pi down), nothing
+ * is uploaded on the way out: the session did not run. `/upload` still works.
+ *
  * While it uploads, a spinner shows the elapsed time (progress.ts): a widget above the editor for
  * /upload, /new, /resume and /fork; on quit (the TUI is already stopped) a line on stderr, then
  * `Session uploaded in 1.2s`.
@@ -35,6 +38,12 @@ function register(pi: ExtensionAPI, opts: { settingsPath?: string; env?: NodeJS.
   const settingsPath = opts.settingsPath ?? join(getAgentDir(), "extensions", SETTINGS_FILE);
   let settings: UploadSettings | undefined;
   let settingsError: string | undefined;
+  /**
+   * An extension aborted this session. Not reset at session_start: the abort can come from an
+   * earlier extension's session_start, and pi loads a fresh instance for every session.
+   */
+  let aborted = false;
+  pi.events.on(SESSION_ABORTED_CHANNEL, () => void (aborted = true));
 
   pi.on("session_start", async (_event, ctx) => {
     try {
@@ -92,7 +101,7 @@ function register(pi: ExtensionAPI, opts: { settingsPath?: string; env?: NodeJS.
   });
 
   pi.on("session_shutdown", async (event, ctx) => {
-    if (!UPLOAD_ON.has(event.reason)) return;
+    if (!UPLOAD_ON.has(event.reason) || aborted) return;
     // Quit stops the TUI before session_shutdown: the spinner goes to the terminal then.
     const quit = event.reason === "quit";
     try {

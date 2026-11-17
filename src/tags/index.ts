@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { decorate, footerSessionStart, setFooterPart } from "../shared/footer.ts";
+import { abortSession } from "../shared/abort.ts";
 import { ENTRY } from "../shared/protocol.ts";
 import {
   currentTags,
@@ -87,8 +88,7 @@ export default function sessionTags(pi: ExtensionAPI) {
       } catch (err) {
         const message = `--${TAGS_FLAG}: ${(err as Error).message}`;
         console.error(`[pi-agent] ${message}`);
-        pi.appendEntry(ENTRY.error, { message });
-        ctx.shutdown();
+        abortSession(pi, ctx, message);
         return;
       }
     } else if (tags === undefined && (event.reason === "startup" || event.reason === "new")) {

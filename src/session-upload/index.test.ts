@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createSessionUpload } from "./index.ts";
-import { METRICS_FLUSH_CHANNEL } from "../shared/protocol.ts";
+import { METRICS_FLUSH_CHANNEL, SESSION_ABORTED_CHANNEL } from "../shared/protocol.ts";
 import { server } from "./test-server.ts";
 
 /** Minimal stand-in for the parts of ExtensionAPI the extension uses. */
@@ -20,10 +20,14 @@ async function fakePi(settings: object | string | undefined, sessionFile: string
   /** Widget calls: [key, shown], with the first rendered line while shown. */
   const widgets: Array<[string, string | undefined]> = [];
   const terminal: string[] = [];
+  const listeners = new Map<string, (data: unknown) => void>();
   const pi = {
     on: (event: string, handler: (event: any, ctx: any) => any) => void handlers.set(event, handler),
     registerCommand: (name: string, options: any) => void commands.set(name, options),
-    events: { emit: (channel: string) => void (channel === METRICS_FLUSH_CHANNEL && flushes.push(channel)), on: () => () => {} },
+    events: {
+      emit: (channel: string) => void (channel === METRICS_FLUSH_CHANNEL && flushes.push(channel)),
+      on: (channel: string, l: (data: unknown) => void) => void listeners.set(channel, l),
+    },
   } as unknown as ExtensionAPI;
   const ctx = {
     mode: o.mode,
@@ -53,6 +57,8 @@ async function fakePi(settings: object | string | undefined, sessionFile: string
     terminal,
     shutdown: (reason: string) => handlers.get("session_shutdown")!({ type: "session_shutdown", reason }, ctx),
     command: () => commands.get("upload")!.handler("", ctx),
+    /** Another extension's announcement. */
+    hear: (channel: string, data: unknown) => listeners.get(channel)?.(data),
   };
 }
 
@@ -126,6 +132,20 @@ test("without the TUI (json, rpc) no spinner", async () => {
     await pi.command();
     await pi.shutdown("quit");
     assert.deepEqual([pi.widgets.length, pi.terminal.length, srv.requests.length], [0, 0, 2]);
+  } finally {
+    srv.close();
+  }
+});
+
+test("an aborted session (startup error) is not uploaded on the way out; /upload still works", async () => {
+  const srv = await server(200);
+  try {
+    const pi = await fakePi({ machineId: "mac-1", endpoint: srv.endpoint }, await sessionFile());
+    pi.hear(SESSION_ABORTED_CHANNEL, { message: "bad setup" });
+    for (const reason of ["quit", "new", "resume", "fork"]) await pi.shutdown(reason);
+    assert.equal(srv.requests.length, 0);
+    await pi.command();
+    assert.equal(srv.requests.length, 1);
   } finally {
     srv.close();
   }

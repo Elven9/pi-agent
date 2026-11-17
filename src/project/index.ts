@@ -27,6 +27,7 @@ import {
 } from "../shared/project-source.ts";
 import { resolveFrom } from "../shared/worktree.ts";
 import { splitSystemPrompt } from "./cache-split.ts";
+import { abortSession } from "../shared/abort.ts";
 import {
   ALLOW_SETUP_CHANGE_CHANNEL,
   decideSetup,
@@ -259,8 +260,7 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
         const message = (err as Error).message;
         if (ctx.mode === "tui") startupError = message;
         else console.error(`[pi-agent] ${message}`);
-        pi.appendEntry(ENTRY.error, { message });
-        ctx.shutdown();
+        abortSession(pi, ctx, message);
       }
     });
 

@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSkillsFromDir, type ExtensionAPI, type ExtensionContext, type Skill } from "@earendil-works/pi-coding-agent";
+import { abortSession } from "../shared/abort.ts";
 import { externalSkillRoots, findExternalSkills } from "../shared/external-skills.ts";
 import {
   ENTRY,
@@ -228,8 +229,7 @@ export default function scenarioProfile(
       // Startup entries are not streamed in --mode json, so also tell stderr; in the TUI once it stopped.
       if (ctx.mode === "tui") startupError = message;
       else console.error(`[pi-agent] ${message}`);
-      pi.appendEntry(ENTRY.error, { message });
-      ctx.shutdown();
+      abortSession(pi, ctx, message);
     };
     // The session's setup is fixed (shared/session-setup.ts): recorded scenario vs --scenario.
     const flag = pi.getFlag(SCENARIO_FLAG);

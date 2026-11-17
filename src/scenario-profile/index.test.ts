@@ -177,7 +177,8 @@ test("unknown scenario: records an error entry and shuts down", () => {
   const pi = fakePi({ scenario: "nope" });
   pi.emit("session_start");
   assert.equal(pi.shutdown, true);
-  assert.deepEqual(pi.announced, []);
+  // Only the abort (the session-upload extension then skips its upload).
+  assert.deepEqual(pi.announced.map((a: any) => a.channel), ["pi-agent.session-aborted"]);
   assert.equal(pi.entries[0].customType, ENTRY.error);
   assert.match((pi.entries[0].data as { message: string }).message, /Unknown scenario/);
 });
