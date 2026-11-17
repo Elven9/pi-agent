@@ -20,8 +20,26 @@ export interface TagsEntry {
   version: typeof TAGS_ENTRY_VERSION;
   /** The session's whole tag list, in the order given; may be empty (cleared). */
   tags: string[];
-  /** What set it: the `--tags` flag (or task.json) or the `/tags` command. */
-  source: "flag" | "command";
+  /**
+   * What set it: the `--tags` flag (or task.json), the `/tags` command, or `default` (the
+   * last segment of the cwd, for a session never tagged).
+   */
+  source: "flag" | "command" | "default";
+}
+
+/**
+ * The default tag for a cwd: its last path segment, lowercased, with every run of characters a
+ * tag cannot hold turned into `-` (trimmed at the ends), cut to the maximum length. Undefined
+ * when nothing usable is left (e.g. `/`).
+ */
+export function defaultTag(cwd: string): string | undefined {
+  const segment = cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
+  const tag = segment
+    .toLowerCase()
+    .replace(/[^a-z0-9._:-]+/g, "-")
+    .slice(0, MAX_TAG_LENGTH)
+    .replace(/^-+|-+$/g, "");
+  return TAG_PATTERN.test(tag) ? tag : undefined;
 }
 
 /**

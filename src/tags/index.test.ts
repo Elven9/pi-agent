@@ -8,7 +8,7 @@ import { initTheme } from "@earendil-works/pi-coding-agent";
 import * as themeModule from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import sessionTags, { withTags } from "./index.ts";
 import { ENTRY } from "../shared/protocol.ts";
-import { currentTags } from "../shared/tags.ts";
+import { currentTags, defaultTag } from "../shared/tags.ts";
 
 /** The theme pi passes to footer factories (its global one, after initTheme). */
 const realTheme = () => themeModule.theme;
@@ -16,7 +16,7 @@ const realTheme = () => themeModule.theme;
 const tagEntry = (tags: string[]) => ({ type: "custom", customType: ENTRY.tags, data: { version: 1, tags, source: "command" } });
 
 /** Minimal ExtensionAPI: entries appended go into the "session file" the next start reads. */
-function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mode?: string } = {}) {
+function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mode?: string; cwd?: string } = {}) {
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const commands = new Map<string, any>();
   const entries: any[] = [...(o.entries ?? [])];
@@ -37,7 +37,7 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
   const ctx = {
     mode: o.mode ?? "tui",
     hasUI: (o.mode ?? "tui") !== "json",
-    cwd: "/w",
+    cwd: o.cwd ?? "/w",
     model: undefined,
     modelRegistry: { isUsingOAuth: () => false },
     getContextUsage: () => undefined,
@@ -95,12 +95,41 @@ test("--tags at startup: one normalized entry, shown in the footer", async () =>
   assert.ok(pi.footer);
 });
 
-test("no --tags and no entries: nothing written, no footer", async () => {
-  const pi = fakePi();
+test("no --tags and no entries: the cwd's last segment as the default tag", async () => {
+  const pi = fakePi({ cwd: "/home/me/My Repo" });
   await pi.start();
-  assert.equal(pi.entries.length, 0);
+  assert.deepEqual(pi.tagEntries().map((e) => e.data), [{ version: 1, tags: ["my-repo"], source: "default" }]);
+  assert.ok(pi.footer);
+});
+
+test("default tag: also on /new; not over existing or cleared tags, nor on resume/fork/reload", async () => {
+  const fresh = fakePi();
+  await fresh.start("new");
+  assert.deepEqual(currentTags(fresh.entries), ["w"]);
+  for (const reason of ["resume", "fork", "reload"]) {
+    const pi = fakePi();
+    await pi.start(reason);
+    assert.equal(pi.entries.length, 0, reason);
+  }
+  for (const tags of [["kept"], []]) {
+    const pi = fakePi({ entries: [tagEntry(tags)] });
+    await pi.start();
+    assert.equal(pi.tagEntries().length, 1);
+  }
+  const root = fakePi({ cwd: "/" });
+  await root.start();
+  assert.equal(root.entries.length, 0);
   // pi's own footer (a part left by an earlier test may be installed, then removed).
-  assert.equal(pi.footer, undefined);
+  assert.equal(root.footer, undefined);
+});
+
+test("defaultTag: last segment, sanitized", () => {
+  assert.equal(defaultTag("/a/pi-agent"), "pi-agent");
+  assert.equal(defaultTag("/a/Foo Bar!/"), "foo-bar");
+  assert.equal(defaultTag("C:\\x\\v1.2_rc"), "v1.2_rc");
+  assert.equal(defaultTag("/a/日本語"), undefined);
+  assert.equal(defaultTag("/"), undefined);
+  assert.equal(defaultTag("/" + "x".repeat(80))!.length, 64);
 });
 
 test("resuming with --tags replaces the tags; the same list writes nothing", async () => {

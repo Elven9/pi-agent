@@ -5,6 +5,7 @@ import { decorate, footerSessionStart, setFooterPart } from "../shared/footer.ts
 import { ENTRY } from "../shared/protocol.ts";
 import {
   currentTags,
+  defaultTag,
   parseTags,
   sessionFileTagEntries,
   TAGS_ENTRY_VERSION,
@@ -28,6 +29,9 @@ const same = (a: string[] | undefined, b: string[]) => a !== undefined && a.leng
  *
  * - `--tags a,b`: at startup (including `-c`, `--session`, `--fork`), replaces the session's
  *   tags. Not applied again on /new, /resume, /fork or /reload: those keep their session's tags.
+ * - Without `--tags`, a session never tagged (at startup or /new) gets the last segment of the
+ *   cwd as its tag (`defaultTag`). `/tags --clear` removes it for good (an empty list is a tag
+ *   entry, so the default is not applied again).
  * - `/tags` shows them, `/tags a,b` replaces them, `/tags --clear` clears them; completion
  *   offers tags used before in this session folder.
  * - The footer shows the current tags left of the cwd, dimmed like the rest of the footer.
@@ -87,6 +91,9 @@ export default function sessionTags(pi: ExtensionAPI) {
         ctx.shutdown();
         return;
       }
+    } else if (tags === undefined && (event.reason === "startup" || event.reason === "new")) {
+      const tag = defaultTag(ctx.cwd);
+      if (tag) set([tag], "default");
     }
     showStatus(ctx);
   });
