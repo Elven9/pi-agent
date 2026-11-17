@@ -52,6 +52,7 @@ function fakePi(
     shutdown: () => (shutdown = true),
     getSystemPromptOptions: () => ({ cwd, contextFiles: piContextFiles }),
     ui: { notify: (message: string) => void notices.push(message) },
+    sessionManager: { getEntries: () => entries.map((e) => ({ type: "custom", ...e })) },
   };
   (o.run ? createProjectContext({ run: o.run }) : projectContext)(pi);
   return {
@@ -382,3 +383,21 @@ test("announces a local project's folder and the resolved project.worktreeDir fo
   assert.equal(announced.worktreeDir, join(project, "wt"));
 });
 
+test("pi-agent.project entry: local and remote, once per setup, none without a project", async () => {
+  const dir = await tmp({ "project.yaml": "version: 1\nname: local\n" });
+  const local = fakePi({ project: dir }, await tmp({}));
+  await local.emit("session_start");
+  await local.emit("session_start", { reason: "resume" });
+  const recorded = local.entries.filter((e) => e.customType === ENTRY.project);
+  assert.deepEqual(recorded.map((e) => e.data), [{ version: 1, name: "local", source: { kind: "local", dir } }]);
+
+  const remote = fakePi({}, await tmp({}), [], { settings: SETTINGS, run: fakeGh(REMOTE_FILES) });
+  await remote.emit("session_start");
+  assert.deepEqual(remote.entries.map((e) => e.data), [
+    { version: 1, name: "remote-demo", source: { kind: "remote", provider: "github", repo: "https://github.com/acme/proj", tag: "v1.0.0", commit: COMMIT } },
+  ]);
+
+  const none = fakePi({}, await tmp({}));
+  await none.emit("session_start");
+  assert.equal(none.entries.length, 0);
+});

@@ -50,7 +50,11 @@ var ENTRY = {
   /** `custom` entry with `WorktreeEntry` data (worktree extension); the last one on the branch is the entered worktree. */
   worktree: "pi-agent.worktree",
   /** `custom` entry with `SessionVersionEntry` data (session-version extension): the pi-agent release that wrote what follows. */
-  sessionVersion: "pi-agent.session-version"
+  sessionVersion: "pi-agent.session-version",
+  /** `custom` entry with `ScenarioEntry` data (scenario-profile extension); the last one in the file is the session's scenario. */
+  scenario: "pi-agent.scenario",
+  /** `custom` entry with `ProjectEntry` data (project extension); the last one in the file is the session's project. */
+  project: "pi-agent.project"
 };
 
 // src/shared/mcp-servers.ts
@@ -328,6 +332,22 @@ function getScenario(name) {
   return scenario;
 }
 
+// src/shared/session-setup.ts
+var SCENARIO_ENTRY_VERSION = 1;
+function last(entries, customType, valid) {
+  let found;
+  for (const entry of entries) {
+    const e = entry;
+    if (e?.type !== "custom" || e.customType !== customType || e.data === null || typeof e.data !== "object") continue;
+    if (valid(e.data)) found = e.data;
+  }
+  return found;
+}
+function sessionScenario(entries) {
+  return last(entries, ENTRY.scenario, (d) => typeof d.name === "string");
+}
+var sameEntry = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 // src/scenario-profile/rules/global.md
 var global_default = "## Preferred tools\nModern tools are faster; fall back only if not installed.\n- rg over grep\n- fd over find\n";
 
@@ -405,6 +425,10 @@ function loadIncluded(names, roots) {
     }
   });
 }
+function recordScenarioEntry(pi, entries, name) {
+  const entry = { version: SCENARIO_ENTRY_VERSION, name };
+  if (!sameEntry(sessionScenario(entries), entry)) pi.appendEntry(ENTRY.scenario, entry);
+}
 function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = externalSkillRoots(), globalRules = GLOBAL_RULES, mcpEnv = {}) {
   pi.registerFlag(SCENARIO_FLAG, {
     type: "string",
@@ -417,6 +441,7 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
   let includedNames = /* @__PURE__ */ new Set();
   let projectInclude;
   let projectSkills = [];
+  const recordScenario = (ctx, name) => recordScenarioEntry(pi, ctx.sessionManager.getEntries(), name);
   let started = false;
   let projectLoadedFirst = false;
   const rules = () => ({
@@ -503,6 +528,7 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
     includedNames = new Set(scenario.externalSkills?.include ?? []);
     kept.clear();
     pi.events.emit(SCENARIO_CHANNEL, { name });
+    recordScenario(ctx, name);
     pi.setActiveTools(scenarioActiveTools(scenario.tools, pi.getActiveTools(), pi.getAllTools()));
     registerMcpServers(scenario, ctx);
     announceSkills();

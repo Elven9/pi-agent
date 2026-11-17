@@ -15,6 +15,7 @@ import {
 } from "../shared/protocol.ts";
 import { decideMcpServers, mcpServerConfig, type McpEnv } from "../shared/mcp-servers.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
+import { sameEntry, SCENARIO_ENTRY_VERSION, sessionScenario, type ScenarioEntry } from "../shared/session-setup.ts";
 import { GLOBAL_RULES, GLOBAL_RULES_SECTION, globalRulesSection } from "./global-rules.ts";
 import { scenarioActiveTools, scenarioRules, skillActive, type SkillRules } from "./profile.ts";
 
@@ -90,6 +91,12 @@ function loadIncluded(names: readonly string[], roots: readonly string[]): Skill
   });
 }
 
+/** Appends a `pi-agent.scenario` entry unless the session's last one already names `name`. */
+function recordScenarioEntry(pi: ExtensionAPI, entries: Iterable<unknown>, name: string): void {
+  const entry: ScenarioEntry = { version: SCENARIO_ENTRY_VERSION, name };
+  if (!sameEntry(sessionScenario(entries), entry)) pi.appendEntry<ScenarioEntry>(ENTRY.scenario, entry);
+}
+
 export default function scenarioProfile(
   pi: ExtensionAPI,
   skillsDir: string = defaultSkillsDir(),
@@ -113,6 +120,8 @@ export default function scenarioProfile(
   let projectInclude: string[] | undefined;
   /** The project's skills that are installed: this package's skills first, then the external roots. */
   let projectSkills: Skill[] = [];
+
+  const recordScenario = (ctx: ExtensionContext, name: string) => recordScenarioEntry(pi, ctx.sessionManager.getEntries(), name);
 
   /** This extension's session_start has run (later project announcements are expected). */
   let started = false;
@@ -219,6 +228,7 @@ export default function scenarioProfile(
     includedNames = new Set(scenario.externalSkills?.include ?? []);
     kept.clear();
     pi.events.emit(SCENARIO_CHANNEL, { name } satisfies ScenarioSelected);
+    recordScenario(ctx, name);
     pi.setActiveTools(scenarioActiveTools(scenario.tools, pi.getActiveTools(), pi.getAllTools()));
     registerMcpServers(scenario, ctx);
     announceSkills();

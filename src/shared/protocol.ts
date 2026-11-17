@@ -124,6 +124,10 @@ export const ENTRY = {
   worktree: "pi-agent.worktree",
   /** `custom` entry with `SessionVersionEntry` data (session-version extension): the pi-agent release that wrote what follows. */
   sessionVersion: "pi-agent.session-version",
+  /** `custom` entry with `ScenarioEntry` data (scenario-profile extension); the last one in the file is the session's scenario. */
+  scenario: "pi-agent.scenario",
+  /** `custom` entry with `ProjectEntry` data (project extension); the last one in the file is the session's project. */
+  project: "pi-agent.project",
 } as const;
 
 /** `pi.events` channel: the metrics extension appends a `pi-agent.metrics` entry now (if changed). */

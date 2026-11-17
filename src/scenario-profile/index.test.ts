@@ -76,6 +76,7 @@ function fakePi(flags: Record<string, string | undefined>, externalRoots: string
     cwd: o.cwd ?? "/nonexistent",
     hasUI: o.hasUI ?? false,
     ui: { notify: (message: string, type: string) => void notes.push({ message, type }) },
+    sessionManager: { getEntries: () => entries.map((e) => ({ type: "custom", ...e })) },
   };
   return {
     entries,
@@ -400,7 +401,7 @@ test("code-writer in a Go module without gopls: warns (UI) and continues without
   assert.equal(pi.notes.length, 1);
   assert.equal(pi.notes[0].type, "warning");
   assert.match(pi.notes[0].message, /gopls is not installed/);
-  assert.deepEqual(pi.entries, []);
+  assert.deepEqual(pi.entries.filter((e) => e.customType === ENTRY.error), []);
   // The scenario still applies.
   assert.deepEqual(pi.announced[0], { channel: SCENARIO_CHANNEL, data: { name: "code-writer" } });
 });
@@ -416,4 +417,23 @@ test("registerMcpServer failing (e.g. MCP replaced): a warning, not an error", a
   pi.emit("session_start");
   assert.equal(pi.shutdown, false);
   assert.match(pi.notes[0].message, /gopls not registered: boom/);
+});
+
+test("pi-agent.scenario entry: once per scenario, none without one or for an unknown one", () => {
+  const pi = fakePi({ scenario: "work-request-triage" });
+  pi.emit("session_start");
+  pi.emit("session_start", { reason: "resume" });
+  assert.deepEqual(pi.entries.filter((e) => e.customType === ENTRY.scenario).map((e) => e.data), [{ version: 1, name: "work-request-triage" }]);
+  const none = fakePi({});
+  none.emit("session_start");
+  assert.equal(none.entries.length, 0);
+  const unknown = fakePi({ scenario: "nope" });
+  const error = console.error;
+  console.error = () => {};
+  try {
+    unknown.emit("session_start");
+  } finally {
+    console.error = error;
+  }
+  assert.deepEqual(unknown.entries.map((e) => e.customType), [ENTRY.error]);
 });

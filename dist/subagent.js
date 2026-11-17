@@ -314,7 +314,11 @@ var ENTRY = {
   /** `custom` entry with `WorktreeEntry` data (worktree extension); the last one on the branch is the entered worktree. */
   worktree: "pi-agent.worktree",
   /** `custom` entry with `SessionVersionEntry` data (session-version extension): the pi-agent release that wrote what follows. */
-  sessionVersion: "pi-agent.session-version"
+  sessionVersion: "pi-agent.session-version",
+  /** `custom` entry with `ScenarioEntry` data (scenario-profile extension); the last one in the file is the session's scenario. */
+  scenario: "pi-agent.scenario",
+  /** `custom` entry with `ProjectEntry` data (project extension); the last one in the file is the session's project. */
+  project: "pi-agent.project"
 };
 
 // src/shared/result.ts

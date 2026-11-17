@@ -17,6 +17,7 @@ import { loadJustCommands } from "../shared/just.ts";
 import { execCli, projectPath, projectSetting, settingSource, type CliRunner } from "../shared/project-source.ts";
 import { resolveFrom } from "../shared/worktree.ts";
 import { splitSystemPrompt } from "./cache-split.ts";
+import { projectEntry, sameEntry, sessionProject, type ProjectEntry } from "../shared/session-setup.ts";
 
 /** project_read output limits, like pi's read tool. */
 const MAX_LINES = 2000;
@@ -175,6 +176,10 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
         applied = false;
         updateTools();
         announce();
+        if (project) {
+          const entry = projectEntry(project);
+          if (!sameEntry(sessionProject(ctx.sessionManager.getEntries()), entry)) pi.appendEntry<ProjectEntry>(ENTRY.project, entry);
+        }
       } catch (err) {
         project = undefined;
         updateTools();

@@ -161,6 +161,20 @@ already has that version.
   that release. `src/shared/session-version.ts` reads the latest (`latestSessionVersion`).
 - Files without any entry were written by releases up to 0.11.0.
 
+### Session setup (scenario and project)
+
+The scenario and the project a session's system prompt is built with are recorded in its file
+(`src/shared/session-setup.ts`), for whoever reads it later:
+
+- `pi-agent.scenario`: `{ "version": 1, "name": "code-writer" }`, appended by the scenario
+  profile when `--scenario` is active.
+- `pi-agent.project`: `{ "version": 1, "name": "...", "source": { "kind": "local", "dir": "/abs" } }`
+  or `"source": { "kind": "remote", "provider": "github", "repo": "https://...", "path"?, "tag", "commit" }`,
+  appended by the project extension when a project is loaded.
+- Each is appended at session start only when it differs from the file's last one, so a session
+  resumed with the same setup gets no new entry. The last entry of each type in the file is the
+  session's (`sessionScenario`, `sessionProject`); none means none was used, or the file is older.
+
 ### Tool references
 
 The tool-ref extension (`src/tool-ref/`, design in `docs/tool-ref-design.md`) appends

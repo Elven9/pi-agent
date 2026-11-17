@@ -40,7 +40,7 @@ async function startSession(order: Factory[], flags: Record<string, string>) {
     appendEntry: (customType: string, data: unknown) => void entries.push({ customType, data }),
   } as unknown as ExtensionAPI;
   for (const factory of order) factory(pi);
-  const ctx = { cwd, shutdown: () => (shutdown = true) };
+  const ctx = { cwd, shutdown: () => (shutdown = true), sessionManager: { getEntries: () => [] } };
   const original = console.error;
   console.error = () => {};
   try {
@@ -59,7 +59,7 @@ const project: Factory = (pi) => projectContext(pi);
 test("scenario-profile before project: no error", async () => {
   const run = await startSession([scenario, project], { scenario: "work-request-triage" });
   assert.equal(run.shutdown, false);
-  assert.deepEqual(run.entries, []);
+  assert.deepEqual(run.entries.map((e) => e.customType), [ENTRY.scenario]);
 });
 
 test("project before scenario-profile under --scenario: error entry and shutdown", async () => {
