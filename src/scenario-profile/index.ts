@@ -15,7 +15,16 @@ import {
 } from "../shared/protocol.ts";
 import { decideMcpServers, mcpServerConfig, type McpEnv } from "../shared/mcp-servers.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
-import { sameEntry, SCENARIO_ENTRY_VERSION, sessionScenario, type ScenarioEntry } from "../shared/session-setup.ts";
+import {
+  ALLOW_SETUP_CHANGE_DESCRIPTION,
+  ALLOW_SETUP_CHANGE_FLAG,
+  decideSetup,
+  sameEntry,
+  SCENARIO_ENTRY_VERSION,
+  sessionScenario,
+  sessionScenarioEntry,
+  type ScenarioEntry,
+} from "../shared/session-setup.ts";
 import { GLOBAL_RULES, GLOBAL_RULES_SECTION, globalRulesSection } from "./global-rules.ts";
 import { scenarioActiveTools, scenarioRules, skillActive, type SkillRules } from "./profile.ts";
 
@@ -91,10 +100,12 @@ function loadIncluded(names: readonly string[], roots: readonly string[]): Skill
   });
 }
 
-/** Appends a `pi-agent.scenario` entry unless the session's last one already names `name`. */
-function recordScenarioEntry(pi: ExtensionAPI, entries: Iterable<unknown>, name: string): void {
+/** Appends a `pi-agent.scenario` entry unless the session's last one already says the same. */
+function recordScenarioEntry(pi: ExtensionAPI, entries: Iterable<unknown>, name: string | null): void {
   const entry: ScenarioEntry = { version: SCENARIO_ENTRY_VERSION, name };
-  if (!sameEntry(sessionScenario(entries), entry)) pi.appendEntry<ScenarioEntry>(ENTRY.scenario, entry);
+  const last = sessionScenarioEntry(entries);
+  // No entry already means none.
+  if (name === null ? last?.name : !sameEntry(last, entry)) pi.appendEntry<ScenarioEntry>(ENTRY.scenario, entry);
 }
 
 export default function scenarioProfile(
@@ -108,6 +119,10 @@ export default function scenarioProfile(
     type: "string",
     description: "pi-agent scenario: use its system prompt, tools and skills",
   });
+  // Also registered by the project extension; pi lists it once and both read the same value.
+  pi.registerFlag(ALLOW_SETUP_CHANGE_FLAG, { type: "boolean", description: ALLOW_SETUP_CHANGE_DESCRIPTION });
+  /** A startup error in the TUI, printed on shutdown (the TUI would paint over it now). */
+  let startupError: string | undefined;
 
   let scenario: Scenario | undefined;
   const root = real(skillsDir);
@@ -121,7 +136,13 @@ export default function scenarioProfile(
   /** The project's skills that are installed: this package's skills first, then the external roots. */
   let projectSkills: Skill[] = [];
 
-  const recordScenario = (ctx: ExtensionContext, name: string) => recordScenarioEntry(pi, ctx.sessionManager.getEntries(), name);
+  const recordScenario = (ctx: ExtensionContext, name: string | null) => recordScenarioEntry(pi, ctx.sessionManager.getEntries(), name);
+
+  pi.on("session_shutdown", () => {
+    if (startupError === undefined) return;
+    console.error(`[pi-agent] ${startupError}`);
+    startupError = undefined;
+  });
 
   /** This extension's session_start has run (later project announcements are expected). */
   let started = false;
@@ -197,19 +218,41 @@ export default function scenarioProfile(
   });
 
   // Flags are only parsed after extensions load, so everything happens from session_start on.
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", (event, ctx) => {
     started = true;
-    const name = pi.getFlag(SCENARIO_FLAG);
-    if (typeof name !== "string" || name === "") {
-      announceSkills();
-      return;
-    }
     const fail = (message: string) => {
-      // Startup entries are not streamed in --mode json, so also tell stderr.
-      console.error(`[pi-agent] ${message}`);
+      // Startup entries are not streamed in --mode json, so also tell stderr; in the TUI once it stopped.
+      if (ctx.mode === "tui") startupError = message;
+      else console.error(`[pi-agent] ${message}`);
       pi.appendEntry(ENTRY.error, { message });
       ctx.shutdown();
     };
+    // The session's setup is fixed (shared/session-setup.ts): recorded scenario vs --scenario.
+    const flag = pi.getFlag(SCENARIO_FLAG);
+    const current = typeof flag === "string" && flag !== "" ? flag : undefined;
+    const recorded = sessionScenario(ctx.sessionManager.getEntries());
+    const decision = decideSetup({
+      what: "scenario",
+      reason: event.reason,
+      recorded,
+      current,
+      key: (n) => n,
+      label: (n) => n,
+      allowChange: pi.getFlag(ALLOW_SETUP_CHANGE_FLAG) === true,
+    });
+    if ("error" in decision) {
+      fail(decision.error);
+      return;
+    }
+    const name = decision.use === "recorded" ? recorded : current;
+    if (decision.use === "recorded" && recorded !== current && ctx.hasUI) {
+      ctx.ui.notify(`[pi-agent] Scenario ${recorded}, as recorded in this session`, "info");
+    }
+    if (name === undefined) {
+      recordScenario(ctx, null); // only after --allow-setup-change dropped a recorded one
+      announceSkills();
+      return;
+    }
     if (projectLoadedFirst) {
       fail(
         "The scenario-profile extension must load before the project extension " +

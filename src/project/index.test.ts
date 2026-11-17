@@ -401,3 +401,46 @@ test("pi-agent.project entry: local and remote, once per setup, none without a p
   await none.emit("session_start");
   assert.equal(none.entries.length, 0);
 });
+
+test("setup rule: resume reads the recorded project at its commit; startup mismatch errors; a new tag is the same project", async () => {
+  const OTHER = "fedcba9876543210fedcba9876543210fedcba98";
+  const remoteEntry = { version: 1, name: "remote-demo", source: { kind: "remote", provider: "github", repo: "https://github.com/acme/proj", tag: "v0.9.0", commit: COMMIT } };
+  // /resume: the recorded v0.9.0 commit, the tag is not resolved again; no new entry.
+  const calls: string[][] = [];
+  const resumed = fakePi({}, await tmp({}), [], { settings: SETTINGS, run: fakeGh(REMOTE_FILES, calls) });
+  resumed.entries.push({ customType: ENTRY.project, data: remoteEntry });
+  await resumed.emit("session_start", { reason: "resume" });
+  assert.equal(resumed.shutdown, false);
+  assert.ok(!calls.some((c) => c[4]?.includes("refs/tags")));
+  assert.equal(resumed.entries.length, 1);
+
+  // startup with the same repo at v1.0.0: the same project, the new tag is recorded.
+  const bumped = fakePi({}, await tmp({}), [], { settings: SETTINGS, run: fakeGh(REMOTE_FILES) });
+  bumped.entries.push({ customType: ENTRY.project, data: { ...remoteEntry, source: { ...remoteEntry.source, commit: OTHER } } });
+  await bumped.emit("session_start", { reason: "startup" });
+  assert.equal(bumped.shutdown, false);
+  assert.equal((bumped.entries[1]!.data as { source: { tag: string } }).source.tag, "v1.0.0");
+
+  // startup with another project, or none: error and exit.
+  const local = await tmp({ "project.yaml": "version: 1\nname: local\n" });
+  const error = console.error;
+  console.error = () => {};
+  try {
+    for (const flags of [{ project: local }, {}]) {
+      const pi = fakePi(flags, await tmp({}));
+      pi.entries.push({ customType: ENTRY.project, data: remoteEntry });
+      await pi.emit("session_start", { reason: "startup" });
+      assert.equal(pi.shutdown, true);
+      assert.match((pi.entries[1]!.data as { message: string }).message, /recorded with the project https:\/\/github\.com\/acme\/proj/);
+    }
+  } finally {
+    console.error = error;
+  }
+
+  // --allow-setup-change without a project: recorded as none.
+  const dropped = fakePi({ "allow-setup-change": true as unknown as string }, await tmp({}));
+  dropped.entries.push({ customType: ENTRY.project, data: remoteEntry });
+  await dropped.emit("session_start", { reason: "startup" });
+  assert.equal(dropped.shutdown, false);
+  assert.deepEqual(dropped.entries[1]!.data, { version: 1, name: null });
+});

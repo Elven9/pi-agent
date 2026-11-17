@@ -14,10 +14,46 @@ import {
   type ProjectSections,
 } from "../shared/project.ts";
 import { loadJustCommands } from "../shared/just.ts";
-import { execCli, projectPath, projectSetting, settingSource, type CliRunner } from "../shared/project-source.ts";
+import {
+  execCli,
+  parseRepo,
+  projectFolder,
+  projectPath,
+  projectSetting,
+  remoteSource,
+  settingSource,
+  type CliRunner,
+  type ProjectSetting,
+} from "../shared/project-source.ts";
 import { resolveFrom } from "../shared/worktree.ts";
 import { splitSystemPrompt } from "./cache-split.ts";
-import { projectEntry, sameEntry, sessionProject, type ProjectEntry } from "../shared/session-setup.ts";
+import {
+  ALLOW_SETUP_CHANGE_DESCRIPTION,
+  ALLOW_SETUP_CHANGE_FLAG,
+  decideSetup,
+  projectEntry,
+  projectKey,
+  projectLabel,
+  PROJECT_ENTRY_VERSION,
+  sameEntry,
+  sessionProject,
+  sessionProjectEntry,
+  type ProjectEntry,
+  type ProjectEntrySource,
+  type ProjectIdentity,
+} from "../shared/session-setup.ts";
+
+/** A project setting's identity, without loading it. */
+function settingIdentity(setting: ProjectSetting, cwd: string): ProjectIdentity {
+  if (setting.type === "local") return { kind: "local", dir: resolve(cwd, setting.dir) };
+  const path = projectFolder(setting);
+  return { kind: "remote", provider: setting.type, repo: parseRepo(setting).repo, ...(path && { path }) };
+}
+
+/** A recorded source's identity. */
+function sourceIdentity(s: ProjectEntrySource): ProjectIdentity {
+  return s.kind === "local" ? s : { kind: "remote", provider: s.provider, repo: s.repo, ...(s.path && { path: s.path }) };
+}
 
 /** project_read output limits, like pi's read tool. */
 const MAX_LINES = 2000;
@@ -72,6 +108,15 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
       type: "string",
       description: "Folder with project.yaml: adds its rules, commands, CLI tools, workflows and docs to the system prompt",
     });
+    // Also registered by the scenario-profile extension; pi lists it once and both read the same value.
+    pi.registerFlag(ALLOW_SETUP_CHANGE_FLAG, { type: "boolean", description: ALLOW_SETUP_CHANGE_DESCRIPTION });
+
+    /** A recorded project, as it was: a local folder, or the repository at the recorded commit. */
+    const loadRecorded = async (s: ProjectEntrySource) => {
+      if (s.kind === "local") return loadProject(s.dir);
+      const setting = { type: s.provider, repo: s.repo, tag: s.tag, ...(s.path && { path: s.path }) };
+      return loadProjectFrom(await remoteSource(setting, run, s.commit));
+    };
 
     let project: Project | undefined;
     let sections: ProjectSections = {};
@@ -152,19 +197,40 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
     };
     pi.registerTool({ ...readTool, exposure });
 
-    pi.on("session_start", async (_event, ctx) => {
+    pi.on("session_start", async (event, ctx) => {
       const dir = pi.getFlag(PROJECT_FLAG);
       worktreeDir = undefined;
       try {
-        // The flag wins; otherwise the project entry in settings.json, if any.
-        if (typeof dir === "string" && dir !== "") {
-          project = await loadProject(resolve(ctx.cwd, dir));
+        // The process's project: the flag wins; otherwise the project entry in settings.json, if any.
+        const flagDir = typeof dir === "string" && dir !== "" ? resolve(ctx.cwd, dir) : undefined;
+        const setting = flagDir === undefined ? projectSetting(pi.getSettings()) : undefined;
+        const current: ProjectIdentity | undefined = flagDir !== undefined ? { kind: "local", dir: flagDir } : setting && settingIdentity(setting, ctx.cwd);
+        // The session's setup is fixed (shared/session-setup.ts): recorded project vs the process's.
+        const recordedEntry = sessionProject(ctx.sessionManager.getEntries());
+        const recorded = recordedEntry && sourceIdentity(recordedEntry.source);
+        const decision = decideSetup({
+          what: "project",
+          reason: event.reason,
+          recorded,
+          current,
+          key: projectKey,
+          label: projectLabel,
+          allowChange: pi.getFlag(ALLOW_SETUP_CHANGE_FLAG) === true,
+        });
+        if ("error" in decision) throw new Error(decision.error);
+        const usesSetting = decision.use === "current" ? setting !== undefined : !!current && setting !== undefined && projectKey(current) === projectKey(recorded!);
+        if (decision.use === "recorded") {
+          project = await loadRecorded(recordedEntry!.source);
+          if (ctx.hasUI && (!current || projectKey(current) !== projectKey(recorded!))) {
+            ctx.ui.notify(`[pi-agent] Project ${recordedEntry!.name} (${projectLabel(recorded!)}), as recorded in this session`, "info");
+          }
+        } else if (flagDir !== undefined) {
+          project = await loadProject(flagDir);
         } else {
-          const setting = projectSetting(pi.getSettings());
           project = setting ? await loadProjectFrom(await settingSource(setting, ctx.cwd, run)) : undefined;
-          // Relative: against a local project's folder, else the cwd.
-          if (setting?.worktreeDir) worktreeDir = resolveFrom(project?.dir ?? ctx.cwd, setting.worktreeDir);
         }
+        // Relative: against a local project's folder, else the cwd.
+        if (usesSetting && setting?.worktreeDir) worktreeDir = resolveFrom(project?.dir ?? ctx.cwd, setting.worktreeDir);
         // Without just installed there are no commands: warn and go on.
         const warn = (message: string) =>
           ctx.mode === "tui" ? ctx.ui.notify(`[pi-agent] ${message}`, "warning") : console.error(`[pi-agent] warning: ${message}`);
@@ -176,9 +242,13 @@ export function createProjectContext(options: ProjectContextOptions = {}) {
         applied = false;
         updateTools();
         announce();
+        const last = sessionProjectEntry(ctx.sessionManager.getEntries());
         if (project) {
           const entry = projectEntry(project);
-          if (!sameEntry(sessionProject(ctx.sessionManager.getEntries()), entry)) pi.appendEntry<ProjectEntry>(ENTRY.project, entry);
+          if (!sameEntry(last, entry)) pi.appendEntry<ProjectEntry>(ENTRY.project, entry);
+        } else if (last && last.name !== null) {
+          // Only after --allow-setup-change dropped a recorded project.
+          pi.appendEntry<ProjectEntry>(ENTRY.project, { version: PROJECT_ENTRY_VERSION, name: null });
         }
       } catch (err) {
         project = undefined;

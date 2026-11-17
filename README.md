@@ -173,7 +173,22 @@ The scenario and the project a session's system prompt is built with are recorde
   appended by the project extension when a project is loaded.
 - Each is appended at session start only when it differs from the file's last one, so a session
   resumed with the same setup gets no new entry. The last entry of each type in the file is the
-  session's (`sessionScenario`, `sessionProject`); none means none was used, or the file is older.
+  session's (`sessionScenario`, `sessionProject`); none (or `"name": null`) means none was used,
+  or the file is older.
+
+The setup is fixed for a session, since it shapes the system prompt (`decideSetup`):
+
+- **Startup** (`pi`, `-c`, `--session`, `--fork`): a session without a recorded scenario or
+  project takes the one pi is started with (adding one is allowed). With a recorded one, pi must
+  be started with the same one: dropping it or changing it is an error, and pi exits. The same
+  project is the same local folder, or the same repository and folder in it (a new tag is fine
+  and is recorded).
+- **`/resume`, `/fork`, `/reload`**: the session's recorded scenario and project are used,
+  whatever pi was started with (a notification says so when they differ); a recorded remote
+  project is read at its recorded commit. Without a record, pi's own apply.
+- **`/new`**: a new session, so pi's own apply.
+- **`--allow-setup-change`** (rare): start a recorded session with another scenario or project,
+  or none; the new setup is recorded (none as `"name": null`).
 
 ### Tool references
 

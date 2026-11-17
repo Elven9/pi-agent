@@ -437,3 +437,44 @@ test("pi-agent.scenario entry: once per scenario, none without one or for an unk
   }
   assert.deepEqual(unknown.entries.map((e) => e.customType), [ENTRY.error]);
 });
+
+test("setup rule: /resume switches to the recorded scenario; startup mismatch is an error unless overridden", () => {
+  const recorded = { customType: ENTRY.scenario, data: { version: 1, name: "code-writer" } };
+  const quiet = (f: () => void) => {
+    const error = console.error;
+    console.error = () => {};
+    try {
+      f();
+    } finally {
+      console.error = error;
+    }
+  };
+  // /resume into a code-writer session from a process started with another scenario.
+  const resumed = fakePi({ scenario: "work-request-triage" }, [], "", SKILLS, { hasUI: true });
+  resumed.entries.push(recorded);
+  resumed.emit("session_start", { reason: "resume" });
+  assert.deepEqual(resumed.announced[0], { channel: SCENARIO_CHANNEL, data: { name: "code-writer" } });
+  assert.match(resumed.notes[0]!.message, /Scenario code-writer, as recorded in this session/);
+  assert.equal(resumed.entries.length, 1);
+
+  // startup (pi -c / --session) with another scenario, or none: error and exit.
+  for (const flags of [{ scenario: "work-request-triage" }, {}]) {
+    const pi = fakePi(flags);
+    pi.entries.push(recorded);
+    quiet(() => pi.emit("session_start", { reason: "startup" }));
+    assert.equal(pi.shutdown, true);
+    assert.match((pi.entries[1]!.data as { message: string }).message, /recorded with the scenario code-writer/);
+  }
+
+  // --allow-setup-change: switch, or drop it (recorded as none).
+  const switched = fakePi({ scenario: "work-request-triage", "allow-setup-change": true as unknown as string });
+  switched.entries.push(recorded);
+  switched.emit("session_start", { reason: "startup" });
+  assert.equal(switched.shutdown, false);
+  assert.deepEqual(switched.entries[1]!.data, { version: 1, name: "work-request-triage" });
+  const dropped = fakePi({ "allow-setup-change": true as unknown as string });
+  dropped.entries.push(recorded);
+  dropped.emit("session_start", { reason: "startup" });
+  assert.deepEqual(dropped.entries[1]!.data, { version: 1, name: null });
+  assert.equal(dropped.announced.some((a: any) => a.channel === SCENARIO_CHANNEL), false);
+});

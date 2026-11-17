@@ -334,6 +334,8 @@ function getScenario(name) {
 
 // src/shared/session-setup.ts
 var SCENARIO_ENTRY_VERSION = 1;
+var ALLOW_SETUP_CHANGE_FLAG = "allow-setup-change";
+var ALLOW_SETUP_CHANGE_DESCRIPTION = "Resume a session with another scenario or project than it was recorded with (or none); the new setup is recorded";
 function last(entries, customType, valid) {
   let found;
   for (const entry of entries) {
@@ -343,10 +345,23 @@ function last(entries, customType, valid) {
   }
   return found;
 }
+function sessionScenarioEntry(entries) {
+  return last(entries, ENTRY.scenario, (d) => typeof d.name === "string" || d.name === null);
+}
 function sessionScenario(entries) {
-  return last(entries, ENTRY.scenario, (d) => typeof d.name === "string");
+  return sessionScenarioEntry(entries)?.name ?? void 0;
 }
 var sameEntry = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function decideSetup(o) {
+  const { what, recorded, current } = o;
+  if (o.reason === "new" || recorded === void 0) return { use: "current" };
+  if (o.reason !== "startup") return { use: "recorded" };
+  if (current !== void 0 && o.key(current) === o.key(recorded)) return { use: "current" };
+  if (o.allowChange) return { use: "current" };
+  const was = `This session was recorded with the ${what} ${o.label(recorded)}`;
+  const how = `Start it with the same ${what}, or pass --${ALLOW_SETUP_CHANGE_FLAG} to `;
+  return current === void 0 ? { error: `${was}, but none is set now. ${how}continue without it.` } : { error: `${was}, not ${o.label(current)}. ${how}switch to ${o.label(current)}.` };
+}
 
 // src/scenario-profile/rules/global.md
 var global_default = "## Preferred tools\nModern tools are faster; fall back only if not installed.\n- rg over grep\n- fd over find\n";
@@ -427,13 +442,16 @@ function loadIncluded(names, roots) {
 }
 function recordScenarioEntry(pi, entries, name) {
   const entry = { version: SCENARIO_ENTRY_VERSION, name };
-  if (!sameEntry(sessionScenario(entries), entry)) pi.appendEntry(ENTRY.scenario, entry);
+  const last2 = sessionScenarioEntry(entries);
+  if (name === null ? last2?.name : !sameEntry(last2, entry)) pi.appendEntry(ENTRY.scenario, entry);
 }
 function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = externalSkillRoots(), globalRules = GLOBAL_RULES, mcpEnv = {}) {
   pi.registerFlag(SCENARIO_FLAG, {
     type: "string",
     description: "pi-agent scenario: use its system prompt, tools and skills"
   });
+  pi.registerFlag(ALLOW_SETUP_CHANGE_FLAG, { type: "boolean", description: ALLOW_SETUP_CHANGE_DESCRIPTION });
+  let startupError;
   let scenario;
   const root = real(skillsDir);
   const kept = /* @__PURE__ */ new Map();
@@ -442,6 +460,11 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
   let projectInclude;
   let projectSkills = [];
   const recordScenario = (ctx, name) => recordScenarioEntry(pi, ctx.sessionManager.getEntries(), name);
+  pi.on("session_shutdown", () => {
+    if (startupError === void 0) return;
+    console.error(`[pi-agent] ${startupError}`);
+    startupError = void 0;
+  });
   let started = false;
   let projectLoadedFirst = false;
   const rules = () => ({
@@ -500,18 +523,39 @@ function scenarioProfile(pi, skillsDir = defaultSkillsDir(), externalRoots = ext
     kept.clear();
     if (started) announceSkills();
   });
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", (event, ctx) => {
     started = true;
-    const name = pi.getFlag(SCENARIO_FLAG);
-    if (typeof name !== "string" || name === "") {
-      announceSkills();
-      return;
-    }
     const fail = (message) => {
-      console.error(`[pi-agent] ${message}`);
+      if (ctx.mode === "tui") startupError = message;
+      else console.error(`[pi-agent] ${message}`);
       pi.appendEntry(ENTRY.error, { message });
       ctx.shutdown();
     };
+    const flag = pi.getFlag(SCENARIO_FLAG);
+    const current = typeof flag === "string" && flag !== "" ? flag : void 0;
+    const recorded = sessionScenario(ctx.sessionManager.getEntries());
+    const decision = decideSetup({
+      what: "scenario",
+      reason: event.reason,
+      recorded,
+      current,
+      key: (n) => n,
+      label: (n) => n,
+      allowChange: pi.getFlag(ALLOW_SETUP_CHANGE_FLAG) === true
+    });
+    if ("error" in decision) {
+      fail(decision.error);
+      return;
+    }
+    const name = decision.use === "recorded" ? recorded : current;
+    if (decision.use === "recorded" && recorded !== current && ctx.hasUI) {
+      ctx.ui.notify(`[pi-agent] Scenario ${recorded}, as recorded in this session`, "info");
+    }
+    if (name === void 0) {
+      recordScenario(ctx, null);
+      announceSkills();
+      return;
+    }
     if (projectLoadedFirst) {
       fail(
         "The scenario-profile extension must load before the project extension (list it first in -e flags or the package manifest)."

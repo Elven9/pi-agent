@@ -278,14 +278,15 @@ function gitlabApi(run: CliRunner, host: string, repoPath: string): Api {
  * Remote project source: resolves the tag to a commit once (so a moved tag can't mix versions
  * within a session), then reads files at that commit. Reads are cached for the session.
  */
-export async function remoteSource(setting: RemoteSetting, run: CliRunner = execCli): Promise<ProjectSource> {
+export async function remoteSource(setting: RemoteSetting, run: CliRunner = execCli, pinned?: string): Promise<ProjectSource> {
   const { repo, host, repoPath } = parseRepo(setting);
   const folder = projectFolder(setting);
   const api = setting.type === "github" ? githubApi(run, host, repoPath) : gitlabApi(run, host, repoPath);
   const label = `${repo}${folder ? `/${folder}` : ""}@${setting.tag}`;
   let commit: string;
   try {
-    commit = await api.resolveTag(setting.tag);
+    // A resumed session reads the commit it was recorded with, even if the tag has moved.
+    commit = pinned ?? (await api.resolveTag(setting.tag));
   } catch (err) {
     const why = isNotFound(err) || /\b422\b/.test((err as CliError).stderr ?? "")
       ? `tag ${setting.tag} not found`
