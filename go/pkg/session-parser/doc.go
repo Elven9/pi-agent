@@ -21,6 +21,7 @@
 //   - [Session.Subagents]: subagents started and their results.
 //   - [Session.Skills]: skills the prompt offers and the ones loaded (/skill:name, or a read of
 //     SKILL.md, also from codemode).
+//   - [Session.ProjectInstructions]: the project's workflows and docs, and their reads.
 //
 // Values a file doesn't have are nil. Parsing is strict: an invalid line fails [Parse] with a
 // [*LineError], and an invalid entry fails its group with an [*EntryError] (or an
