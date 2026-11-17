@@ -14,9 +14,12 @@
 // read in groups, each on its own:
 //
 //   - [Session.Metadata]: header fields, pi-agent version, tags, name, models, errors.
-//   - [Session.ToolCalls]: tool calls with their results and tool-ref handles.
+//   - [Session.ToolCalls]: tool calls with their results and tool-ref handles, and the calls a
+//     codemode script made ([ToolCall.Nested]).
 //   - [Session.Metrics]: the pi-agent.metrics totals and samples.
 //   - [Session.Subagents]: subagents started and their results.
+//   - [Session.Skills]: skills the prompt offers and the ones loaded (/skill:name, or a read of
+//     SKILL.md, also from codemode).
 //
 // Values a file doesn't have are nil. Parsing is strict: an invalid line fails [Parse] with a
 // [*LineError], and an invalid entry fails its group with an [*EntryError] (or an

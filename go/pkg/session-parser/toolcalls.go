@@ -27,6 +27,9 @@ type ToolCall struct {
 	Ref *int
 	// Result is nil when the branch has no result for the call (e.g. pi stopped mid-call).
 	Result *ToolResult
+	// Nested are the calls a codemode script made, in the order it made them; nil for other
+	// tools and for a codemode call without result or nested calls.
+	Nested []NestedCall
 }
 
 // ToolResult is the toolResult message of a call.
@@ -103,6 +106,8 @@ type message struct {
 	IsError    *bool           `json:"isError"`
 	Details    json.RawMessage `json:"details"`
 	DurationMs *float64        `json:"durationMs"`
+	// Sections are a system message's prompt sections.
+	Sections json.RawMessage `json:"sections"`
 }
 
 func decodeMessage(e Entry) (message, error) {
@@ -175,6 +180,11 @@ func attachResult(calls []ToolCall, byID map[string]int, e Entry, msg message) e
 	ref, content, err := splitTrailer(content)
 	if err != nil {
 		return err
+	}
+	if calls[i].Name == ToolCodemode {
+		if calls[i].Nested, err = nestedCalls(nullToNil(msg.Details)); err != nil {
+			return err
+		}
 	}
 	calls[i].Ref = ref
 	calls[i].Result = &ToolResult{
