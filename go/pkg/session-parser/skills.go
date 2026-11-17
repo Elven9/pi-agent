@@ -189,7 +189,10 @@ func (r *skillReader) readCall(c ToolCall) {
 		failed := c.Result != nil && c.Result.IsError
 		r.readPath(pathOf(c.Args), SkillLoad{Via: SkillViaRead, CallID: c.ID, EntryID: c.EntryID, At: c.CalledAt, Failed: failed})
 	}
-	for _, n := range c.Nested {
+	if c.Codemode == nil {
+		return
+	}
+	for _, n := range c.Codemode.Nested {
 		if n.Name != ToolRead {
 			continue
 		}

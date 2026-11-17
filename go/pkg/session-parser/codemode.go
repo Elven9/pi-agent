@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 )
 
 // ToolCodemode is the name of pi's codemode tool: the model writes a script that calls other
@@ -18,6 +20,69 @@ const (
 	// NestedRunning is left in results pi wrote while the script was still running.
 	NestedRunning = "running"
 )
+
+// CodemodeScript is a codemode call's script and what it did.
+type CodemodeScript struct {
+	// Code is the script; empty when the model's arguments had none.
+	Code string
+	// Intent is the script's "// intent: ..." title, a comment among its first lines; nil
+	// without one.
+	Intent *string
+	// Nested are the calls the script made, in the order it made them; nil without a result
+	// or calls.
+	Nested []NestedCall
+	// FullOutputPath is the temp file pi wrote the whole output to when it cut the output.
+	FullOutputPath *string
+}
+
+// intentLine is a script's title comment.
+var intentLine = regexp.MustCompile(`^//\s*intent:\s*(.*?)\s*$`)
+
+// newScript reads the script of a codemode call's arguments.
+func newScript(args json.RawMessage) *CodemodeScript {
+	var a struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(args, &a) // arguments the model got wrong have no code
+	return &CodemodeScript{Code: a.Code, Intent: intentOf(a.Code)}
+}
+
+// intentOf finds "// intent:" in the script's leading comment lines (blank lines and other
+// comments such as "// @options:" may come first).
+func intentOf(code string) *string {
+	for line := range strings.Lines(code) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "//") {
+			return nil
+		}
+		if m := intentLine.FindStringSubmatch(line); m != nil && m[1] != "" {
+			return &m[1]
+		}
+	}
+	return nil
+}
+
+// readResult adds what a codemode result's details record: nested calls and the output file.
+func (s *CodemodeScript) readResult(details json.RawMessage) error {
+	if details == nil {
+		return nil
+	}
+	var d struct {
+		FullOutputPath *string `json:"fullOutputPath"`
+	}
+	if err := json.Unmarshal(details, &d); err != nil {
+		return fmt.Errorf("codemode details: %w", err)
+	}
+	nested, err := nestedCalls(details)
+	if err != nil {
+		return err
+	}
+	s.Nested, s.FullOutputPath = nested, d.FullOutputPath
+	return nil
+}
 
 // NestedCall is a tool call a codemode script made, from the details of the codemode result.
 // pi keeps only a preview of it: the arguments cut to 200 characters and no result; the
@@ -43,9 +108,6 @@ type NestedCall struct {
 // nestedCalls reads the nested calls of a codemode result's details. Details without "calls"
 // (e.g. pi rejected the script before it ran) give nil.
 func nestedCalls(details json.RawMessage) ([]NestedCall, error) {
-	if details == nil {
-		return nil, nil
-	}
 	var d struct {
 		Calls []struct {
 			ID         string   `json:"id"`

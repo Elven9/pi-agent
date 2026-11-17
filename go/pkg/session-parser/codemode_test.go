@@ -16,10 +16,11 @@ func TestToolCallsReadsTheNestedCallsOfACodemodeScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	cm := calls[len(calls)-1]
-	if cm.Name != ToolCodemode || len(cm.Nested) != 3 {
-		t.Fatalf("last call = %s with %d nested, want codemode with 3", cm.Name, len(cm.Nested))
+	if cm.Name != ToolCodemode || cm.Codemode == nil || len(cm.Codemode.Nested) != 3 {
+		t.Fatalf("last call = %+v, want codemode with 3 nested calls", cm)
 	}
-	read, bash, cancelled := cm.Nested[0], cm.Nested[1], cm.Nested[2]
+	nested := cm.Codemode.Nested
+	read, bash, cancelled := nested[0], nested[1], nested[2]
 	if read.ID != "cm/1" || read.Name != "read" || read.Status != NestedOK || string(read.Args) != read.ArgsPreview {
 		t.Errorf("nested 1 = %+v", read)
 	}
@@ -37,7 +38,58 @@ func TestToolCallsReadsTheNestedCallsOfACodemodeScript(t *testing.T) {
 	}
 }
 
-func TestToolCallsHasNoNestedCallsOutsideCodemode(t *testing.T) {
+func TestToolCallsReadsACodemodeScriptItsIntentAndFullOutput(t *testing.T) {
+	s, err := ParseFile("testdata/skills.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls, err := s.ToolCalls()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := calls[len(calls)-1].Codemode
+	if sc == nil || !strings.HasPrefix(sc.Code, "// @options:") || !strings.Contains(sc.Code, "tools.read") {
+		t.Fatalf("Codemode = %+v", sc)
+	}
+	if sc.Intent == nil || *sc.Intent != "load the go skill" {
+		t.Errorf("Intent = %v, want load the go skill", sc.Intent)
+	}
+	if sc.FullOutputPath == nil || *sc.FullOutputPath != "/tmp/out.txt" {
+		t.Errorf("FullOutputPath = %v", sc.FullOutputPath)
+	}
+}
+
+func TestIntentIsTheIntentCommentAmongTheLeadingComments(t *testing.T) {
+	for code, want := range map[string]string{
+		"// intent: list files\nawait x();":                       "list files",
+		"\n  //intent:   spaced out  \n":                          "spaced out",
+		"// @options: {}\n// other\n// intent: third\nawait x();": "third",
+		"await x();\n// intent: too late":                         "",
+		"// intent:   \nawait x();":                               "",
+		"/* intent: block */":                                     "",
+		"":                                                        "",
+	} {
+		got := intentOf(code)
+		if (want == "") != (got == nil) || (got != nil && *got != want) {
+			t.Errorf("intentOf(%q) = %v, want %q", code, got, want)
+		}
+	}
+}
+
+func TestToolCallsKeepsACodemodeCallWithoutResultOrCode(t *testing.T) {
+	calls, err := parseLines(t,
+		`{"type":"message","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"codemode","arguments":{},"argumentsError":"bad"}]}}`,
+	).ToolCalls()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := calls[0].Codemode
+	if sc == nil || sc.Code != "" || sc.Intent != nil || sc.Nested != nil || sc.FullOutputPath != nil {
+		t.Errorf("Codemode = %+v, want an empty script", sc)
+	}
+}
+
+func TestToolCallsHasNoCodemodeScriptOutsideCodemode(t *testing.T) {
 	s := parseLines(t,
 		`{"type":"message","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"bash","arguments":{}},{"type":"toolCall","id":"c2","name":"codemode","arguments":{}}]}}`,
 		`{"type":"message","id":"b","parentId":"a","timestamp":"2026-11-16T06:46:36Z","message":{"role":"toolResult","toolCallId":"c1","toolName":"bash","content":[],"isError":false,"details":{"calls":[{"id":"x","name":"y","args":"{}","status":"ok"}]}}}`,
@@ -47,10 +99,11 @@ func TestToolCallsHasNoNestedCallsOutsideCodemode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range calls {
-		if c.Nested != nil {
-			t.Errorf("%s has nested calls %+v, want nil", c.Name, c.Nested)
-		}
+	if bash := calls[0]; bash.Codemode != nil {
+		t.Errorf("bash has a codemode script %+v, want nil", bash.Codemode)
+	}
+	if cm := calls[1]; cm.Codemode == nil || cm.Codemode.Nested != nil {
+		t.Errorf("codemode without details = %+v, want a script without nested calls", cm.Codemode)
 	}
 }
 

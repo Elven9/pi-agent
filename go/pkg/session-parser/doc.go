@@ -15,8 +15,8 @@
 //
 //   - [Session.Metadata]: header fields, pi-agent version, tags, name, scenario, project,
 //     models, errors.
-//   - [Session.ToolCalls]: tool calls with their results and tool-ref handles, and the calls a
-//     codemode script made ([ToolCall.Nested]).
+//   - [Session.ToolCalls]: tool calls with their results and tool-ref handles; codemode calls
+//     with their script, its intent and the calls it made ([ToolCall.Codemode]).
 //   - [Session.Metrics]: the pi-agent.metrics totals and samples.
 //   - [Session.Subagents]: subagents started and their results.
 //   - [Session.Skills]: skills the prompt offers and the ones loaded (/skill:name, or a read of
