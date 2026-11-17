@@ -12,9 +12,12 @@ jobs:
   release-please:
     runs-on: ubuntu-slim
     outputs:
-      prs_created: ${{ steps.release.outputs.prs_created }}
-      # The release pull request's branch, e.g. release-please--branches--main.
-      branch: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
+      # The root package's release pull request branch when this run created or updated it, else ''.
+      # Each package gets its own release pull request (separate-pull-requests in
+      # release-please-config.json): with one combined pull request on release-please--branches--main,
+      # release-please cannot tag a release that holds only the root package, as its branch has no
+      # component and the root package's component is pi-agent.
+      branch: ${{ contains(steps.release.outputs.prs, '"release-please--branches--main--components--pi-agent"') && 'release-please--branches--main--components--pi-agent' || '' }}
     steps:
       - id: release
         uses: googleapis/release-please-action@v5
@@ -31,7 +34,7 @@ jobs:
   # runs again right after.
   build:
     needs: release-please
-    if: needs.release-please.outputs.prs_created == 'true'
+    if: needs.release-please.outputs.branch != ''
     runs-on: ubuntu-latest
     env:
       BRANCH: ${{ needs.release-please.outputs.branch }}
