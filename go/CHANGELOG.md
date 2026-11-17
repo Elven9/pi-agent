@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0](https://github.com/Elven9/pi-agent/compare/go/v0.1.1...go/v0.2.0) (2026-11-17)
+
+
+### Features
+
+* **go:** parse codemode nested calls and the skills a session used ([ed1513e](https://github.com/Elven9/pi-agent/commit/ed1513e9d7f946aa7451f42cb20f08f60921fc8e))
+* **go:** parse codemode scripts and their intent ([f663608](https://github.com/Elven9/pi-agent/commit/f66360875557bd41f2c0c63e69fdedc38df30351))
+* **go:** parse which project workflows and docs were read ([cd9f56f](https://github.com/Elven9/pi-agent/commit/cd9f56f4739031a5936ab6dc4090fcd503b07d86))
+* **go:** read the session scenario and project ([74e81d2](https://github.com/Elven9/pi-agent/commit/74e81d230fa71823632e9da84d0fa3af4b6b58b1))
+
 ## [0.1.1](https://github.com/Elven9/pi-agent/compare/go/v0.1.0...go/v0.1.1) (2026-11-17)
 
 
