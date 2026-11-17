@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.13.0](https://github.com/Elven9/pi-agent/compare/v0.12.0...v0.13.0) (2026-11-17)
+
+
+### Features
+
+* keep a session's scenario and project fixed across resumes ([e2dca62](https://github.com/Elven9/pi-agent/commit/e2dca62661f810e2dc7e6ffbc73ecafffb630524))
+* **quick-quit:** add /q! to quit without extension shutdown work ([e2be124](https://github.com/Elven9/pi-agent/commit/e2be124ae5da76a5a5fac309e3b83a3b0b51e482))
+* record the session scenario and project as session entries ([edde985](https://github.com/Elven9/pi-agent/commit/edde98561f0ba126dd73f65e093678e8051f4623))
+* **session-upload:** show an elapsed-time spinner while uploading ([cd22e4b](https://github.com/Elven9/pi-agent/commit/cd22e4b2b542a96aefda59bfeb29a4a6ad1fb2c2))
+* **tags:** default to the last segment of the cwd as session tag ([d00238e](https://github.com/Elven9/pi-agent/commit/d00238e381b9bb8da436799b5489ce3b9d2ee5b6))
+
+
+### Bug Fixes
+
+* register --allow-setup-change in one extension only ([fdee869](https://github.com/Elven9/pi-agent/commit/fdee8697d5b250382a5cefe65764bd3d66f35ebd))
+* **session-upload:** skip the upload when an extension aborted the session ([a4c8220](https://github.com/Elven9/pi-agent/commit/a4c8220c7409f6d5338b169a2ea195bef76e4e0c))
+
 ## [0.12.0](https://github.com/Elven9/pi-agent/compare/v0.11.0...v0.12.0) (2026-11-16)
 
 
