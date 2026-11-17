@@ -11,6 +11,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/scenario-profile/` | pi extension: `--scenario <name>` applies the scenario's system prompt, tools and skills (runner and personal pi) |
 | `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
+| `src/quick-quit/` | pi extension (personal pi only): `/q!` quits at once, skipping every extension's shutdown work (session upload, metrics, ...) |
 | `src/tags/` | pi extension: session tags (`--tags`, `/tags`) as `pi-agent.tags` entries in the session file (runner and personal pi) |
 | `go/pkg/session-parser/` | Go package (module `github.com/Elven9/pi-agent/go`): parses session files for the session server; `cd go && go test ./...` |
 | `src/session-version/` | pi extension: the pi-agent release that wrote the session, as `pi-agent.session-version` entries (runner and personal pi) |
@@ -38,7 +39,7 @@ pi install ~/Project/pi-agent   # local path: loaded in place, edits apply on /r
 
 The manifest exposes `skills/`, `prompts/*.md` and these extensions: project context
 (`src/project/`), worktrees (`src/worktree/`, after project), activation hint (`src/activation-hint/`, after project), context view (`src/context-view/`), session metrics (`src/metrics/`), session
-upload (`src/session-upload/`), herdr session name (`src/herdr-session-name/`), session tags (`src/tags/`), session version (`src/session-version/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
+upload (`src/session-upload/`), quick quit (`src/quick-quit/`), herdr session name (`src/herdr-session-name/`), session tags (`src/tags/`), session version (`src/session-version/`) and tool-ref (`src/tool-ref/`, listed last), loaded from source,
 and the scenario profile and subagents, loaded from `dist/scenario-profile.js` and
 `dist/subagent.js` because scenarios import their prompts as `.md`, which pi's loader can't import. Run `npm run build`
 after cloning and after changing a scenario. Not the runner extension.

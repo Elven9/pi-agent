@@ -22,6 +22,7 @@
       "./src/context-view/index.ts",
       "./src/metrics/index.ts",
       "./src/session-upload/index.ts",
+      "./src/quick-quit/index.ts",
       "./src/herdr-session-name/index.ts",
       "./src/tags/index.ts",
       "./src/session-version/index.ts",
