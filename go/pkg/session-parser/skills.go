@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// TypeCompaction is a compaction entry; its systemMessage is a complete prompt checkpoint.
-const TypeCompaction = "compaction"
-
 // ToolRead is the name of pi's file read tool.
 const ToolRead = "read"
 
@@ -75,8 +72,6 @@ var (
 	skillItem = regexp.MustCompile(`(?s)<skill>\s*<name>(.*?)</name>\s*<description>(.*?)</description>\s*<location>(.*?)</location>\s*</skill>`)
 	// skillBlock starts a user message expanded from /skill:name.
 	skillBlock = regexp.MustCompile(`^<skill name="([^"]+)" location="([^"]+)">\n`)
-	// pathArg is a complete "path" string in cut codemode arguments.
-	pathArg = regexp.MustCompile(`"path":("(?:[^"\\]|\\.)*")`)
 )
 
 // Skills reads the skills of the current branch. The available ones replay the system prompt's
@@ -95,29 +90,26 @@ func (s *Session) Skills() (*Skills, error) {
 		byEntry[c.EntryID] = append(byEntry[c.EntryID], c)
 	}
 	r := skillReader{cwd: s.Header.CWD, listed: map[string]Skill{}, used: map[string]int{}}
+	prompt := promptSections{}
 	for _, e := range s.Branch() {
-		switch e.Type {
-		case TypeCompaction:
-			if err := r.readCheckpoint(e); err != nil {
-				return nil, e.invalid(err)
+		system, err := prompt.apply(e)
+		switch {
+		case err != nil:
+		case system:
+			r.readSection(prompt["skills"])
+		case e.Type == TypeMessage:
+			var msg message
+			if msg, err = decodeMessage(e); err == nil && msg.Role == "user" {
+				err = r.readCommand(e, msg.Content)
 			}
-		case TypeMessage:
-			msg, err := decodeMessage(e)
-			if err == nil {
-				switch msg.Role {
-				case "system":
-					err = r.readSystem(msg.Sections, false)
-				case "user":
-					err = r.readCommand(e, msg.Content)
-				case "assistant":
-					for _, c := range byEntry[e.ID] {
-						r.readCall(c)
-					}
+			for _, c := range byEntry[e.ID] {
+				for _, rd := range readsOf(c, ToolRead) {
+					r.readFile(rd)
 				}
 			}
-			if err != nil {
-				return nil, e.invalid(err)
-			}
+		}
+		if err != nil {
+			return nil, e.invalid(err)
 		}
 	}
 	return &Skills{Available: r.available, Used: r.uses}, nil
@@ -132,45 +124,14 @@ type skillReader struct {
 	used   map[string]int // index in uses, by location
 }
 
-func (r *skillReader) readCheckpoint(e Entry) error {
-	var d struct {
-		SystemMessage *struct {
-			Sections json.RawMessage `json:"sections"`
-		} `json:"systemMessage"`
-	}
-	if err := json.Unmarshal(e.Raw, &d); err != nil {
-		return err
-	}
-	if d.SystemMessage == nil || d.SystemMessage.Sections == nil {
-		return nil // older compaction entries have no checkpoint
-	}
-	return r.readSystem(d.SystemMessage.Sections, true)
-}
-
-// readSystem applies a system message's sections; complete is a checkpoint, where a missing
-// section means none.
-func (r *skillReader) readSystem(sections json.RawMessage, complete bool) error {
-	if sections == nil {
-		return nil
-	}
-	var m map[string]*string
-	if err := json.Unmarshal(sections, &m); err != nil {
-		return err
-	}
-	text, ok := m["skills"]
-	if !ok && !complete {
-		return nil
-	}
+// readSection reads the current skills section; empty when there is none.
+func (r *skillReader) readSection(text string) {
 	r.available = nil
-	if text == nil {
-		return nil
-	}
-	for _, it := range skillItem.FindAllStringSubmatch(*text, -1) {
+	for _, it := range skillItem.FindAllStringSubmatch(text, -1) {
 		sk := Skill{Name: html.UnescapeString(it[1]), Description: html.UnescapeString(it[2]), Location: html.UnescapeString(it[3])}
 		r.available = append(r.available, sk)
-		r.listed[r.resolve(sk.Location)] = sk
+		r.listed[resolvePath(r.cwd, sk.Location)] = sk
 	}
-	return nil
 }
 
 func (r *skillReader) readCommand(e Entry, content json.RawMessage) error {
@@ -179,37 +140,18 @@ func (r *skillReader) readCommand(e Entry, content json.RawMessage) error {
 		return err
 	}
 	if m := skillBlock.FindStringSubmatch(text); m != nil {
-		r.add(m[1], r.resolve(m[2]), SkillLoad{Via: SkillViaCommand, EntryID: e.ID, At: e.Timestamp})
+		r.add(m[1], resolvePath(r.cwd, m[2]), SkillLoad{Via: SkillViaCommand, EntryID: e.ID, At: e.Timestamp})
 	}
 	return nil
 }
 
-func (r *skillReader) readCall(c ToolCall) {
-	if c.Name == ToolRead {
-		failed := c.Result != nil && c.Result.IsError
-		r.readPath(pathOf(c.Args), SkillLoad{Via: SkillViaRead, CallID: c.ID, EntryID: c.EntryID, At: c.CalledAt, Failed: failed})
+func (r *skillReader) readFile(rd fileRead) {
+	via := SkillViaRead
+	if rd.nested {
+		via = SkillViaCodemode
 	}
-	if c.Codemode == nil {
-		return
-	}
-	for _, n := range c.Codemode.Nested {
-		if n.Name != ToolRead {
-			continue
-		}
-		path := pathOf(n.Args)
-		if n.Args == nil {
-			path = cutPathOf(n.ArgsPreview)
-		}
-		failed := n.Status == NestedError || n.Status == NestedCancelled
-		r.readPath(path, SkillLoad{Via: SkillViaCodemode, CallID: n.ID, EntryID: c.EntryID, At: c.CalledAt, Failed: failed})
-	}
-}
-
-func (r *skillReader) readPath(path string, load SkillLoad) {
-	if path == "" {
-		return
-	}
-	loc := r.resolve(path)
+	load := SkillLoad{Via: via, CallID: rd.callID, EntryID: rd.entryID, At: rd.at, Failed: rd.failed}
+	loc := resolvePath(r.cwd, rd.path)
 	if sk, ok := r.listed[loc]; ok {
 		r.add(sk.Name, loc, load)
 	} else if filepath.Base(loc) == SkillFile {
@@ -225,37 +167,6 @@ func (r *skillReader) add(name, loc string, load SkillLoad) {
 		r.uses = append(r.uses, SkillUse{Name: name, Location: loc})
 	}
 	r.uses[i].Loads = append(r.uses[i].Loads, load)
-}
-
-func (r *skillReader) resolve(path string) string {
-	if !filepath.IsAbs(path) && r.cwd != "" {
-		path = filepath.Join(r.cwd, path)
-	}
-	return filepath.Clean(path)
-}
-
-// pathOf is the "path" argument of a read; empty when it has none.
-func pathOf(args json.RawMessage) string {
-	var a struct {
-		Path string `json:"path"`
-	}
-	if json.Unmarshal(args, &a) != nil {
-		return ""
-	}
-	return a.Path
-}
-
-// cutPathOf is the "path" argument in arguments pi cut short; empty when the cut hit the path.
-func cutPathOf(preview string) string {
-	m := pathArg.FindStringSubmatch(preview)
-	if m == nil {
-		return ""
-	}
-	var p string
-	if json.Unmarshal([]byte(m[1]), &p) != nil {
-		return ""
-	}
-	return p
 }
 
 // firstText is the first text of a message's content: a string, or the first text block.
