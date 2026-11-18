@@ -111,8 +111,29 @@ export function progressLine(toolName: string, args: unknown): string {
   return oneLine(`${toolName} ${inputSummary({ toolName, input })}`, LINE_CHARS);
 }
 
-/** The full text of a result (lookup tools and the /agent panel). */
+/**
+ * Page text with its section headings (`task:`, `summary:`, …): `headings` are line indices, so
+ * the /agent panel can style them without guessing from the text (a task may contain `summary:`).
+ */
+export interface SectionedText {
+  lines: string[];
+  headings: number[];
+}
+
+/** Appends `heading` (recorded as a heading) and its body lines, after a blank line unless first. */
+function addSection(t: SectionedText, heading: string, body: readonly string[]): void {
+  if (t.lines.length) t.lines.push("");
+  t.headings.push(t.lines.length);
+  t.lines.push(heading, ...body);
+}
+
+/** The full text of a result (lookup tools). */
 export function resultLines(d: ResultDetails): string[] {
+  return resultPage(d).lines;
+}
+
+/** The full text of a result with its headings (the /agent panel); same lines as resultLines. */
+export function resultPage(d: ResultDetails): SectionedText {
   const body = d.envelope.body;
   const meta = [
     `started ${new Date(d.startedAt).toISOString()}`,
@@ -121,11 +142,20 @@ export function resultLines(d: ResultDetails): string[] {
     ...(d.startedBy === "user" ? ["started by user"] : []),
     ...(d.project ? [`project ${d.project}`] : []),
   ].join(" · ");
-  const lines = [meta, "", "task:", ...d.task.split("\n"), "", "summary:", ...body.summary.split("\n")];
+  const t: SectionedText = { lines: [meta], headings: [] };
+  addSection(t, "task:", d.task.split("\n"));
+  addSection(t, "summary:", body.summary.split("\n"));
   if (body.detail !== undefined) {
-    lines.push("", `detail${body.detailKind ? ` (${body.detailKind})` : ""}:`, ...JSON.stringify(body.detail, null, 2).split("\n"));
+    addSection(t, `detail${body.detailKind ? ` (${body.detailKind})` : ""}:`, JSON.stringify(body.detail, null, 2).split("\n"));
   }
-  return lines;
+  return t;
+}
+
+/** The /agent page of a recorded task without a result. */
+export function noResultPage(task: string): SectionedText {
+  const t: SectionedText = { lines: ["no result recorded"], headings: [] };
+  addSection(t, "task:", task.split("\n"));
+  return t;
 }
 
 /** A child that is still running, as the lookup tools and the panel show it. */
@@ -169,12 +199,12 @@ export function statusText(children: readonly LiveView[]): string | undefined {
 }
 
 /** The `/agent` panel page of a live child. */
-export function livePage(c: LiveView, now: number): string[] {
-  const lines = [liveHeader(c, now), ...(c.restartOf ? [`restart of ${c.restartOf}`] : []), "", "task:", ...c.task.split("\n"), "", "progress:"];
-  if (c.progress.length === 0) lines.push(`  ${c.line}`);
-  else lines.push(...c.progress.map((p) => `  ${p}`));
-  lines.push("", "x: kill");
-  return lines;
+export function livePage(c: LiveView, now: number): SectionedText {
+  const t: SectionedText = { lines: [liveHeader(c, now), ...(c.restartOf ? [`restart of ${c.restartOf}`] : [])], headings: [] };
+  addSection(t, "task:", c.task.split("\n"));
+  addSection(t, "progress:", c.progress.length === 0 ? [`  ${c.line}`] : c.progress.map((p) => `  ${p}`));
+  t.lines.push("", "x: kill");
+  return t;
 }
 
 export interface GetOptions {

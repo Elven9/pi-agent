@@ -1,16 +1,28 @@
-import { type Component, matchesKey, truncateToWidth, type TUI, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { type Component, matchesKey, truncateToWidth, type TUI, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { VIEWER_HEIGHT } from "../tool-ref/viewer.ts";
 
 export { VIEWER_OVERLAY } from "../tool-ref/viewer.ts";
 
-/** One page of the /agent panel. `live`: rebuilt on every draw and refreshed every second. */
+/**
+ * One page of the /agent panel. `live`: rebuilt on every draw and refreshed every second.
+ * `headings`: indices of section heading lines (`task:`, `summary:`, …), shown as headers.
+ */
 export interface AgentPage {
   title: string;
   lines: string[];
+  headings?: readonly number[];
   live: boolean;
 }
 
-type Styler = { fg(color: any, text: string): string };
+type Styler = { fg(color: any, text: string): string; bold(text: string): string };
+
+/** A section heading row: `task:` → bold accent (pink) `Task`, then a dim rule to the panel's width. */
+export function headingRow(line: string, width: number, th: Styler): string {
+  const label = line.replace(/:$/, "");
+  const text = label.charAt(0).toUpperCase() + label.slice(1);
+  const rest = Math.max(0, width - visibleWidth(text) - 1);
+  return truncateToWidth(th.bold(th.fg("accent", text)) + (rest ? " " + th.fg("dim", "─".repeat(rest)) : ""), width);
+}
 
 /** Border top/bottom, title row, hint row (as the /ref panel). */
 const CHROME_ROWS = 4;
@@ -78,7 +90,9 @@ export class AgentViewer implements Component {
   }
 
   private wrapped(width: number): string[] {
-    return this.current.lines.flatMap((l) => (l === "" ? [""] : wrapTextWithAnsi(l, width)));
+    const page = this.current;
+    const headings = new Set(page.headings ?? []);
+    return page.lines.flatMap((l, i) => (headings.has(i) ? [headingRow(l, width, this.theme)] : l === "" ? [""] : wrapTextWithAnsi(l, width)));
   }
 
   private maxTop(): number {

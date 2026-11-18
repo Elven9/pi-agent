@@ -12,10 +12,11 @@ import {
   grepResults,
   liveHeader,
   livePage,
+  noResultPage,
   MAX_IDS,
   resultContent,
   resultHeader,
-  resultLines,
+  resultPage,
   scenarioLabel,
   statusLabel,
   statusText,
@@ -415,11 +416,11 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
 
   const page = (c: ExtensionContext, id: number): AgentPage => {
     const live = manager.view(id);
-    if (live) return { title: liveHeader(live, now()), lines: livePage(live, now()), live: true };
+    if (live) return { title: liveHeader(live, now()), ...livePage(live, now()), live: true };
     const r = index(c).get(id);
     const result = r?.result ?? r?.end;
-    if (result) return { title: resultHeader(result), lines: resultLines(result), live: false };
-    if (r) return { title: `${agentId(id)} · ${scenarioLabel(r.start.scenario)}`, lines: ["no result recorded", "", "task:", ...r.start.task.split("\n")], live: false };
+    if (result) return { title: resultHeader(result), ...resultPage(result), live: false };
+    if (r) return { title: `${agentId(id)} · ${scenarioLabel(r.start.scenario)}`, ...noResultPage(r.start.task), live: false };
     return { title: agentId(id), lines: ["no such subagent on this branch"], live: false };
   };
 

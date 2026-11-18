@@ -536,7 +536,15 @@ function progressLine(toolName, args) {
   }
   return oneLine(`${toolName} ${inputSummary({ toolName, input })}`, LINE_CHARS);
 }
+function addSection(t, heading, body) {
+  if (t.lines.length) t.lines.push("");
+  t.headings.push(t.lines.length);
+  t.lines.push(heading, ...body);
+}
 function resultLines(d) {
+  return resultPage(d).lines;
+}
+function resultPage(d) {
   const body = d.envelope.body;
   const meta = [
     `started ${new Date(d.startedAt).toISOString()}`,
@@ -545,11 +553,18 @@ function resultLines(d) {
     ...d.startedBy === "user" ? ["started by user"] : [],
     ...d.project ? [`project ${d.project}`] : []
   ].join(" \xB7 ");
-  const lines = [meta, "", "task:", ...d.task.split("\n"), "", "summary:", ...body.summary.split("\n")];
+  const t = { lines: [meta], headings: [] };
+  addSection(t, "task:", d.task.split("\n"));
+  addSection(t, "summary:", body.summary.split("\n"));
   if (body.detail !== void 0) {
-    lines.push("", `detail${body.detailKind ? ` (${body.detailKind})` : ""}:`, ...JSON.stringify(body.detail, null, 2).split("\n"));
+    addSection(t, `detail${body.detailKind ? ` (${body.detailKind})` : ""}:`, JSON.stringify(body.detail, null, 2).split("\n"));
   }
-  return lines;
+  return t;
+}
+function noResultPage(task) {
+  const t = { lines: ["no result recorded"], headings: [] };
+  addSection(t, "task:", task.split("\n"));
+  return t;
 }
 function liveHeader(c, now) {
   return `${c.id} \xB7 ${c.scenario} \xB7 ${c.state} \xB7 running ${formatDuration(now - c.startedAt)}`;
@@ -574,11 +589,11 @@ function statusText(children) {
   return `\u{1F916} ${[...counts].map(([w, n]) => `${n} ${w}`).join(" \xB7 ")}`;
 }
 function livePage(c, now) {
-  const lines = [liveHeader(c, now), ...c.restartOf ? [`restart of ${c.restartOf}`] : [], "", "task:", ...c.task.split("\n"), "", "progress:"];
-  if (c.progress.length === 0) lines.push(`  ${c.line}`);
-  else lines.push(...c.progress.map((p) => `  ${p}`));
-  lines.push("", "x: kill");
-  return lines;
+  const t = { lines: [liveHeader(c, now), ...c.restartOf ? [`restart of ${c.restartOf}`] : []], headings: [] };
+  addSection(t, "task:", c.task.split("\n"));
+  addSection(t, "progress:", c.progress.length === 0 ? [`  ${c.line}`] : c.progress.map((p) => `  ${p}`));
+  t.lines.push("", "x: kill");
+  return t;
 }
 function selectLines(all, range) {
   const n = all.length;
@@ -1052,7 +1067,7 @@ function resultRenderer(open) {
 }
 
 // src/subagent/viewer.ts
-import { matchesKey as matchesKey2, truncateToWidth as truncateToWidth3, wrapTextWithAnsi as wrapTextWithAnsi2 } from "@earendil-works/pi-tui";
+import { matchesKey as matchesKey2, truncateToWidth as truncateToWidth3, visibleWidth as visibleWidth2, wrapTextWithAnsi as wrapTextWithAnsi2 } from "@earendil-works/pi-tui";
 
 // src/tool-ref/viewer.ts
 import { copyToClipboard, getLanguageFromPath, getMarkdownTheme, highlightCode } from "@earendil-works/pi-coding-agent";
@@ -1061,6 +1076,12 @@ var VIEWER_HEIGHT = 0.8;
 var VIEWER_OVERLAY = { width: "90%", maxHeight: "80%", anchor: "center" };
 
 // src/subagent/viewer.ts
+function headingRow(line, width, th) {
+  const label = line.replace(/:$/, "");
+  const text2 = label.charAt(0).toUpperCase() + label.slice(1);
+  const rest = Math.max(0, width - visibleWidth2(text2) - 1);
+  return truncateToWidth3(th.bold(th.fg("accent", text2)) + (rest ? " " + th.fg("dim", "\u2500".repeat(rest)) : ""), width);
+}
 var CHROME_ROWS = 4;
 var HINT = " \u2191\u2193/j k scroll \xB7 PgUp/PgDn/space page \xB7 g/G top/end \xB7 q/Esc close";
 var REFRESH_MS = 1e3;
@@ -1105,7 +1126,9 @@ var AgentViewer = class {
     return Math.max(3, Math.floor(this.tui.terminal.rows * VIEWER_HEIGHT) - CHROME_ROWS);
   }
   wrapped(width) {
-    return this.current.lines.flatMap((l) => l === "" ? [""] : wrapTextWithAnsi2(l, width));
+    const page = this.current;
+    const headings = new Set(page.headings ?? []);
+    return page.lines.flatMap((l, i) => headings.has(i) ? [headingRow(l, width, this.theme)] : l === "" ? [""] : wrapTextWithAnsi2(l, width));
   }
   maxTop() {
     return Math.max(0, this.wrapped(this.innerWidth).length - this.viewHeight());
@@ -1480,11 +1503,11 @@ function registerLeader(pi, options) {
   });
   const page = (c, id) => {
     const live = manager.view(id);
-    if (live) return { title: liveHeader(live, now()), lines: livePage(live, now()), live: true };
+    if (live) return { title: liveHeader(live, now()), ...livePage(live, now()), live: true };
     const r = index(c).get(id);
     const result = r?.result ?? r?.end;
-    if (result) return { title: resultHeader(result), lines: resultLines(result), live: false };
-    if (r) return { title: `${agentId(id)} \xB7 ${scenarioLabel(r.start.scenario)}`, lines: ["no result recorded", "", "task:", ...r.start.task.split("\n")], live: false };
+    if (result) return { title: resultHeader(result), ...resultPage(result), live: false };
+    if (r) return { title: `${agentId(id)} \xB7 ${scenarioLabel(r.start.scenario)}`, ...noResultPage(r.start.task), live: false };
     return { title: agentId(id), lines: ["no such subagent on this branch"], live: false };
   };
   const openPanel = (c, ids, title, start) => c.ui.custom(

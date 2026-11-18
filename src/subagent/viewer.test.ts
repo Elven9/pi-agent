@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { TUI } from "@earendil-works/pi-tui";
-import { type AgentPage, AgentViewer } from "./viewer.ts";
+import { type AgentPage, AgentViewer, headingRow } from "./viewer.ts";
 
-const theme = { fg: (_color: string, text: string) => text };
+const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 
 function viewer(ids: number[], pages: Map<number, AgentPage>, start = 0) {
   let renders = 0;
@@ -62,4 +62,15 @@ test("x on a live page asks, y kills; n or a finished page does nothing", async 
   assert.match(footer(), /a2: killed by user\./);
   assert.match(title(), /a2 · killed by user/, "the page is rebuilt as finished");
   v.dispose();
+});
+
+test("section headings: a bold accent label and a dim rule; other lines as written", () => {
+  const styled = { fg: (color: string, text: string) => `<${color}>${text}</>`, bold: (text: string) => `*${text}*` };
+  assert.equal(headingRow("summary:", 12, theme), "Summary ────");
+  // The fake markup counts toward the width, so only the label is checked here.
+  assert.match(headingRow("detail (x/v1):", 30, styled), /^\*<accent>Detail \(x\/v1\)<\/>\* /);
+  const pages = new Map<number, AgentPage>([[1, { title: "a1", lines: ["meta", "", "task:", "summary:"], headings: [2], live: false }]]);
+  const rows = viewer([1], pages).v.render(40);
+  assert.ok(rows.some((r) => r.includes("Task ──")), rows.join("\n"));
+  assert.ok(rows.some((r) => r.includes("summary:")), "a non-heading line that looks like one stays as written");
 });

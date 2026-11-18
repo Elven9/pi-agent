@@ -12,6 +12,9 @@ import {
   userStartContent,
   statusText,
   taskPrompt,
+  resultLines,
+  resultPage,
+  livePage,
   widgetLines,
   type LiveView,
 } from "./format.ts";
@@ -45,6 +48,16 @@ test("resultContent: header and summary; abnormal results also carry the task an
   assert.match(aborted, /^\[subagent a5\] review · aborted · 2m14s\naborted: the leader session ended\n\nTask \(review, project \/p\):\ncheck the auth middleware\nfor token reuse\n\nRestart it with subagent_restart/);
   assert.match(resultContent(result(6, { status: "killed", reason: "user", summary: "killed by user" })), /review · killed by user ·/);
   assert.match(resultContent(result(7, { status: "aborted", reason: "reload" })), /review · aborted \(reload\) ·/);
+});
+
+test("resultPage / livePage: section headings by index; resultLines is the same text", () => {
+  const d = result(3, { detail: { x: 1 }, detailKind: "review/v1" });
+  const p = resultPage(d);
+  assert.deepEqual(p.headings.map((i) => p.lines[i]), ["task:", "summary:", "detail (review/v1):"]);
+  assert.deepEqual(resultLines(d), p.lines);
+  const live = livePage({ id: "a1", scenario: "demo", state: "busy", task: "summary:\nx", startedAt: 0, line: "thinking…", progress: [] }, 0);
+  assert.deepEqual(live.headings.map((i) => live.lines[i]), ["task:", "progress:"]);
+  assert.equal(live.lines.filter((l) => l === "summary:").length, 1, "task text is not a heading");
 });
 
 test("a subagent without a scenario shows as general", () => {
