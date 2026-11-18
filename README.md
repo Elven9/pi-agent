@@ -136,7 +136,14 @@ pi --tags bug,ui            # at startup (also with -c / --session): replaces th
   become `-`). `/tags --clear` removes it for good.
 
 - `/tags` shows the tags, `/tags a,b` replaces them, `/tags --clear` clears them. Completion
-  offers tags used before in this session and the other sessions in its folder.
+  offers, first, the cwd's default tag (as above) and the frequently used tags of
+  `tags.presets` in `settings.json` (global or project; in the order given), then tags used
+  before in this session and the other sessions in its folder. Presets are read at session
+  start (`/reload` applies a change); invalid ones are skipped with a warning.
+
+  ```json
+  { "tags": { "presets": ["bug", "feature", "review"] } }
+  ```
 - The footer shows the current tags left of the cwd (`[bug,ui] ~/repo (main)`), in the footer's
   own dim color. It is pi's footer with that prefix, installed only while there are tags (a
   virtual model's routed target is not shown then).

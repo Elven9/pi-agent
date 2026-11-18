@@ -63,6 +63,30 @@ export function normalizeTags(tags: Iterable<string>): string[] {
   return out;
 }
 
+/**
+ * `tags.presets` from pi's merged settings (`pi.getSettings()`): frequently used tags that
+ * `/tags` completion always offers. Normalized, in the order given; items that are not valid
+ * tags are left out and returned in `invalid` (a missing or malformed setting is no presets).
+ */
+export function presetTags(settings: unknown): { tags: string[]; invalid: string[] } {
+  const presets = (settings as { tags?: { presets?: unknown } } | undefined)?.tags?.presets;
+  const tags: string[] = [];
+  const invalid: string[] = [];
+  if (!Array.isArray(presets)) return { tags, invalid };
+  for (const item of presets) {
+    if (typeof item !== "string") {
+      invalid.push(JSON.stringify(item));
+      continue;
+    }
+    try {
+      for (const t of normalizeTags([item])) if (!tags.includes(t)) tags.push(t);
+    } catch {
+      invalid.push(JSON.stringify(item.trim()));
+    }
+  }
+  return { tags, invalid };
+}
+
 /** A comma-separated list (`--tags`, `/tags`), normalized. */
 export function parseTags(text: string): string[] {
   return normalizeTags(text.split(","));

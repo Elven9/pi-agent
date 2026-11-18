@@ -8,7 +8,7 @@ import { initTheme } from "@earendil-works/pi-coding-agent";
 import * as themeModule from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import sessionTags, { withTags } from "./index.ts";
 import { ENTRY } from "../shared/protocol.ts";
-import { currentTags, defaultTag } from "../shared/tags.ts";
+import { currentTags, defaultTag, presetTags } from "../shared/tags.ts";
 
 /** The theme pi passes to footer factories (its global one, after initTheme). */
 const realTheme = () => themeModule.theme;
@@ -16,7 +16,7 @@ const realTheme = () => themeModule.theme;
 const tagEntry = (tags: string[]) => ({ type: "custom", customType: ENTRY.tags, data: { version: 1, tags, source: "command" } });
 
 /** Minimal ExtensionAPI: entries appended go into the "session file" the next start reads. */
-function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mode?: string; cwd?: string } = {}) {
+function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mode?: string; cwd?: string; settings?: object } = {}) {
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const commands = new Map<string, any>();
   const entries: any[] = [...(o.entries ?? [])];
@@ -32,7 +32,7 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
     registerCommand: (name: string, options: any) => void commands.set(name, options),
     appendEntry: (customType: string, data: unknown) => void entries.push({ type: "custom", customType, data }),
     events: { emit: () => {}, on: () => {} },
-    getSettings: () => ({}),
+    getSettings: () => o.settings ?? {},
     getThinkingLevel: () => "off",
   } as unknown as ExtensionAPI;
   const ctx = {
@@ -193,12 +193,38 @@ test("completion: tags used before in this session and the folder's other sessio
   await writeFile(join(dir, "notes.txt"), JSON.stringify(tagEntry(["ignored"])));
   const pi = fakePi({ sessionDir: dir, entries: [tagEntry(["bug"]), tagEntry(["regression"])] });
   await pi.start();
-  assert.deepEqual((await pi.complete("")).map((i: any) => i.value), ["bug", "regression", "release", "ui"]);
+  // The cwd's default tag ("w") comes first.
+  assert.deepEqual((await pi.complete("")).map((i: any) => i.value), ["w", "bug", "regression", "release", "ui"]);
   assert.deepEqual((await pi.complete("re")).map((i: any) => i.value), ["regression", "release"]);
   assert.deepEqual((await pi.complete("bug, R")).map((i: any) => i.value), ["bug,regression", "bug,release"]);
-  assert.deepEqual((await pi.complete("ui,")).map((i: any) => i.label), ["bug", "regression", "release"]);
+  assert.deepEqual((await pi.complete("ui,")).map((i: any) => i.label), ["w", "bug", "regression", "release"]);
   assert.deepEqual((await pi.complete("--c")).map((i: any) => i.value), ["--clear"]);
   assert.equal(await pi.complete("zzz"), null);
+});
+
+test("completion: cwd tag and tags.presets first, in order, then history; invalid presets warned", async () => {
+  const pi = fakePi({
+    cwd: "/home/me/My Repo",
+    entries: [tagEntry(["bug", "infra"])],
+    settings: { tags: { presets: ["Infra", "review", "my-repo", "not ok", 3] } },
+  });
+  await pi.start("resume");
+  assert.deepEqual(pi.notices.at(-1), ['[tags] tags.presets: ignored invalid tags "not ok", 3', "warning"]);
+  const all = await pi.complete("");
+  assert.deepEqual(all.map((i: any) => [i.value, i.description]), [
+    ["my-repo", "cwd"],
+    ["infra", "preset"],
+    ["review", "preset"],
+    ["bug", undefined],
+  ]);
+  assert.deepEqual((await pi.complete("my-repo,r")).map((i: any) => i.value), ["my-repo,review"]);
+  assert.deepEqual((await pi.complete("i")).map((i: any) => i.value), ["infra"]);
+});
+
+test("presetTags: normalized, deduplicated, invalid items reported", () => {
+  assert.deepEqual(presetTags(undefined), { tags: [], invalid: [] });
+  assert.deepEqual(presetTags({ tags: { presets: "a" } }), { tags: [], invalid: [] });
+  assert.deepEqual(presetTags({ tags: { presets: [" A ", "a", "b", "", "x y", null] } }), { tags: ["a", "b"], invalid: ['"x y"', "null"] });
 });
 
 test("without a UI (json mode) the footer is left alone; RPC gets a status", async () => {

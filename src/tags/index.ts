@@ -8,6 +8,7 @@ import {
   currentTags,
   defaultTag,
   parseTags,
+  presetTags,
   sessionFileTagEntries,
   TAGS_ENTRY_VERSION,
   TAGS_FLAG,
@@ -34,7 +35,8 @@ const same = (a: string[] | undefined, b: string[]) => a !== undefined && a.leng
  *   cwd as its tag (`defaultTag`). `/tags --clear` removes it for good (an empty list is a tag
  *   entry, so the default is not applied again).
  * - `/tags` shows them, `/tags a,b` replaces them, `/tags --clear` clears them; completion
- *   offers tags used before in this session folder.
+ *   offers the cwd's default tag and the `tags.presets` setting first, then tags used before in
+ *   this session folder.
  * - The footer shows the current tags left of the cwd, dimmed like the rest of the footer.
  *
  * An entry is only written when the list changes. An invalid `--tags` is an error entry and
@@ -48,6 +50,8 @@ export default function sessionTags(pi: ExtensionAPI) {
   let known: Promise<string[]> | undefined;
   /** Tags used in this session (every entry, not just the last). */
   let ownHistory: string[] = [];
+  /** Offered first by completion: the cwd's default tag, then `tags.presets` (settings.json). */
+  let suggested: Array<{ tag: string; description: string }> = [];
 
   pi.registerFlag(TAGS_FLAG, {
     type: "string",
@@ -81,6 +85,16 @@ export default function sessionTags(pi: ExtensionAPI) {
     sessionDir = ctx.sessionManager.getSessionDir();
     currentFile = ctx.sessionManager.getSessionFile();
     known = undefined;
+    // Read here, so a settings change applies after /reload.
+    const presets = presetTags(pi.getSettings());
+    if (presets.invalid.length && ctx.hasUI) {
+      ctx.ui.notify(`[tags] tags.presets: ignored invalid tag${presets.invalid.length > 1 ? "s" : ""} ${presets.invalid.join(", ")}`, "warning");
+    }
+    const cwdTag = defaultTag(ctx.cwd);
+    suggested = [
+      ...(cwdTag ? [{ tag: cwdTag, description: "cwd" }] : []),
+      ...presets.tags.filter((t) => t !== cwdTag).map((tag) => ({ tag, description: "preset" })),
+    ];
     const flag = pi.getFlag(TAGS_FLAG);
     if (event.reason === "startup" && typeof flag === "string") {
       try {
@@ -125,10 +139,16 @@ export default function sessionTags(pi: ExtensionAPI) {
       }
       known ??= scan();
       const typed = head.split(",").map((t) => t.trim().toLowerCase());
-      const candidates = [...new Set([...ownHistory, ...(await known)])]
-        .filter((t) => t.startsWith(word) && !typed.includes(t))
+      const fits = (t: string) => t.startsWith(word) && !typed.includes(t);
+      const first = suggested.filter((s) => fits(s.tag));
+      const rest = [...new Set([...ownHistory, ...(await known)])]
+        .filter((t) => fits(t) && !suggested.some((s) => s.tag === t))
         .sort();
-      return candidates.length ? candidates.map((t) => ({ value: head + t, label: t })) : null;
+      const items = [
+        ...first.map((s) => ({ value: head + s.tag, label: s.tag, description: s.description })),
+        ...rest.map((t) => ({ value: head + t, label: t })),
+      ];
+      return items.length ? items : null;
     },
     handler: async (args, ctx) => {
       const text = args.trim();
