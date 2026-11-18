@@ -63,28 +63,54 @@ export function normalizeTags(tags: Iterable<string>): string[] {
   return out;
 }
 
+/** A group of preset tags; `name` is undefined for the plain-list form. */
+export interface PresetGroup {
+  name?: string;
+  tags: string[];
+}
+
 /**
  * `tags.presets` from pi's merged settings (`pi.getSettings()`): frequently used tags that
- * `/tags` completion always offers. Normalized, in the order given; items that are not valid
- * tags are left out and returned in `invalid` (a missing or malformed setting is no presets).
+ * `/tags` completion always offers. Either a plain list (one unnamed group) or an object of
+ * named groups, `{ "work": ["bug", "feature"], "ops": ["deployment"] }`, in the order given;
+ * groups are for display only. Keys starting with `_` are skipped (room for notes, since
+ * settings.json has no comments). Tags are normalized; a tag already in an earlier group is left
+ * out; invalid items and groups that are not lists are returned in `invalid`. A missing or
+ * malformed setting is no presets; empty groups are dropped.
  */
-export function presetTags(settings: unknown): { tags: string[]; invalid: string[] } {
+export function presetTags(settings: unknown): { groups: PresetGroup[]; invalid: string[] } {
   const presets = (settings as { tags?: { presets?: unknown } } | undefined)?.tags?.presets;
-  const tags: string[] = [];
+  const groups: PresetGroup[] = [];
   const invalid: string[] = [];
-  if (!Array.isArray(presets)) return { tags, invalid };
-  for (const item of presets) {
-    if (typeof item !== "string") {
-      invalid.push(JSON.stringify(item));
-      continue;
+  const seen = new Set<string>();
+  const group = (name: string | undefined, items: unknown[]) => {
+    const tags: string[] = [];
+    for (const item of items) {
+      if (typeof item !== "string") {
+        invalid.push(JSON.stringify(item));
+        continue;
+      }
+      try {
+        for (const t of normalizeTags([item])) {
+          if (!seen.has(t)) tags.push(t);
+          seen.add(t);
+        }
+      } catch {
+        invalid.push(JSON.stringify(item.trim()));
+      }
     }
-    try {
-      for (const t of normalizeTags([item])) if (!tags.includes(t)) tags.push(t);
-    } catch {
-      invalid.push(JSON.stringify(item.trim()));
+    if (tags.length) groups.push(name === undefined ? { tags } : { name, tags });
+  };
+  if (Array.isArray(presets)) {
+    group(undefined, presets);
+  } else if (presets !== null && typeof presets === "object") {
+    for (const [name, items] of Object.entries(presets)) {
+      if (name.startsWith("_")) continue;
+      if (!Array.isArray(items)) invalid.push(`group ${JSON.stringify(name)} (not a list)`);
+      else group(name.trim() || undefined, items);
     }
   }
-  return { tags, invalid };
+  return { groups, invalid };
 }
 
 /** A comma-separated list (`--tags`, `/tags`), normalized. */

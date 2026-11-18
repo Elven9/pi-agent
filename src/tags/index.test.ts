@@ -23,6 +23,7 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
   const notices: Array<[string, string]> = [];
   const status = new Map<string, string | undefined>();
   let footer: any;
+  let editorFactory: any;
   let footerCalls = 0;
   let shutdown = false;
   const pi = {
@@ -56,6 +57,8 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
     ui: {
       notify: (message: string, level: string) => void notices.push([message, level]),
       setStatus: (key: string, text: string | undefined) => void status.set(key, text),
+      getEditorComponent: () => editorFactory,
+      setEditorComponent: (factory: any) => void (editorFactory = factory),
       setFooter: (factory: any) => {
         footerCalls++;
         footer = factory;
@@ -69,6 +72,9 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
     status,
     get footer() {
       return footer;
+    },
+    get editorFactory() {
+      return editorFactory;
     },
     get footerCalls() {
       return footerCalls;
@@ -197,34 +203,57 @@ test("completion: tags used before in this session and the folder's other sessio
   assert.deepEqual((await pi.complete("")).map((i: any) => i.value), ["w", "bug", "regression", "release", "ui"]);
   assert.deepEqual((await pi.complete("re")).map((i: any) => i.value), ["regression", "release"]);
   assert.deepEqual((await pi.complete("bug, R")).map((i: any) => i.value), ["bug,regression", "bug,release"]);
-  assert.deepEqual((await pi.complete("ui,")).map((i: any) => i.label), ["w", "bug", "regression", "release"]);
+  assert.deepEqual((await pi.complete("ui,")).map((i: any) => i.label), ["cwd  └ w", "used ├ bug", "     ├ regression", "     └ release"]);
   assert.deepEqual((await pi.complete("--c")).map((i: any) => i.value), ["--clear"]);
   assert.equal(await pi.complete("zzz"), null);
 });
 
-test("completion: cwd tag and tags.presets first, in order, then history; invalid presets warned", async () => {
+test("completion: a tree of the cwd tag, preset groups, then tags used before; invalid presets warned", async () => {
   const pi = fakePi({
     cwd: "/home/me/My Repo",
-    entries: [tagEntry(["bug", "infra"])],
-    settings: { tags: { presets: ["Infra", "review", "my-repo", "not ok", 3] } },
+    entries: [tagEntry(["bug", "infra", "zz"])],
+    settings: { tags: { presets: { _comment: "notes", work: ["Bug", "review", "my-repo"], ops: ["infra", "not ok", 3], bad: "x" } } },
   });
   await pi.start("resume");
-  assert.deepEqual(pi.notices.at(-1), ['[tags] tags.presets: ignored invalid tags "not ok", 3', "warning"]);
-  const all = await pi.complete("");
-  assert.deepEqual(all.map((i: any) => [i.value, i.description]), [
-    ["my-repo", "cwd"],
-    ["infra", "preset"],
-    ["review", "preset"],
-    ["bug", undefined],
+  assert.deepEqual(pi.notices.at(-1), ['[tags] tags.presets: ignored invalid tags "not ok", 3, group "bad" (not a list)', "warning"]);
+  assert.deepEqual((await pi.complete("")).map((i: any) => [i.value, i.label]), [
+    ["my-repo", "cwd  └ my-repo"],
+    ["bug", "work ├ bug"],
+    ["review", "     └ review"],
+    ["infra", "ops  └ infra"],
+    ["zz", "used └ zz"],
   ]);
-  assert.deepEqual((await pi.complete("my-repo,r")).map((i: any) => i.value), ["my-repo,review"]);
-  assert.deepEqual((await pi.complete("i")).map((i: any) => i.value), ["infra"]);
+  // Filtering looks at every group's tags, not the group names.
+  assert.deepEqual((await pi.complete("my-repo,r")).map((i: any) => [i.value, i.label]), [["my-repo,review", "work └ review"]]);
+  assert.deepEqual((await pi.complete("ops")), null);
 });
 
-test("presetTags: normalized, deduplicated, invalid items reported", () => {
-  assert.deepEqual(presetTags(undefined), { tags: [], invalid: [] });
-  assert.deepEqual(presetTags({ tags: { presets: "a" } }), { tags: [], invalid: [] });
-  assert.deepEqual(presetTags({ tags: { presets: [" A ", "a", "b", "", "x y", null] } }), { tags: ["a", "b"], invalid: ['"x y"', "null"] });
+test("completion: a plain presets list is the 'presets' section", async () => {
+  const pi = fakePi({ settings: { tags: { presets: ["a", "b"] } } });
+  await pi.start("resume");
+  assert.deepEqual((await pi.complete("")).map((i: any) => i.label), ["cwd     └ w", "presets ├ a", "        └ b"]);
+});
+
+test("presetTags: list or named groups, normalized, deduplicated across groups, invalid items reported", () => {
+  assert.deepEqual(presetTags(undefined), { groups: [], invalid: [] });
+  assert.deepEqual(presetTags({ tags: { presets: "a" } }), { groups: [], invalid: [] });
+  assert.deepEqual(presetTags({ tags: { presets: [" A ", "a", "b", "", "x y", null] } }), { groups: [{ tags: ["a", "b"] }], invalid: ['"x y"', "null"] });
+  assert.deepEqual(presetTags({ tags: { presets: { g1: ["a"], _note: "x", g2: ["A", "b"], empty: [], " ": ["c"] } } }), {
+    groups: [{ name: "g1", tags: ["a"] }, { name: "g2", tags: ["b"] }, { tags: ["c"] }],
+    invalid: [],
+  });
+});
+
+test("the comma trigger wraps the editor once, in the TUI only", async () => {
+  const pi = fakePi();
+  await pi.start();
+  const factory = pi.editorFactory;
+  assert.equal(typeof factory, "function");
+  await pi.start("new");
+  assert.equal(pi.editorFactory, factory); // not wrapped again
+  const json = fakePi({ mode: "json" });
+  await json.start();
+  assert.equal(json.editorFactory, undefined);
 });
 
 test("without a UI (json mode) the footer is left alone; RPC gets a status", async () => {

@@ -15,6 +15,8 @@ import {
   tagHistory,
   type TagsEntry,
 } from "../shared/tags.ts";
+import { type Section, treeItems } from "./completion.ts";
+import { installCommaTrigger } from "./editor.ts";
 
 /** Status key, outside the TUI (RPC); the TUI shows the tags in the footer's cwd line. */
 const STATUS = "tags";
@@ -35,8 +37,8 @@ const same = (a: string[] | undefined, b: string[]) => a !== undefined && a.leng
  *   cwd as its tag (`defaultTag`). `/tags --clear` removes it for good (an empty list is a tag
  *   entry, so the default is not applied again).
  * - `/tags` shows them, `/tags a,b` replaces them, `/tags --clear` clears them; completion
- *   offers the cwd's default tag and the `tags.presets` setting first, then tags used before in
- *   this session folder.
+ *   shows a small tree: the cwd's default tag, the `tags.presets` setting (a list, or named
+ *   groups for display), then tags used before in this session folder. A comma opens it again.
  * - The footer shows the current tags left of the cwd, dimmed like the rest of the footer.
  *
  * An entry is only written when the list changes. An invalid `--tags` is an error entry and
@@ -51,7 +53,7 @@ export default function sessionTags(pi: ExtensionAPI) {
   /** Tags used in this session (every entry, not just the last). */
   let ownHistory: string[] = [];
   /** Offered first by completion: the cwd's default tag, then `tags.presets` (settings.json). */
-  let suggested: Array<{ tag: string; description: string }> = [];
+  let suggested: Section[] = [];
 
   pi.registerFlag(TAGS_FLAG, {
     type: "string",
@@ -92,9 +94,10 @@ export default function sessionTags(pi: ExtensionAPI) {
     }
     const cwdTag = defaultTag(ctx.cwd);
     suggested = [
-      ...(cwdTag ? [{ tag: cwdTag, description: "cwd" }] : []),
-      ...presets.tags.filter((t) => t !== cwdTag).map((tag) => ({ tag, description: "preset" })),
+      ...(cwdTag ? [{ name: "cwd", tags: [cwdTag] }] : []),
+      ...presets.groups.map((g) => ({ name: g.name ?? "presets", tags: g.tags })),
     ];
+    installCommaTrigger(ctx);
     const flag = pi.getFlag(TAGS_FLAG);
     if (event.reason === "startup" && typeof flag === "string") {
       try {
@@ -140,14 +143,8 @@ export default function sessionTags(pi: ExtensionAPI) {
       known ??= scan();
       const typed = head.split(",").map((t) => t.trim().toLowerCase());
       const fits = (t: string) => t.startsWith(word) && !typed.includes(t);
-      const first = suggested.filter((s) => fits(s.tag));
-      const rest = [...new Set([...ownHistory, ...(await known)])]
-        .filter((t) => fits(t) && !suggested.some((s) => s.tag === t))
-        .sort();
-      const items = [
-        ...first.map((s) => ({ value: head + s.tag, label: s.tag, description: s.description })),
-        ...rest.map((t) => ({ value: head + t, label: t })),
-      ];
+      const used = [...new Set([...ownHistory, ...(await known)])].sort();
+      const items = treeItems([...suggested, { name: "used", tags: used }], head, fits);
       return items.length ? items : null;
     },
     handler: async (args, ctx) => {

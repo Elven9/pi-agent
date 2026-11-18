@@ -136,14 +136,32 @@ pi --tags bug,ui            # at startup (also with -c / --session): replaces th
   become `-`). `/tags --clear` removes it for good.
 
 - `/tags` shows the tags, `/tags a,b` replaces them, `/tags --clear` clears them. Completion
-  offers, first, the cwd's default tag (as above) and the frequently used tags of
-  `tags.presets` in `settings.json` (global or project; in the order given), then tags used
-  before in this session and the other sessions in its folder. Presets are read at session
-  start (`/reload` applies a change); invalid ones are skipped with a warning.
+  is a small tree: the cwd's default tag (as above), the frequently used tags of `tags.presets`
+  in `settings.json` (global or project), then tags used before in this session and the other
+  sessions in its folder (`used`). Typing filters the tags of every section alike (not the
+  section names); a tag shows once, in its first section. Typing `,` opens the menu again for
+  the next tag.
+
+  ```
+  /tags my-repo,
+  → work ├ bug
+         └ review
+    ops  └ deployment
+    used └ release
+  ```
+
+  `tags.presets` is a list (one `presets` section) or named groups, shown in the order given;
+  groups are for display only. Keys starting with `_` are skipped, so they can hold notes
+  (settings.json has no comments). Read at session start (`/reload` applies a change); invalid
+  tags are skipped with a warning. pi merges an object setting key by key, so project groups add
+  to the global ones (a group with the same name replaces it); a list replaces the global value.
 
   ```json
-  { "tags": { "presets": ["bug", "feature", "review"] } }
+  { "tags": { "presets": { "_comment": "groups are for display", "work": ["bug", "review"], "ops": ["deployment"] } } }
   ```
+
+  The comma trigger wraps pi's editor (or a custom one another extension set) in the TUI and
+  uses a private pi-tui editor method; without it, the menu opens on the next letter as before.
 - The footer shows the current tags left of the cwd (`[bug,ui] ~/repo (main)`), in the footer's
   own dim color. It is pi's footer with that prefix, installed only while there are tags (a
   virtual model's routed target is not shown then).
