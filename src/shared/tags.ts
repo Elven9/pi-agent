@@ -73,8 +73,7 @@ export interface PresetGroup {
  * `tags.presets` from pi's merged settings (`pi.getSettings()`): frequently used tags that
  * `/tags` completion always offers. Either a plain list (one unnamed group) or an object of
  * named groups, `{ "work": ["bug", "feature"], "ops": ["deployment"] }`, in the order given;
- * groups are for display only. Keys starting with `_` are skipped (room for notes, since
- * settings.json has no comments). Tags are normalized; a tag already in an earlier group is left
+ * groups are for display only. Tags are normalized; a tag already in an earlier group is left
  * out; invalid items and groups that are not lists are returned in `invalid`. A missing or
  * malformed setting is no presets; empty groups are dropped.
  */
@@ -105,7 +104,6 @@ export function presetTags(settings: unknown): { groups: PresetGroup[]; invalid:
     group(undefined, presets);
   } else if (presets !== null && typeof presets === "object") {
     for (const [name, items] of Object.entries(presets)) {
-      if (name.startsWith("_")) continue;
       if (!Array.isArray(items)) invalid.push(`group ${JSON.stringify(name)} (not a list)`);
       else group(name.trim() || undefined, items);
     }

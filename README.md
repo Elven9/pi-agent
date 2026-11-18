@@ -151,13 +151,12 @@ pi --tags bug,ui            # at startup (also with -c / --session): replaces th
   ```
 
   `tags.presets` is a list (one `presets` section) or named groups, shown in the order given;
-  groups are for display only. Keys starting with `_` are skipped, so they can hold notes
-  (settings.json has no comments). Read at session start (`/reload` applies a change); invalid
+  groups are for display only. Read at session start (`/reload` applies a change); invalid
   tags are skipped with a warning. pi merges an object setting key by key, so project groups add
   to the global ones (a group with the same name replaces it); a list replaces the global value.
 
   ```json
-  { "tags": { "presets": { "_comment": "groups are for display", "work": ["bug", "review"], "ops": ["deployment"] } } }
+  { "tags": { "presets": { "work": ["bug", "review"], "ops": ["deployment"] } } }
   ```
 
   The comma trigger wraps pi's editor (or a custom one another extension set) in the TUI and

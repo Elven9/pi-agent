@@ -212,7 +212,7 @@ test("completion: a tree of the cwd tag, preset groups, then tags used before; i
   const pi = fakePi({
     cwd: "/home/me/My Repo",
     entries: [tagEntry(["bug", "infra", "zz"])],
-    settings: { tags: { presets: { _comment: "notes", work: ["Bug", "review", "my-repo"], ops: ["infra", "not ok", 3], bad: "x" } } },
+    settings: { tags: { presets: { work: ["Bug", "review", "my-repo"], ops: ["infra", "not ok", 3], bad: "x" } } },
   });
   await pi.start("resume");
   assert.deepEqual(pi.notices.at(-1), ['[tags] tags.presets: ignored invalid tags "not ok", 3, group "bad" (not a list)', "warning"]);
@@ -238,7 +238,7 @@ test("presetTags: list or named groups, normalized, deduplicated across groups, 
   assert.deepEqual(presetTags(undefined), { groups: [], invalid: [] });
   assert.deepEqual(presetTags({ tags: { presets: "a" } }), { groups: [], invalid: [] });
   assert.deepEqual(presetTags({ tags: { presets: [" A ", "a", "b", "", "x y", null] } }), { groups: [{ tags: ["a", "b"] }], invalid: ['"x y"', "null"] });
-  assert.deepEqual(presetTags({ tags: { presets: { g1: ["a"], _note: "x", g2: ["A", "b"], empty: [], " ": ["c"] } } }), {
+  assert.deepEqual(presetTags({ tags: { presets: { g1: ["a"], g2: ["A", "b"], empty: [], " ": ["c"] } } }), {
     groups: [{ name: "g1", tags: ["a"] }, { name: "g2", tags: ["b"] }, { tags: ["c"] }],
     invalid: [],
   });
