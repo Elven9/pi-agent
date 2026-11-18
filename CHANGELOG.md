@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.14.0](https://github.com/Elven9/pi-agent/compare/v0.13.0...v0.14.0) (2026-11-18)
+
+
+### Features
+
+* **subagent:** allow spawning a general subagent without a scenario ([583b84c](https://github.com/Elven9/pi-agent/commit/583b84c24e11bb0209836728a7c166953ceec030))
+* **subagent:** choose a model and thinking level per subagent ([b43924c](https://github.com/Elven9/pi-agent/commit/b43924cbc5d47cdc211c4ac382f113dda38ae191))
+* **subagent:** show task and summary as section headers in the /agent panel ([148155f](https://github.com/Elven9/pi-agent/commit/148155feb12eb66033ff283470a7fe5d59ca454f))
+* **tags:** group presets in a completion tree and reopen completion on comma ([18bbcd9](https://github.com/Elven9/pi-agent/commit/18bbcd9b1edbc3b04b363ebaddd3952f8d3dbc4a))
+* **tags:** offer cwd tag and tags.presets setting in /tags completion ([2ab52d9](https://github.com/Elven9/pi-agent/commit/2ab52d9f4e40b42838454f12b82a0648129f9fdd))
+
 ## [0.13.0](https://github.com/Elven9/pi-agent/compare/v0.12.0...v0.13.0) (2026-11-17)
 
 
