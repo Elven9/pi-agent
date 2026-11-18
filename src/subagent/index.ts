@@ -35,6 +35,8 @@ import {
   type StartedBy,
   SUBAGENT_COMMAND_ENV,
   SUBAGENT_ENV,
+  THINKING_LEVELS,
+  type ThinkingLevel,
   TOOL,
   UI_KEY,
 } from "./protocol.ts";
@@ -88,20 +90,46 @@ export function childCommand(env: NodeJS.ProcessEnv = process.env, argv: readonl
   return argv[1] ? [process.execPath, argv[1]] : ["pi"];
 }
 
-/** CLI arguments of a child: RPC mode, the scenario, project, the leader's model, its session folder. */
-export function childArgs(start: StartRecord, model: { provider: string; id: string } | undefined, leaderSessionFile: string | undefined): string[] {
+/**
+ * CLI arguments of a child: RPC mode, the scenario, project, its model and thinking level
+ * (recorded, else the leader's current ones), its session folder.
+ */
+export function childArgs(
+  start: StartRecord,
+  leader: { model?: { provider: string; id: string }; thinking?: ThinkingLevel },
+  leaderSessionFile: string | undefined,
+): string[] {
   const args = ["--mode", "rpc", ...(start.scenario !== undefined ? ["--scenario", start.scenario] : []), "--name", `subagent ${agentId(start.id)} (${scenarioLabel(start.scenario)})`];
   if (start.project) args.push("--project", start.project);
-  if (model) args.push("--model", `${model.provider}/${model.id}`);
+  const model = start.model ?? (leader.model && modelName(leader.model));
+  if (model) args.push("--model", model);
+  const thinking = start.thinking ?? leader.thinking;
+  if (thinking) args.push("--thinking", thinking);
   // Child sessions next to the leader's, in their own folder (kept out of the leader's /resume list).
   if (leaderSessionFile) args.push("--session-dir", join(dirname(leaderSessionFile), "subagents"));
   else args.push("--no-session");
   return args;
 }
 
+const modelName = (m: { provider: string; id: string }): string => `${m.provider}/${m.id}`;
+
+/** Most models listed in an unknown-model error. */
+const MODELS_LISTED = 40;
+
+/**
+ * Checks a spawn's `model`: an exact `provider/id` of a model with credentials (`available`).
+ * Throws with the available models listed.
+ */
+export function checkModel(name: string, available: readonly { provider: string; id: string }[]): string {
+  const names = [...new Set(available.map(modelName))];
+  if (names.includes(name)) return name;
+  const listed = names.slice(0, MODELS_LISTED).join(", ") + (names.length > MODELS_LISTED ? `, … (${names.length - MODELS_LISTED} more)` : "");
+  throw new Error(`Unknown or unavailable model "${name}": give an exact provider/id of a model with credentials. Available: ${listed || "none"}`);
+}
+
 function defaultStartChild(start: StartRecord, ctx: ExtensionContext): ChildHandle {
   const [command, ...prefix] = childCommand();
-  const args = [...prefix, ...childArgs(start, ctx.model, ctx.sessionManager.getSessionFile())];
+  const args = [...prefix, ...childArgs(start, { model: ctx.model, thinking: ctx.thinkingLevel }, ctx.sessionManager.getSessionFile())];
   // In the leader's entered worktree, if any (the worktree extension keeps ctx.cwd unchanged).
   const cwd = enteredWorktree(ctx.sessionManager.getBranch() as unknown as EntryLike[]) ?? ctx.cwd;
   return new RpcChild(command!, args, { cwd, env: { ...process.env, [SUBAGENT_ENV]: "1" } });
@@ -194,17 +222,22 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
   /** Records and starts a child. */
   const spawn = (
     c: ExtensionContext,
-    spec: { scenario?: string; task: string; project?: string; restartOf?: number },
+    spec: { scenario?: string; task: string; project?: string; model?: string; thinking?: ThinkingLevel; restartOf?: number },
     startedBy: StartedBy,
   ): number => {
     ctx = c;
     const id = nextId++;
+    // The leader's unless chosen; recorded so a restart runs the same even after the leader switched.
+    const model = spec.model ?? (c.model ? modelName(c.model) : undefined);
+    const thinking = spec.thinking ?? c.thinkingLevel;
     const start: StartRecord = {
       id,
       ...(spec.scenario !== undefined && { scenario: spec.scenario }),
       kind: "task",
       task: spec.task,
       ...(spec.project && { project: spec.project }),
+      ...(model && { model }),
+      ...(thinking && { thinking }),
       startedAt: now(),
       ...(spec.restartOf !== undefined && { restartOf: spec.restartOf }),
       ...(startedBy === "user" && { startedBy }),
@@ -231,7 +264,18 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     const recorded = index(c).get(id);
     if (!recorded) throw new Error(`${agentId(id)}: no such subagent on this branch`);
     const s = recorded.start;
-    const next = spawn(c, { ...(s.scenario !== undefined && { scenario: s.scenario }), task: s.task, ...(s.project && { project: s.project }), restartOf: id }, by);
+    const next = spawn(
+      c,
+      {
+        ...(s.scenario !== undefined && { scenario: s.scenario }),
+        task: s.task,
+        ...(s.project && { project: s.project }),
+        ...(s.model && { model: s.model }),
+        ...(s.thinking && { thinking: s.thinking }),
+        restartOf: id,
+      },
+      by,
+    );
     return `Restarted ${agentId(id)} as ${agentId(next)} (${scenarioLabel(s.scenario)}).`;
   };
 
@@ -310,7 +354,8 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
       "Start a subagent: a separate pi agent that runs one task in the background, with a scenario's prompt and tools, " +
       "or without a scenario as a general pi agent (pi's own prompt, tools and docs). " +
       "Returns its ID (a3) at once; its result arrives later as a `[subagent a3]` message that starts a new turn. " +
-      `Scenarios: ${names.join(", ")}.`,
+      `Scenarios: ${names.join(", ")}. ` +
+      "Runs on your model and thinking level unless `model` (exact provider/id) or `thinking` is given.",
     promptGuidelines: [
       `Use \`${TOOL.spawn}\` to delegate self-contained tasks that can run in parallel with your own work. Give the task everything it needs: the subagent cannot ask you questions.`,
       `Subagent results arrive by themselves as \`[subagent aN]\` messages; do not poll or wait for them. Look results up again with \`${TOOL.get}\` / \`${TOOL.grep}\`.`,
@@ -321,12 +366,33 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
       ),
       task: Type.String({ description: "The complete task: goal, context, constraints, what to report" }),
       project: Type.Optional(Type.String({ description: "Project folder (--project) for the subagent" })),
+      model: Type.Optional(
+        Type.String({ description: "Exact provider/id of the model to run on, e.g. anthropic/claude-sonnet-4-5; default: your own model" }),
+      ),
+      thinking: Type.Optional(
+        Type.Unsafe<ThinkingLevel>({
+          type: "string",
+          enum: [...THINKING_LEVELS],
+          description: "Thinking level (default: your own); clamped to what the model supports",
+        }),
+      ),
     }),
-    async execute(_id, params: { scenario?: string; task: string; project?: string }, _signal, _update, c) {
+    async execute(
+      _id,
+      params: { scenario?: string; task: string; project?: string; model?: string; thinking?: ThinkingLevel },
+      _signal,
+      _update,
+      c,
+    ) {
       if (params.scenario !== undefined && !names.includes(params.scenario)) throw new Error(`Unknown scenario "${params.scenario}". Scenarios: ${names.join(", ")}`);
+      if (params.thinking !== undefined && !THINKING_LEVELS.includes(params.thinking)) {
+        throw new Error(`Unknown thinking level "${params.thinking}". Levels: ${THINKING_LEVELS.join(", ")}`);
+      }
+      // Models with credentials, and the leader's own (it runs, also when not listed there).
+      if (params.model !== undefined) checkModel(params.model, [...(c.model ? [c.model] : []), ...c.modelRegistry.getAvailable()]);
       const id = spawn(c, params, "model");
       return text(
-        `Started subagent ${agentId(id)} (${scenarioLabel(params.scenario)}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; ` +
+        `Started subagent ${agentId(id)} (${scenarioLabel(params.scenario)}${params.model ? `, ${params.model}` : ""}${params.thinking ? `, thinking ${params.thinking}` : ""}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; ` +
           "do not wait or poll: continue with other work or end your turn.",
       );
     },

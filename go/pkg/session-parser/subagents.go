@@ -32,6 +32,10 @@ type Subagent struct {
 	Kind    string
 	Task    string
 	Project *string
+	// Model is the provider/id the subagent ran on; nil in records from before it was recorded.
+	Model *string
+	// Thinking is its thinking level (off … max); nil in records from before it was recorded.
+	Thinking *string
 	// RestartOf is the agent this one restarts, e.g. "a2".
 	RestartOf *string
 	// StartedBy is "model" or "user" (records from before it was recorded: "model").
@@ -120,6 +124,8 @@ func addStart(agents []Subagent, index map[string]int, e Entry) ([]Subagent, err
 		Kind          string  `json:"kind"`
 		Task          *string `json:"task"`
 		Project       *string `json:"project"`
+		Model         *string `json:"model"`
+		Thinking      *string `json:"thinking"`
 		StartedAt     *int64  `json:"startedAt"`
 		RestartOf     *int    `json:"restartOf"`
 		StartedBy     *string `json:"startedBy"`
@@ -150,7 +156,7 @@ func addStart(agents []Subagent, index map[string]int, e Entry) ([]Subagent, err
 		return nil, fmt.Errorf("second start of %s", id)
 	}
 	a := Subagent{
-		ID: id, Scenario: d.Scenario, Kind: d.Kind, Task: *d.Task, Project: d.Project,
+		ID: id, Scenario: d.Scenario, Kind: d.Kind, Task: *d.Task, Project: d.Project, Model: d.Model, Thinking: d.Thinking,
 		StartedBy: startedBy, StartedAt: time.UnixMilli(*d.StartedAt).UTC(), TaskMessageID: d.TaskMessageID, EntryID: e.ID,
 	}
 	if d.RestartOf != nil {

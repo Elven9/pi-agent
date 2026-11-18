@@ -127,6 +127,11 @@ function addSection(t: SectionedText, heading: string, body: readonly string[]):
   t.lines.push(heading, ...body);
 }
 
+/** `model anthropic/x`, `thinking high`: what a child ran on, when recorded. */
+export function modelParts(d: { model?: string; thinking?: string }): string[] {
+  return [...(d.model ? [`model ${d.model}`] : []), ...(d.thinking ? [`thinking ${d.thinking}`] : [])];
+}
+
 /** The full text of a result (lookup tools). */
 export function resultLines(d: ResultDetails): string[] {
   return resultPage(d).lines;
@@ -141,6 +146,7 @@ export function resultPage(d: ResultDetails): SectionedText {
     ...(d.restartOf ? [`restart of ${d.restartOf}`] : []),
     ...(d.startedBy === "user" ? ["started by user"] : []),
     ...(d.project ? [`project ${d.project}`] : []),
+    ...modelParts(d),
   ].join(" · ");
   const t: SectionedText = { lines: [meta], headings: [] };
   addSection(t, "task:", d.task.split("\n"));
@@ -169,6 +175,8 @@ export interface LiveView {
   line: string;
   progress: readonly string[];
   restartOf?: string;
+  model?: string;
+  thinking?: string;
 }
 
 export function liveHeader(c: LiveView, now: number): string {
@@ -200,7 +208,8 @@ export function statusText(children: readonly LiveView[]): string | undefined {
 
 /** The `/agent` panel page of a live child. */
 export function livePage(c: LiveView, now: number): SectionedText {
-  const t: SectionedText = { lines: [liveHeader(c, now), ...(c.restartOf ? [`restart of ${c.restartOf}`] : [])], headings: [] };
+  const meta = [...(c.restartOf ? [`restart of ${c.restartOf}`] : []), ...modelParts(c)].join(" · ");
+  const t: SectionedText = { lines: [liveHeader(c, now), ...(meta ? [meta] : [])], headings: [] };
   addSection(t, "task:", c.task.split("\n"));
   addSection(t, "progress:", c.progress.length === 0 ? [`  ${c.line}`] : c.progress.map((p) => `  ${p}`));
   t.lines.push("", "x: kill");

@@ -100,6 +100,8 @@ export function baseDetails(start: StartRecord): Omit<ResultDetails, "endedAt" |
     kind: "task",
     task: start.task,
     ...(start.project !== undefined && { project: start.project }),
+    ...(start.model !== undefined && { model: start.model }),
+    ...(start.thinking !== undefined && { thinking: start.thinking }),
     ...(start.restartOf !== undefined && { restartOf: agentId(start.restartOf) }),
     ...(start.startedBy === "user" && { startedBy: "user" as const }),
     startedAt: start.startedAt,

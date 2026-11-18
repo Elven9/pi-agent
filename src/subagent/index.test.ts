@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { makeSession as makeHarnessSession, type TestSessionOptions } from "../tool-ref/test-harness.ts";
-import subagent, { childArgs, childCommand } from "./index.ts";
+import subagent, { checkModel, childArgs, childCommand } from "./index.ts";
 import { ENTRY, SUBAGENT_COMMAND_ENV, type ResultDetails, type StartRecord } from "./protocol.ts";
 import { FakeChild } from "./test-child.ts";
 
@@ -270,18 +270,56 @@ test("session end: children are stopped, results go to subagent-end entries, the
   next.session.dispose();
 });
 
+test("checkModel: exact provider/id of an available model, else an error listing them", () => {
+  const available = [{ provider: "anthropic", id: "claude-x" }, { provider: "openai", id: "gpt-x" }];
+  assert.equal(checkModel("openai/gpt-x", available), "openai/gpt-x");
+  assert.throws(() => checkModel("gpt-x", available), /Unknown or unavailable model "gpt-x".*Available: anthropic\/claude-x, openai\/gpt-x/);
+  assert.throws(() => checkModel("x/y", []), /Available: none/);
+});
+
+test("spawn with model and thinking: recorded, defaults to the leader's; restart keeps them", async () => {
+  const { session, faux, sessionManager, children, starts } = await makeSession();
+  const leader = `${session.model!.provider}/${session.model!.id}`;
+  // The faux model has no reasoning: the leader runs with thinking off.
+  assert.equal(session.thinkingLevel, "off");
+  faux.setResponses([
+    call("subagent_spawn", { task: "a", model: leader, thinking: "high" }, "s1"),
+    call("subagent_spawn", { task: "b" }, "s2"),
+    call("subagent_spawn", { task: "c", model: "nope/none" }, "s3"),
+    fauxAssistantMessage(fauxText("ok")),
+  ]);
+  await session.prompt("go");
+  assert.deepEqual(starts.map((s) => [s.model, s.thinking]), [[leader, "high"], [leader, "off"]]);
+  const results = sessionManager.getBranch().filter((e: any) => e.type === "message" && e.message.role === "toolResult") as any[];
+  assert.match(results[0].message.content[0].text, /Started subagent a1 \(general, .+, thinking high\)/);
+  assert.match(results[2].message.content[0].text, /Unknown or unavailable model "nope\/none"/);
+
+  faux.setResponses([fauxAssistantMessage(fauxText("noted"))]);
+  children.get(1)!.sendResult("ok", "done");
+  await until(() => faux.getPendingResponseCount() === 0);
+  await session.agent.waitForIdle?.();
+  faux.setResponses([call("subagent_restart", { id: "a1" }, "r1"), fauxAssistantMessage(fauxText("ok"))]);
+  await session.prompt("again");
+  assert.deepEqual([starts[2]!.model, starts[2]!.thinking, starts[2]!.restartOf], [leader, "high", 1]);
+  session.dispose();
+});
+
 test("childCommand and childArgs", () => {
   assert.deepEqual(childCommand({ [SUBAGENT_COMMAND_ENV]: '["node","/x/cli.js"]' }, ["node", "/pi/cli.js"]), ["node", "/x/cli.js"]);
   assert.deepEqual(childCommand({}, ["node", "/pi/cli.js"]), [process.execPath, "/pi/cli.js"]);
   assert.throws(() => childCommand({ [SUBAGENT_COMMAND_ENV]: '"pi"' }), /JSON array/);
   const start: StartRecord = { id: 3, scenario: "debugger", kind: "task", task: "t", project: "/p", startedAt: 0, taskMessageId: "m" };
-  assert.deepEqual(childArgs(start, { provider: "anthropic", id: "claude-x" }, "/sessions/x/leader.jsonl"), [
+  assert.deepEqual(childArgs(start, { model: { provider: "anthropic", id: "claude-x" }, thinking: "low" }, "/sessions/x/leader.jsonl"), [
     "--mode", "rpc", "--scenario", "debugger", "--name", "subagent a3 (debugger)",
-    "--project", "/p", "--model", "anthropic/claude-x", "--session-dir", "/sessions/x/subagents",
+    "--project", "/p", "--model", "anthropic/claude-x", "--thinking", "low", "--session-dir", "/sessions/x/subagents",
   ]);
-  assert.deepEqual(childArgs({ ...start, project: undefined }, undefined, undefined).slice(-1), ["--no-session"]);
+  // A recorded model and thinking level win over the leader's.
+  assert.deepEqual(childArgs({ ...start, model: "openai/gpt-x", thinking: "high" }, { model: { provider: "anthropic", id: "claude-x" }, thinking: "low" }, undefined).slice(-5), [
+    "--model", "openai/gpt-x", "--thinking", "high", "--no-session",
+  ]);
+  assert.deepEqual(childArgs({ ...start, project: undefined }, {}, undefined).slice(-1), ["--no-session"]);
   // Without a scenario: no --scenario, a general pi agent.
-  assert.deepEqual(childArgs({ ...start, scenario: undefined, project: undefined }, undefined, undefined), [
+  assert.deepEqual(childArgs({ ...start, scenario: undefined, project: undefined }, {}, undefined), [
     "--mode", "rpc", "--name", "subagent a3 (general)", "--no-session",
   ]);
 });

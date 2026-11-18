@@ -169,7 +169,7 @@ One envelope for both directions:
 ### Start record
 
 At spawn the leader writes `pi.appendEntry("subagent-start", {...})`: `{ id, scenario, kind,
-task, project?, childSessionFile, startedAt, restartOf? }` (`scenario` missing for a general subagent). Not in the model's context. Used for
+task, project?, model?, thinking?, childSessionFile, startedAt, restartOf? }` (`scenario` missing for a general subagent). Not in the model's context. Used for
 the ID counter, for resume reconciliation and for `aborted` result text.
 
 ### Process group
@@ -373,9 +373,14 @@ Where v1 differs from or adds to the sections above:
   `index.ts` (wiring). Loaded from `dist/subagent.js`: scenarios import `.md` files.
 - **Child command:** the leader's own pi (`process.execPath` + `process.argv[1]`), overridable
   with `PI_AGENT_SUBAGENT_COMMAND` (JSON argv). Args: `--mode rpc [--scenario X] [--project P]
-  --model <leader provider/id> --name "subagent aN (X)"` (X is `general` without a scenario) and `--session-dir <leader dir>/subagents`
+  --model <provider/id> --thinking <level> --name "subagent aN (X)"` (X is `general` without a scenario) and `--session-dir <leader dir>/subagents`
   (`--no-session` when the leader has none). The child's cwd is the leader's entered worktree
   (worktree extension), else the leader's cwd.
+- **Model and thinking:** `subagent_spawn` takes `model` (exact `provider/id` of a model with
+  credentials, `modelRegistry.getAvailable()`, or the leader's own) and `thinking` (`off` … `max`,
+  pi clamps it to the model). Both default to the leader's at spawn and are recorded in the start
+  record, so a restart reuses them even after the leader switched. Records without them: the
+  leader's current ones.
 - **Task prompt:** plain text (task, then how to call `send_to_leader` with the scenario's detail
   schema), not the JSON envelope. The envelope is kept in the result's `details`.
 - **`send_to_leader`:** `{ status: ok|error, summary, detail? }`; `detail` is validated against

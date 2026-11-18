@@ -66,6 +66,10 @@ export interface Envelope<B = unknown> {
   body: B;
 }
 
+/** pi's thinking levels (`--thinking`). */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
 /** Data of a `subagent-start` entry, written at spawn. */
 export interface StartRecord {
   /** Agent number: `a<id>`. */
@@ -75,6 +79,10 @@ export interface StartRecord {
   kind: "task";
   task: string;
   project?: string;
+  /** `provider/id` the child runs on (the leader's at spawn unless chosen). Missing in older records: the leader's current one. */
+  model?: string;
+  /** Thinking level passed with `--thinking` (pi clamps it to the model). The leader's at spawn unless chosen; missing in older records: the leader's current one. */
+  thinking?: ThinkingLevel;
   /** Epoch ms. */
   startedAt: number;
   /** Agent number this one restarts. */
@@ -95,6 +103,9 @@ export interface ResultDetails {
   kind: "task";
   task: string;
   project?: string;
+  /** From the start record (none in older records). */
+  model?: string;
+  thinking?: ThinkingLevel;
   restartOf?: string;
   /** Set when the user started it (older records and model starts: none). */
   startedBy?: StartedBy;

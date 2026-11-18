@@ -360,6 +360,7 @@ var ENTRY2 = {
   userStart: "subagent-user-start"
 };
 var UI_KEY = "subagents";
+var THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 var agentId = (n) => `a${n}`;
 function parseAgentId(text2) {
   const m = /^\s*a?(\d+)\s*$/i.exec(text2);
@@ -541,6 +542,9 @@ function addSection(t, heading, body) {
   t.headings.push(t.lines.length);
   t.lines.push(heading, ...body);
 }
+function modelParts(d) {
+  return [...d.model ? [`model ${d.model}`] : [], ...d.thinking ? [`thinking ${d.thinking}`] : []];
+}
 function resultLines(d) {
   return resultPage(d).lines;
 }
@@ -551,7 +555,8 @@ function resultPage(d) {
     `ended ${new Date(d.endedAt).toISOString()}`,
     ...d.restartOf ? [`restart of ${d.restartOf}`] : [],
     ...d.startedBy === "user" ? ["started by user"] : [],
-    ...d.project ? [`project ${d.project}`] : []
+    ...d.project ? [`project ${d.project}`] : [],
+    ...modelParts(d)
   ].join(" \xB7 ");
   const t = { lines: [meta], headings: [] };
   addSection(t, "task:", d.task.split("\n"));
@@ -589,7 +594,8 @@ function statusText(children) {
   return `\u{1F916} ${[...counts].map(([w, n]) => `${n} ${w}`).join(" \xB7 ")}`;
 }
 function livePage(c, now) {
-  const t = { lines: [liveHeader(c, now), ...c.restartOf ? [`restart of ${c.restartOf}`] : []], headings: [] };
+  const meta = [...c.restartOf ? [`restart of ${c.restartOf}`] : [], ...modelParts(c)].join(" \xB7 ");
+  const t = { lines: [liveHeader(c, now), ...meta ? [meta] : []], headings: [] };
   addSection(t, "task:", c.task.split("\n"));
   addSection(t, "progress:", c.progress.length === 0 ? [`  ${c.line}`] : c.progress.map((p) => `  ${p}`));
   t.lines.push("", "x: kill");
@@ -824,6 +830,8 @@ function baseDetails(start) {
     kind: "task",
     task: start.task,
     ...start.project !== void 0 && { project: start.project },
+    ...start.model !== void 0 && { model: start.model },
+    ...start.thinking !== void 0 && { thinking: start.thinking },
     ...start.restartOf !== void 0 && { restartOf: agentId(start.restartOf) },
     ...start.startedBy === "user" && { startedBy: "user" },
     startedAt: start.startedAt
@@ -864,7 +872,9 @@ var SubagentManager = class {
       startedAt: l.start.startedAt,
       line: l.line,
       progress: l.progress,
-      ...l.start.restartOf !== void 0 && { restartOf: agentId(l.start.restartOf) }
+      ...l.start.restartOf !== void 0 && { restartOf: agentId(l.start.restartOf) },
+      ...l.start.model !== void 0 && { model: l.start.model },
+      ...l.start.thinking !== void 0 && { thinking: l.start.thinking }
     }));
   }
   view(id) {
@@ -1238,17 +1248,28 @@ function childCommand(env = process.env, argv = process.argv) {
   }
   return argv[1] ? [process.execPath, argv[1]] : ["pi"];
 }
-function childArgs(start, model, leaderSessionFile) {
+function childArgs(start, leader, leaderSessionFile) {
   const args = ["--mode", "rpc", ...start.scenario !== void 0 ? ["--scenario", start.scenario] : [], "--name", `subagent ${agentId(start.id)} (${scenarioLabel(start.scenario)})`];
   if (start.project) args.push("--project", start.project);
-  if (model) args.push("--model", `${model.provider}/${model.id}`);
+  const model = start.model ?? (leader.model && modelName(leader.model));
+  if (model) args.push("--model", model);
+  const thinking = start.thinking ?? leader.thinking;
+  if (thinking) args.push("--thinking", thinking);
   if (leaderSessionFile) args.push("--session-dir", join(dirname(leaderSessionFile), "subagents"));
   else args.push("--no-session");
   return args;
 }
+var modelName = (m) => `${m.provider}/${m.id}`;
+var MODELS_LISTED = 40;
+function checkModel(name, available) {
+  const names = [...new Set(available.map(modelName))];
+  if (names.includes(name)) return name;
+  const listed = names.slice(0, MODELS_LISTED).join(", ") + (names.length > MODELS_LISTED ? `, \u2026 (${names.length - MODELS_LISTED} more)` : "");
+  throw new Error(`Unknown or unavailable model "${name}": give an exact provider/id of a model with credentials. Available: ${listed || "none"}`);
+}
 function defaultStartChild(start, ctx) {
   const [command, ...prefix] = childCommand();
-  const args = [...prefix, ...childArgs(start, ctx.model, ctx.sessionManager.getSessionFile())];
+  const args = [...prefix, ...childArgs(start, { model: ctx.model, thinking: ctx.thinkingLevel }, ctx.sessionManager.getSessionFile())];
   const cwd = enteredWorktree(ctx.sessionManager.getBranch()) ?? ctx.cwd;
   return new RpcChild(command, args, { cwd, env: { ...process.env, [SUBAGENT_ENV]: "1" } });
 }
@@ -1321,12 +1342,16 @@ function registerLeader(pi, options) {
   const spawn2 = (c, spec, startedBy) => {
     ctx = c;
     const id = nextId++;
+    const model = spec.model ?? (c.model ? modelName(c.model) : void 0);
+    const thinking = spec.thinking ?? c.thinkingLevel;
     const start = {
       id,
       ...spec.scenario !== void 0 && { scenario: spec.scenario },
       kind: "task",
       task: spec.task,
       ...spec.project && { project: spec.project },
+      ...model && { model },
+      ...thinking && { thinking },
       startedAt: now(),
       ...spec.restartOf !== void 0 && { restartOf: spec.restartOf },
       ...startedBy === "user" && { startedBy },
@@ -1350,7 +1375,18 @@ function registerLeader(pi, options) {
     const recorded = index(c).get(id);
     if (!recorded) throw new Error(`${agentId(id)}: no such subagent on this branch`);
     const s = recorded.start;
-    const next = spawn2(c, { ...s.scenario !== void 0 && { scenario: s.scenario }, task: s.task, ...s.project && { project: s.project }, restartOf: id }, by);
+    const next = spawn2(
+      c,
+      {
+        ...s.scenario !== void 0 && { scenario: s.scenario },
+        task: s.task,
+        ...s.project && { project: s.project },
+        ...s.model && { model: s.model },
+        ...s.thinking && { thinking: s.thinking },
+        restartOf: id
+      },
+      by
+    );
     return `Restarted ${agentId(id)} as ${agentId(next)} (${scenarioLabel(s.scenario)}).`;
   };
   const kill = async (id, by, c) => {
@@ -1409,7 +1445,7 @@ function registerLeader(pi, options) {
   pi.registerTool({
     name: TOOL.spawn,
     label: "Subagent: spawn",
-    description: `Start a subagent: a separate pi agent that runs one task in the background, with a scenario's prompt and tools, or without a scenario as a general pi agent (pi's own prompt, tools and docs). Returns its ID (a3) at once; its result arrives later as a \`[subagent a3]\` message that starts a new turn. Scenarios: ${names.join(", ")}.`,
+    description: `Start a subagent: a separate pi agent that runs one task in the background, with a scenario's prompt and tools, or without a scenario as a general pi agent (pi's own prompt, tools and docs). Returns its ID (a3) at once; its result arrives later as a \`[subagent a3]\` message that starts a new turn. Scenarios: ${names.join(", ")}. Runs on your model and thinking level unless \`model\` (exact provider/id) or \`thinking\` is given.`,
     promptGuidelines: [
       `Use \`${TOOL.spawn}\` to delegate self-contained tasks that can run in parallel with your own work. Give the task everything it needs: the subagent cannot ask you questions.`,
       `Subagent results arrive by themselves as \`[subagent aN]\` messages; do not poll or wait for them. Look results up again with \`${TOOL.get}\` / \`${TOOL.grep}\`.`
@@ -1419,13 +1455,27 @@ function registerLeader(pi, options) {
         Type8.Unsafe({ type: "string", enum: names, description: "Scenario the subagent runs; leave out for a general pi agent" })
       ),
       task: Type8.String({ description: "The complete task: goal, context, constraints, what to report" }),
-      project: Type8.Optional(Type8.String({ description: "Project folder (--project) for the subagent" }))
+      project: Type8.Optional(Type8.String({ description: "Project folder (--project) for the subagent" })),
+      model: Type8.Optional(
+        Type8.String({ description: "Exact provider/id of the model to run on, e.g. anthropic/claude-sonnet-4-5; default: your own model" })
+      ),
+      thinking: Type8.Optional(
+        Type8.Unsafe({
+          type: "string",
+          enum: [...THINKING_LEVELS],
+          description: "Thinking level (default: your own); clamped to what the model supports"
+        })
+      )
     }),
     async execute(_id, params, _signal, _update, c) {
       if (params.scenario !== void 0 && !names.includes(params.scenario)) throw new Error(`Unknown scenario "${params.scenario}". Scenarios: ${names.join(", ")}`);
+      if (params.thinking !== void 0 && !THINKING_LEVELS.includes(params.thinking)) {
+        throw new Error(`Unknown thinking level "${params.thinking}". Levels: ${THINKING_LEVELS.join(", ")}`);
+      }
+      if (params.model !== void 0) checkModel(params.model, [...c.model ? [c.model] : [], ...c.modelRegistry.getAvailable()]);
       const id = spawn2(c, params, "model");
       return text(
-        `Started subagent ${agentId(id)} (${scenarioLabel(params.scenario)}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; do not wait or poll: continue with other work or end your turn.`
+        `Started subagent ${agentId(id)} (${scenarioLabel(params.scenario)}${params.model ? `, ${params.model}` : ""}${params.thinking ? `, thinking ${params.thinking}` : ""}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; do not wait or poll: continue with other work or end your turn.`
       );
     }
   });
@@ -1576,6 +1626,7 @@ function registerLeader(pi, options) {
   });
 }
 export {
+  checkModel,
   childArgs,
   childCommand,
   subagent as default

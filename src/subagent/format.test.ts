@@ -55,6 +55,7 @@ test("resultPage / livePage: section headings by index; resultLines is the same 
   const p = resultPage(d);
   assert.deepEqual(p.headings.map((i) => p.lines[i]), ["task:", "summary:", "detail (review/v1):"]);
   assert.deepEqual(resultLines(d), p.lines);
+  assert.match(resultLines(result(3, {}, { model: "anthropic/claude-x", thinking: "high" }))[0]!, / · model anthropic\/claude-x · thinking high$/);
   const live = livePage({ id: "a1", scenario: "demo", state: "busy", task: "summary:\nx", startedAt: 0, line: "thinking…", progress: [] }, 0);
   assert.deepEqual(live.headings.map((i) => live.lines[i]), ["task:", "progress:"]);
   assert.equal(live.lines.filter((l) => l === "summary:").length, 1, "task text is not a heading");

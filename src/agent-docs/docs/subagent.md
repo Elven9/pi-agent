@@ -10,9 +10,9 @@ A subagent works in the background and reports once; its result lands in the lea
 
 | Tool | Does |
 |---|---|
-| `subagent_spawn(task, scenario?, project?)` | Starts a subagent and returns its ID (`a3`) at once. The task must say everything: a subagent cannot ask questions. |
+| `subagent_spawn(task, scenario?, project?, model?, thinking?)` | Starts a subagent and returns its ID (`a3`) at once. The task must say everything: a subagent cannot ask questions. `model`: exact `provider/id` of a model with credentials (default: the leader's); `thinking`: `off` … `max` (default: the leader's, clamped to the model). |
 | `subagent_kill(id)` | Kills a running subagent; it ends with a `killed` result. |
-| `subagent_restart(id)` | Runs a finished subagent's task again in a fresh subagent (new ID, same scenario, task and project). |
+| `subagent_restart(id)` | Runs a finished subagent's task again in a fresh subagent (new ID, same scenario, task, project, model and thinking level). |
 | `subagent_get(ids, lines?, maxChars?)` | Shows results by ID: task, summary and structured detail, numbered lines. |
 | `subagent_grep(pattern, ids?, context?)` | Finds results by regex, newest first. |
 
@@ -23,7 +23,7 @@ A subagent works in the background and reports once; its result lands in the lea
   `· restart of a2` and `· started by user` when they apply; a subagent the user starts is announced
   with a `[subagent a5] started by user` message. A result that did not
   finish by itself also repeats the task, for `subagent_restart`.
-- A subagent runs with the leader's model, its scenario's prompt and tools (pi's own without a
+- A subagent runs with the model it was given (else the leader's), its scenario's prompt and tools (pi's own without a
   scenario), and only one extra tool: `send_to_leader`. Subagents cannot start subagents.
 
 ## For the user

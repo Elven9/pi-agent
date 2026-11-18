@@ -44,7 +44,7 @@ func TestSubagentsJoinStartsWithTheirResultsOnTheBranch(t *testing.T) {
 	if a3 := agents[2]; a3.RestartOf == nil || *a3.RestartOf != "a2" || a3.StartedBy != "user" || a3.Result != nil {
 		t.Errorf("a3 = %+v", a3)
 	}
-	if a4 := agents[3]; a4.Result != nil || a4.Project != nil {
+	if a4 := agents[3]; a4.Result != nil || a4.Project != nil || a4.Model != nil || a4.Thinking != nil {
 		t.Errorf("a4 = %+v", a4)
 	}
 }
@@ -65,12 +65,13 @@ func TestSubagentsUseAnEndRecordWhenNoResultWasDelivered(t *testing.T) {
 
 func TestSubagentsStartedWithoutAScenarioHaveAnEmptyScenario(t *testing.T) {
 	agents, err := parseLines(t,
-		`{"type":"custom","customType":"subagent-start","id":"s","parentId":null,"timestamp":"2026-11-16T06:46:36Z","data":{"id":1,"kind":"task","task":"t","startedAt":1,"taskMessageId":"m"}}`,
+		`{"type":"custom","customType":"subagent-start","id":"s","parentId":null,"timestamp":"2026-11-16T06:46:36Z","data":{"id":1,"kind":"task","task":"t","model":"anthropic/claude-x","thinking":"high","startedAt":1,"taskMessageId":"m"}}`,
 	).Subagents()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(agents) != 1 || agents[0].Scenario != "" || agents[0].Task != "t" {
+	if len(agents) != 1 || agents[0].Scenario != "" || agents[0].Task != "t" ||
+		agents[0].Model == nil || *agents[0].Model != "anthropic/claude-x" || agents[0].Thinking == nil || *agents[0].Thinking != "high" {
 		t.Errorf("agents = %+v", agents)
 	}
 }

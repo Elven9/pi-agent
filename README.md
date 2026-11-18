@@ -248,7 +248,7 @@ process only (reopening a ref shows them at once); nothing is written to the ses
 
 The subagent extension (`src/subagent/`, design in `docs/subagent-design.md`) gives the model
 `subagent_spawn`: a background pi agent (`pi --mode rpc [--scenario <name>]`, one process each, the
-leader's model; without a scenario a general pi agent with pi's own prompt and tools) runs one task and reports once with `send_to_leader`. The result becomes a
+leader's model and thinking level unless `model`/`thinking` pick others; without a scenario a general pi agent with pi's own prompt and tools) runs one task and reports once with `send_to_leader`. The result becomes a
 `[subagent aN]` message in the leader's context and starts a turn when the leader is idle.
 `subagent_kill`, `subagent_restart` (a fresh agent with the same task), `subagent_get` and
 `subagent_grep` complete the set. Children get only `send_to_leader`, so they cannot spawn.

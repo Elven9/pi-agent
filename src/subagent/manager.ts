@@ -71,6 +71,8 @@ export class SubagentManager {
       line: l.line,
       progress: l.progress,
       ...(l.start.restartOf !== undefined && { restartOf: agentId(l.start.restartOf) }),
+      ...(l.start.model !== undefined && { model: l.start.model }),
+      ...(l.start.thinking !== undefined && { thinking: l.start.thinking }),
     }));
   }
 
