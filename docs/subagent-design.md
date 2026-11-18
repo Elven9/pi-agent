@@ -8,7 +8,7 @@
 
 ## Goal
 
-A leader pi session spawns subagents, each running one scenario, and exchanges fixed-format
+A leader pi session spawns subagents, each running one scenario or none, and exchanges fixed-format
 messages with them for delegation. Focus: agent lifecycle, message protocol, display and lookup.
 
 v1 has one kind of child: the one-shot **task**. Resident **herd** children are planned for the
@@ -42,8 +42,11 @@ Subagents are built entirely on separate pi processes in RPC mode; no in-process
 
 ## Agents
 
-- One child = one process: `pi --mode rpc --scenario <name> [--project …]`.
-  The scenario fixes the role (prompt, built-in tools, skills).
+- One child = one process: `pi --mode rpc [--scenario <name>] [--project …]`.
+  The scenario fixes the role (prompt, built-in tools, skills). The scenario is optional: without
+  one the child is a **general** subagent with pi's own prompt and all built-in tools (useful for
+  open-ended tasks, or to let pi read its own docs); it is shown as `general`, and its start
+  record and results have no `scenario` field.
 - Separate process, not in-process SDK sessions: crash isolation, same path as sandbox runs,
   each child has its own session file.
 - No nesting: the leader starts every child with the env marker `PI_AGENT_SUBAGENT=1`. When the
@@ -166,7 +169,7 @@ One envelope for both directions:
 ### Start record
 
 At spawn the leader writes `pi.appendEntry("subagent-start", {...})`: `{ id, scenario, kind,
-task, project?, childSessionFile, startedAt, restartOf? }`. Not in the model's context. Used for
+task, project?, childSessionFile, startedAt, restartOf? }` (`scenario` missing for a general subagent). Not in the model's context. Used for
 the ID counter, for resume reconciliation and for `aborted` result text.
 
 ### Process group
@@ -369,8 +372,8 @@ Where v1 differs from or adds to the sections above:
   `child.ts` (`send_to_leader`), `render.ts` (result row), `viewer.ts` (`/agent` panel),
   `index.ts` (wiring). Loaded from `dist/subagent.js`: scenarios import `.md` files.
 - **Child command:** the leader's own pi (`process.execPath` + `process.argv[1]`), overridable
-  with `PI_AGENT_SUBAGENT_COMMAND` (JSON argv). Args: `--mode rpc --scenario X [--project P]
-  --model <leader provider/id> --name "subagent aN (X)"` and `--session-dir <leader dir>/subagents`
+  with `PI_AGENT_SUBAGENT_COMMAND` (JSON argv). Args: `--mode rpc [--scenario X] [--project P]
+  --model <leader provider/id> --name "subagent aN (X)"` (X is `general` without a scenario) and `--session-dir <leader dir>/subagents`
   (`--no-session` when the leader has none). The child's cwd is the leader's entered worktree
   (worktree extension), else the leader's cwd.
 - **Task prompt:** plain text (task, then how to call `send_to_leader` with the scenario's detail

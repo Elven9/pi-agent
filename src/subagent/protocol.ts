@@ -70,7 +70,8 @@ export interface Envelope<B = unknown> {
 export interface StartRecord {
   /** Agent number: `a<id>`. */
   id: number;
-  scenario: string;
+  /** Missing: a general subagent (pi's own prompt and tools, no `--scenario`). */
+  scenario?: string;
   kind: "task";
   task: string;
   project?: string;
@@ -89,7 +90,8 @@ export interface ResultDetails {
   agentId: string;
   /** Equal to `agentId` in v1; herd results will get a suffix (`a4.2`). */
   resultId: string;
-  scenario: string;
+  /** Missing: a general subagent (no scenario). */
+  scenario?: string;
   kind: "task";
   task: string;
   project?: string;

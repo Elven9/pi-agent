@@ -20,7 +20,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/agent-docs/` | pi extension (personal pi only): `pi --pi-agent-docs [topic]` prints usage docs for agents (`docs/*.md`) and exits; the flag is listed in `pi --help` |
 | `src/activation-hint/` | pi extension (personal pi only): a startup widget with the active scenario, project and skills; UI only (never in the session or the model's context), cleared on the first prompt |
 | `src/herdr-session-name/` | pi extension (personal pi only): the pi session name as the herdr pane label and agent name |
-| `src/subagent/` | pi extension (personal pi only): subagents, background pi agents (one process each, RPC mode) that run a scenario's task and report into the leader's context (`subagent_*` tools, `/agent`) |
+| `src/subagent/` | pi extension (personal pi only): subagents, background pi agents (one process each, RPC mode) that run a task (with a scenario, or as a general pi agent) and report into the leader's context (`subagent_*` tools, `/agent`) |
 | `src/tool-ref/` | pi extension: a handle (`[tool-ref #N]`) on every tool result, `tool_ref_get` / `tool_ref_grep` to look calls up (runner and personal pi) |
 | `src/wrapper/` | `pi-agent run`: starts the stock pi CLI in JSON mode, writes `report.json` |
 | `examples/` | Example task file and project folder (`project/`: `project.yaml`, a workflow, a doc) |
@@ -247,8 +247,8 @@ process only (reopening a ref shows them at once); nothing is written to the ses
 ### Subagents
 
 The subagent extension (`src/subagent/`, design in `docs/subagent-design.md`) gives the model
-`subagent_spawn`: a background pi agent (`pi --mode rpc --scenario <name>`, one process each, the
-leader's model) runs one task and reports once with `send_to_leader`. The result becomes a
+`subagent_spawn`: a background pi agent (`pi --mode rpc [--scenario <name>]`, one process each, the
+leader's model; without a scenario a general pi agent with pi's own prompt and tools) runs one task and reports once with `send_to_leader`. The result becomes a
 `[subagent aN]` message in the leader's context and starts a turn when the leader is idle.
 `subagent_kill`, `subagent_restart` (a fresh agent with the same task), `subagent_get` and
 `subagent_grep` complete the set. Children get only `send_to_leader`, so they cannot spawn.

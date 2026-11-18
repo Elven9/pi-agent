@@ -480,15 +480,17 @@ function statusLabel(d) {
   return status;
 }
 var isAbnormal = (d) => !["ok", "error"].includes(d.envelope.body.status);
+var GENERAL = "general";
+var scenarioLabel = (scenario) => scenario ?? GENERAL;
 function resultHeader(d) {
-  return `${d.resultId} \xB7 ${d.scenario} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}`;
+  return `${d.resultId} \xB7 ${scenarioLabel(d.scenario)} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}`;
 }
 function resultContent(d) {
   const body = d.envelope.body;
-  const lines = [`[subagent ${d.resultId}] ${d.scenario} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}${provenance(d)}`, body.summary];
+  const lines = [`[subagent ${d.resultId}] ${scenarioLabel(d.scenario)} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}${provenance(d)}`, body.summary];
   if (body.detail !== void 0) lines.push(`(structured detail: ${TOOL.get} ${d.resultId})`);
   if (isAbnormal(d)) {
-    lines.push("", `Task (${d.scenario}${d.project ? `, project ${d.project}` : ""}):`, d.task, "", `Restart it with ${TOOL.restart} if it is still needed.`);
+    lines.push("", `Task (${scenarioLabel(d.scenario)}${d.project ? `, project ${d.project}` : ""}):`, d.task, "", `Restart it with ${TOOL.restart} if it is still needed.`);
   }
   return lines.join("\n");
 }
@@ -497,7 +499,7 @@ function provenance(d) {
 }
 function userStartContent(start) {
   return [
-    `[subagent ${start.id}] started by user${start.restartOf ? `: restart of ${start.restartOf}` : ""} (${start.scenario})`,
+    `[subagent ${start.id}] started by user${start.restartOf ? `: restart of ${start.restartOf}` : ""} (${scenarioLabel(start.scenario)})`,
     `Task: ${start.task}`,
     "Its result arrives later as a message like the subagents you start."
   ].join("\n");
@@ -803,7 +805,7 @@ function baseDetails(start) {
   return {
     agentId: agentId(start.id),
     resultId: agentId(start.id),
-    scenario: start.scenario,
+    ...start.scenario !== void 0 && { scenario: start.scenario },
     kind: "task",
     task: start.task,
     ...start.project !== void 0 && { project: start.project },
@@ -841,7 +843,7 @@ var SubagentManager = class {
   views() {
     return [...this.live.values()].map((l) => ({
       id: agentId(l.start.id),
-      scenario: l.start.scenario,
+      scenario: scenarioLabel(l.start.scenario),
       state: l.state,
       task: l.start.task,
       startedAt: l.start.startedAt,
@@ -856,7 +858,7 @@ var SubagentManager = class {
   /** Starts the child and sends it the task. Returns at once; the result comes through `onResult`. */
   spawn(start) {
     const child = this.deps.startChild(start);
-    const live = { start, state: "spawning", line: `starting ${start.scenario}\u2026`, progress: [], child, exited: false };
+    const live = { start, state: "spawning", line: `starting ${scenarioLabel(start.scenario)}\u2026`, progress: [], child, exited: false };
     this.live.set(start.id, live);
     child.onEvent((event) => this.event(live, event));
     child.onExit((exit) => this.exit(live, exit));
@@ -1003,7 +1005,7 @@ function headerLine(d, th) {
     th.fg("accent", th.bold("[subagent]")),
     th.bold(d.resultId),
     th.fg("muted", "\xB7"),
-    d.scenario,
+    scenarioLabel(d.scenario),
     th.fg("muted", "\xB7"),
     th.fg(color, status),
     th.fg("muted", "\xB7"),
@@ -1038,7 +1040,7 @@ var userStartRenderer = (message, options, theme) => {
   const d = message.details;
   if (!d?.agentId || !d.start) return new Text(theme.fg("dim", String(message.content)), options.outputPad, 0);
   const restart = d.start.restartOf !== void 0 ? ` \xB7 \u21BB a${d.start.restartOf}` : "";
-  return new Text(`${theme.fg("accent", theme.bold("[subagent]"))} ${theme.fg("dim", `${d.agentId} started by user${restart} \xB7 ${d.start.scenario}`)}`, options.outputPad, 0);
+  return new Text(`${theme.fg("accent", theme.bold("[subagent]"))} ${theme.fg("dim", `${d.agentId} started by user${restart} \xB7 ${scenarioLabel(d.start.scenario)}`)}`, options.outputPad, 0);
 };
 function resultRenderer(open) {
   return (message, options, theme) => {
@@ -1214,7 +1216,7 @@ function childCommand(env = process.env, argv = process.argv) {
   return argv[1] ? [process.execPath, argv[1]] : ["pi"];
 }
 function childArgs(start, model, leaderSessionFile) {
-  const args = ["--mode", "rpc", "--scenario", start.scenario, "--name", `subagent ${agentId(start.id)} (${start.scenario})`];
+  const args = ["--mode", "rpc", ...start.scenario !== void 0 ? ["--scenario", start.scenario] : [], "--name", `subagent ${agentId(start.id)} (${scenarioLabel(start.scenario)})`];
   if (start.project) args.push("--project", start.project);
   if (model) args.push("--model", `${model.provider}/${model.id}`);
   if (leaderSessionFile) args.push("--session-dir", join(dirname(leaderSessionFile), "subagents"));
@@ -1229,6 +1231,7 @@ function defaultStartChild(start, ctx) {
 }
 var text = (t) => ({ content: [{ type: "text", text: t }], details: {} });
 function scenarioOf(name) {
+  if (name === void 0) return void 0;
   try {
     return getScenario(name);
   } catch {
@@ -1297,7 +1300,7 @@ function registerLeader(pi, options) {
     const id = nextId++;
     const start = {
       id,
-      scenario: spec.scenario,
+      ...spec.scenario !== void 0 && { scenario: spec.scenario },
       kind: "task",
       task: spec.task,
       ...spec.project && { project: spec.project },
@@ -1310,7 +1313,7 @@ function registerLeader(pi, options) {
     if (startedBy === "user") {
       const content = userStartContent({
         id: agentId(id),
-        scenario: start.scenario,
+        ...start.scenario !== void 0 && { scenario: start.scenario },
         task: start.task,
         ...start.restartOf !== void 0 && { restartOf: agentId(start.restartOf) }
       });
@@ -1324,8 +1327,8 @@ function registerLeader(pi, options) {
     const recorded = index(c).get(id);
     if (!recorded) throw new Error(`${agentId(id)}: no such subagent on this branch`);
     const s = recorded.start;
-    const next = spawn2(c, { scenario: s.scenario, task: s.task, ...s.project && { project: s.project }, restartOf: id }, by);
-    return `Restarted ${agentId(id)} as ${agentId(next)} (${s.scenario}).`;
+    const next = spawn2(c, { ...s.scenario !== void 0 && { scenario: s.scenario }, task: s.task, ...s.project && { project: s.project }, restartOf: id }, by);
+    return `Restarted ${agentId(id)} as ${agentId(next)} (${scenarioLabel(s.scenario)}).`;
   };
   const kill = async (id, by, c) => {
     if (!manager.has(id)) {
@@ -1383,21 +1386,23 @@ function registerLeader(pi, options) {
   pi.registerTool({
     name: TOOL.spawn,
     label: "Subagent: spawn",
-    description: `Start a subagent: a separate pi agent that runs one task with a scenario's prompt and tools, in the background. Returns its ID (a3) at once; its result arrives later as a \`[subagent a3]\` message that starts a new turn. Scenarios: ${names.join(", ")}.`,
+    description: `Start a subagent: a separate pi agent that runs one task in the background, with a scenario's prompt and tools, or without a scenario as a general pi agent (pi's own prompt, tools and docs). Returns its ID (a3) at once; its result arrives later as a \`[subagent a3]\` message that starts a new turn. Scenarios: ${names.join(", ")}.`,
     promptGuidelines: [
       `Use \`${TOOL.spawn}\` to delegate self-contained tasks that can run in parallel with your own work. Give the task everything it needs: the subagent cannot ask you questions.`,
       `Subagent results arrive by themselves as \`[subagent aN]\` messages; do not poll or wait for them. Look results up again with \`${TOOL.get}\` / \`${TOOL.grep}\`.`
     ],
     parameters: Type8.Object({
-      scenario: Type8.Unsafe({ type: "string", enum: names, description: "Scenario the subagent runs" }),
+      scenario: Type8.Optional(
+        Type8.Unsafe({ type: "string", enum: names, description: "Scenario the subagent runs; leave out for a general pi agent" })
+      ),
       task: Type8.String({ description: "The complete task: goal, context, constraints, what to report" }),
       project: Type8.Optional(Type8.String({ description: "Project folder (--project) for the subagent" }))
     }),
     async execute(_id, params, _signal, _update, c) {
-      if (!names.includes(params.scenario)) throw new Error(`Unknown scenario "${params.scenario}". Scenarios: ${names.join(", ")}`);
+      if (params.scenario !== void 0 && !names.includes(params.scenario)) throw new Error(`Unknown scenario "${params.scenario}". Scenarios: ${names.join(", ")}`);
       const id = spawn2(c, params, "model");
       return text(
-        `Started subagent ${agentId(id)} (${params.scenario}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; do not wait or poll: continue with other work or end your turn.`
+        `Started subagent ${agentId(id)} (${scenarioLabel(params.scenario)}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; do not wait or poll: continue with other work or end your turn.`
       );
     }
   });
@@ -1479,7 +1484,7 @@ function registerLeader(pi, options) {
     const r = index(c).get(id);
     const result = r?.result ?? r?.end;
     if (result) return { title: resultHeader(result), lines: resultLines(result), live: false };
-    if (r) return { title: `${agentId(id)} \xB7 ${r.start.scenario}`, lines: ["no result recorded", "", "task:", ...r.start.task.split("\n")], live: false };
+    if (r) return { title: `${agentId(id)} \xB7 ${scenarioLabel(r.start.scenario)}`, lines: ["no result recorded", "", "task:", ...r.start.task.split("\n")], live: false };
     return { title: agentId(id), lines: ["no such subagent on this branch"], live: false };
   };
   const openPanel = (c, ids, title, start) => c.ui.custom(

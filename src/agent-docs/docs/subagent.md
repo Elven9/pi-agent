@@ -1,14 +1,16 @@
 # Subagents
 
 The subagent extension lets a pi session (the leader) hand self-contained tasks to subagents:
-separate pi agents, each running one scenario in its own process (`pi --mode rpc --scenario <name>`).
+separate pi agents, each in its own process (`pi --mode rpc [--scenario <name>]`). With a scenario a
+subagent gets that scenario's prompt and tools; without one it is a general pi agent (pi's own
+prompt, all built-in tools and pi's docs), shown as `general`.
 A subagent works in the background and reports once; its result lands in the leader's context.
 
 ## Tools (leader)
 
 | Tool | Does |
 |---|---|
-| `subagent_spawn(scenario, task, project?)` | Starts a subagent and returns its ID (`a3`) at once. The task must say everything: a subagent cannot ask questions. |
+| `subagent_spawn(task, scenario?, project?)` | Starts a subagent and returns its ID (`a3`) at once. The task must say everything: a subagent cannot ask questions. |
 | `subagent_kill(id)` | Kills a running subagent; it ends with a `killed` result. |
 | `subagent_restart(id)` | Runs a finished subagent's task again in a fresh subagent (new ID, same scenario, task and project). |
 | `subagent_get(ids, lines?, maxChars?)` | Shows results by ID: task, summary and structured detail, numbered lines. |
@@ -21,8 +23,8 @@ A subagent works in the background and reports once; its result lands in the lea
   `· restart of a2` and `· started by user` when they apply; a subagent the user starts is announced
   with a `[subagent a5] started by user` message. A result that did not
   finish by itself also repeats the task, for `subagent_restart`.
-- A subagent runs with the leader's model, its own scenario prompt and tools, and only one extra
-  tool: `send_to_leader`. Subagents cannot start subagents.
+- A subagent runs with the leader's model, its scenario's prompt and tools (pi's own without a
+  scenario), and only one extra tool: `send_to_leader`. Subagents cannot start subagents.
 
 ## For the user
 

@@ -47,6 +47,12 @@ test("resultContent: header and summary; abnormal results also carry the task an
   assert.match(resultContent(result(7, { status: "aborted", reason: "reload" })), /review · aborted \(reload\) ·/);
 });
 
+test("a subagent without a scenario shows as general", () => {
+  const general = result(4, { status: "aborted", reason: "leader_exit", summary: "aborted" }, { scenario: undefined });
+  assert.match(resultContent(general), /^\[subagent a4\] general · aborted · 2m14s\naborted\n\nTask \(general\):/);
+  assert.match(userStartContent({ id: "a5", task: "t" }), /^\[subagent a5\] started by user \(general\)\n/);
+});
+
 test("provenance: restart and user starts in the model's result header", () => {
   assert.equal(provenance({}), "");
   assert.equal(provenance({ restartOf: "a2" }), " · restart of a2");

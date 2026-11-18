@@ -25,7 +25,8 @@ const (
 // Subagent is a subagent started on the current branch, with its result when there is one.
 type Subagent struct {
 	// ID is the agent id, e.g. "a3".
-	ID       string
+	ID string
+	// Scenario is empty for a general subagent (started without a scenario).
 	Scenario string
 	// Kind is "task".
 	Kind    string
@@ -130,8 +131,8 @@ func addStart(agents []Subagent, index map[string]int, e Entry) ([]Subagent, err
 	switch {
 	case d.ID == nil || *d.ID < 1:
 		return nil, errors.New("data.id is not an agent number")
-	case d.Scenario == "" || d.Task == nil || d.StartedAt == nil || d.TaskMessageID == "":
-		return nil, errors.New("missing data.scenario, data.task, data.startedAt or data.taskMessageId")
+	case d.Task == nil || d.StartedAt == nil || d.TaskMessageID == "":
+		return nil, errors.New("missing data.task, data.startedAt or data.taskMessageId")
 	case d.Kind != "task":
 		return nil, fmt.Errorf("data.kind %q is not task", d.Kind)
 	case d.RestartOf != nil && *d.RestartOf < 1:

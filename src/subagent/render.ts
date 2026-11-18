@@ -1,6 +1,6 @@
 import { DynamicBorder, type MessageRenderer, type Theme } from "@earendil-works/pi-coding-agent";
 import { Container, Text, type TuiMouseEvent } from "@earendil-works/pi-tui";
-import { formatDuration, isAbnormal, statusLabel } from "./format.ts";
+import { formatDuration, isAbnormal, scenarioLabel, statusLabel } from "./format.ts";
 import type { ResultDetails } from "./protocol.ts";
 
 type Styler = Pick<Theme, "fg" | "bold">;
@@ -13,7 +13,7 @@ export function headerLine(d: ResultDetails, th: Styler): string {
     th.fg("accent", th.bold("[subagent]")),
     th.bold(d.resultId),
     th.fg("muted", "·"),
-    d.scenario,
+    scenarioLabel(d.scenario),
     th.fg("muted", "·"),
     th.fg(color, status),
     th.fg("muted", "·"),
@@ -65,10 +65,10 @@ class ResultRow extends Container {
 
 /** The user-start notice: one grey line (`[subagent] a5 started by user · ↻ a2 · demo`); the model gets the full text. */
 export const userStartRenderer: MessageRenderer = (message, options, theme) => {
-  const d = message.details as { agentId?: string; start?: { scenario: string; restartOf?: number } } | undefined;
+  const d = message.details as { agentId?: string; start?: { scenario?: string; restartOf?: number } } | undefined;
   if (!d?.agentId || !d.start) return new Text(theme.fg("dim", String(message.content)), options.outputPad, 0);
   const restart = d.start.restartOf !== undefined ? ` · ↻ a${d.start.restartOf}` : "";
-  return new Text(`${theme.fg("accent", theme.bold("[subagent]"))} ${theme.fg("dim", `${d.agentId} started by user${restart} · ${d.start.scenario}`)}`, options.outputPad, 0);
+  return new Text(`${theme.fg("accent", theme.bold("[subagent]"))} ${theme.fg("dim", `${d.agentId} started by user${restart} · ${scenarioLabel(d.start.scenario)}`)}`, options.outputPad, 0);
 };
 
 /** `pi.registerMessageRenderer` renderer for `subagent-result` messages; `open` shows a result's panel. */

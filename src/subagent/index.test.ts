@@ -76,6 +76,18 @@ test("spawn → start record; the child's result becomes a custom message in con
   session.dispose();
 });
 
+test("spawn without a scenario: a general subagent, no scenario in the start record or the prompt", async () => {
+  const { session, faux, sessionManager, children, starts } = await makeSession();
+  faux.setResponses([call("subagent_spawn", { task: "read your docs" }, "s1"), fauxAssistantMessage(fauxText("waiting"))]);
+  await session.prompt("delegate it");
+  assert.equal(starts.length, 1);
+  assert.equal("scenario" in starts[0]!, false);
+  assert.match(String(children.get(1)!.requests[0]!.fields!.message), /^Task from your leader \(you are subagent a1\):\n\nread your docs/);
+  const toolResult = sessionManager.getBranch().find((e: any) => e.type === "message" && e.message.role === "toolResult") as any;
+  assert.match(toolResult.message.content[0].text, /Started subagent a1 \(general\)/);
+  session.dispose();
+});
+
 test("subagent_get / subagent_grep read results from the session; unknown IDs are reported", async () => {
   const { session, faux, children } = await makeSession();
   faux.setResponses([call("subagent_spawn", { scenario: "demo", task: "find the token bug" }, "s1"), fauxAssistantMessage(fauxText("ok"))]);
@@ -268,4 +280,8 @@ test("childCommand and childArgs", () => {
     "--project", "/p", "--model", "anthropic/claude-x", "--session-dir", "/sessions/x/subagents",
   ]);
   assert.deepEqual(childArgs({ ...start, project: undefined }, undefined, undefined).slice(-1), ["--no-session"]);
+  // Without a scenario: no --scenario, a general pi agent.
+  assert.deepEqual(childArgs({ ...start, scenario: undefined, project: undefined }, undefined, undefined), [
+    "--mode", "rpc", "--name", "subagent a3 (general)", "--no-session",
+  ]);
 });

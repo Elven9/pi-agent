@@ -96,7 +96,7 @@ export function baseDetails(start: StartRecord): Omit<ResultDetails, "endedAt" |
   return {
     agentId: agentId(start.id),
     resultId: agentId(start.id),
-    scenario: start.scenario,
+    ...(start.scenario !== undefined && { scenario: start.scenario }),
     kind: "task",
     task: start.task,
     ...(start.project !== undefined && { project: start.project }),

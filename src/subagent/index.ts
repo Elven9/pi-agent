@@ -16,6 +16,7 @@ import {
   resultContent,
   resultHeader,
   resultLines,
+  scenarioLabel,
   statusLabel,
   statusText,
   taskPrompt,
@@ -43,7 +44,7 @@ import { type AgentPage, AgentViewer, VIEWER_OVERLAY } from "./viewer.ts";
 
 /**
  * Subagent extension (docs/subagent-design.md). A leader session spawns one-shot task children,
- * each `pi --mode rpc --scenario <name>` in its own process; a child reports once with
+ * each `pi --mode rpc [--scenario <name>]` in its own process (without one: a general pi agent); a child reports once with
  * `send_to_leader`, and the result becomes a `subagent-result` custom message in the leader's
  * context. In a child (PI_AGENT_SUBAGENT=1) only `send_to_leader` is registered, so children
  * cannot spawn.
@@ -88,7 +89,7 @@ export function childCommand(env: NodeJS.ProcessEnv = process.env, argv: readonl
 
 /** CLI arguments of a child: RPC mode, the scenario, project, the leader's model, its session folder. */
 export function childArgs(start: StartRecord, model: { provider: string; id: string } | undefined, leaderSessionFile: string | undefined): string[] {
-  const args = ["--mode", "rpc", "--scenario", start.scenario, "--name", `subagent ${agentId(start.id)} (${start.scenario})`];
+  const args = ["--mode", "rpc", ...(start.scenario !== undefined ? ["--scenario", start.scenario] : []), "--name", `subagent ${agentId(start.id)} (${scenarioLabel(start.scenario)})`];
   if (start.project) args.push("--project", start.project);
   if (model) args.push("--model", `${model.provider}/${model.id}`);
   // Child sessions next to the leader's, in their own folder (kept out of the leader's /resume list).
@@ -107,7 +108,8 @@ function defaultStartChild(start: StartRecord, ctx: ExtensionContext): ChildHand
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: {} });
 
-function scenarioOf(name: string): Scenario | undefined {
+function scenarioOf(name: string | undefined): Scenario | undefined {
+  if (name === undefined) return undefined;
   try {
     return getScenario(name);
   } catch {
@@ -191,14 +193,14 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
   /** Records and starts a child. */
   const spawn = (
     c: ExtensionContext,
-    spec: { scenario: string; task: string; project?: string; restartOf?: number },
+    spec: { scenario?: string; task: string; project?: string; restartOf?: number },
     startedBy: StartedBy,
   ): number => {
     ctx = c;
     const id = nextId++;
     const start: StartRecord = {
       id,
-      scenario: spec.scenario,
+      ...(spec.scenario !== undefined && { scenario: spec.scenario }),
       kind: "task",
       task: spec.task,
       ...(spec.project && { project: spec.project }),
@@ -213,7 +215,7 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     if (startedBy === "user") {
       const content = userStartContent({
         id: agentId(id),
-        scenario: start.scenario,
+        ...(start.scenario !== undefined && { scenario: start.scenario }),
         task: start.task,
         ...(start.restartOf !== undefined && { restartOf: agentId(start.restartOf) }),
       });
@@ -228,8 +230,8 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     const recorded = index(c).get(id);
     if (!recorded) throw new Error(`${agentId(id)}: no such subagent on this branch`);
     const s = recorded.start;
-    const next = spawn(c, { scenario: s.scenario, task: s.task, ...(s.project && { project: s.project }), restartOf: id }, by);
-    return `Restarted ${agentId(id)} as ${agentId(next)} (${s.scenario}).`;
+    const next = spawn(c, { ...(s.scenario !== undefined && { scenario: s.scenario }), task: s.task, ...(s.project && { project: s.project }), restartOf: id }, by);
+    return `Restarted ${agentId(id)} as ${agentId(next)} (${scenarioLabel(s.scenario)}).`;
   };
 
   const kill = async (id: number, by: "user" | "leader", c: ExtensionContext): Promise<string> => {
@@ -304,7 +306,8 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     name: TOOL.spawn,
     label: "Subagent: spawn",
     description:
-      "Start a subagent: a separate pi agent that runs one task with a scenario's prompt and tools, in the background. " +
+      "Start a subagent: a separate pi agent that runs one task in the background, with a scenario's prompt and tools, " +
+      "or without a scenario as a general pi agent (pi's own prompt, tools and docs). " +
       "Returns its ID (a3) at once; its result arrives later as a `[subagent a3]` message that starts a new turn. " +
       `Scenarios: ${names.join(", ")}.`,
     promptGuidelines: [
@@ -312,15 +315,17 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
       `Subagent results arrive by themselves as \`[subagent aN]\` messages; do not poll or wait for them. Look results up again with \`${TOOL.get}\` / \`${TOOL.grep}\`.`,
     ],
     parameters: Type.Object({
-      scenario: Type.Unsafe<string>({ type: "string", enum: names, description: "Scenario the subagent runs" }),
+      scenario: Type.Optional(
+        Type.Unsafe<string>({ type: "string", enum: names, description: "Scenario the subagent runs; leave out for a general pi agent" }),
+      ),
       task: Type.String({ description: "The complete task: goal, context, constraints, what to report" }),
       project: Type.Optional(Type.String({ description: "Project folder (--project) for the subagent" })),
     }),
-    async execute(_id, params: { scenario: string; task: string; project?: string }, _signal, _update, c) {
-      if (!names.includes(params.scenario)) throw new Error(`Unknown scenario "${params.scenario}". Scenarios: ${names.join(", ")}`);
+    async execute(_id, params: { scenario?: string; task: string; project?: string }, _signal, _update, c) {
+      if (params.scenario !== undefined && !names.includes(params.scenario)) throw new Error(`Unknown scenario "${params.scenario}". Scenarios: ${names.join(", ")}`);
       const id = spawn(c, params, "model");
       return text(
-        `Started subagent ${agentId(id)} (${params.scenario}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; ` +
+        `Started subagent ${agentId(id)} (${scenarioLabel(params.scenario)}). Its result arrives later as a [subagent ${agentId(id)}] message and starts a new turn; ` +
           "do not wait or poll: continue with other work or end your turn.",
       );
     },
@@ -414,7 +419,7 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
     const r = index(c).get(id);
     const result = r?.result ?? r?.end;
     if (result) return { title: resultHeader(result), lines: resultLines(result), live: false };
-    if (r) return { title: `${agentId(id)} · ${r.start.scenario}`, lines: ["no result recorded", "", "task:", ...r.start.task.split("\n")], live: false };
+    if (r) return { title: `${agentId(id)} · ${scenarioLabel(r.start.scenario)}`, lines: ["no result recorded", "", "task:", ...r.start.task.split("\n")], live: false };
     return { title: agentId(id), lines: ["no such subagent on this branch"], live: false };
   };
 

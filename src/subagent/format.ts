@@ -33,9 +33,15 @@ export function statusLabel(d: ResultDetails): string {
 
 export const isAbnormal = (d: ResultDetails): boolean => !["ok", "error"].includes(d.envelope.body.status);
 
+/** Label of a subagent without a scenario (pi's own prompt and tools). */
+export const GENERAL = "general";
+
+/** The scenario's name, or GENERAL for a subagent without one. */
+export const scenarioLabel = (scenario: string | undefined): string => scenario ?? GENERAL;
+
 /** `a3 · review · ok · 2m14s` */
 export function resultHeader(d: ResultDetails): string {
-  return `${d.resultId} · ${d.scenario} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}`;
+  return `${d.resultId} · ${scenarioLabel(d.scenario)} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}`;
 }
 
 /**
@@ -44,10 +50,10 @@ export function resultHeader(d: ResultDetails): string {
  */
 export function resultContent(d: ResultDetails): string {
   const body = d.envelope.body;
-  const lines = [`[subagent ${d.resultId}] ${d.scenario} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}${provenance(d)}`, body.summary];
+  const lines = [`[subagent ${d.resultId}] ${scenarioLabel(d.scenario)} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}${provenance(d)}`, body.summary];
   if (body.detail !== undefined) lines.push(`(structured detail: ${TOOL.get} ${d.resultId})`);
   if (isAbnormal(d)) {
-    lines.push("", `Task (${d.scenario}${d.project ? `, project ${d.project}` : ""}):`, d.task, "", `Restart it with ${TOOL.restart} if it is still needed.`);
+    lines.push("", `Task (${scenarioLabel(d.scenario)}${d.project ? `, project ${d.project}` : ""}):`, d.task, "", `Restart it with ${TOOL.restart} if it is still needed.`);
   }
   return lines.join("\n");
 }
@@ -61,9 +67,9 @@ export function provenance(d: Pick<ResultDetails, "restartOf" | "startedBy">): s
  * The in-context notice for a subagent the user started (the model saw no tool call for it), so a
  * later result, or the agent in subagent_get, is not a surprise.
  */
-export function userStartContent(start: { id: string; scenario: string; task: string; restartOf?: string }): string {
+export function userStartContent(start: { id: string; scenario?: string; task: string; restartOf?: string }): string {
   return [
-    `[subagent ${start.id}] started by user${start.restartOf ? `: restart of ${start.restartOf}` : ""} (${start.scenario})`,
+    `[subagent ${start.id}] started by user${start.restartOf ? `: restart of ${start.restartOf}` : ""} (${scenarioLabel(start.scenario)})`,
     `Task: ${start.task}`,
     "Its result arrives later as a message like the subagents you start.",
   ].join("\n");
@@ -125,6 +131,7 @@ export function resultLines(d: ResultDetails): string[] {
 /** A child that is still running, as the lookup tools and the panel show it. */
 export interface LiveView {
   id: string;
+  /** The scenario's name, or GENERAL. */
   scenario: string;
   state: string;
   task: string;

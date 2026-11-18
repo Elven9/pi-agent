@@ -1,5 +1,5 @@
 import { exitText, type ChildExit, type ChildHandle, type RpcRecord } from "./rpc.ts";
-import { PROGRESS_KEEP, type LiveView, progressLine } from "./format.ts";
+import { PROGRESS_KEEP, type LiveView, progressLine, scenarioLabel } from "./format.ts";
 import { abortedResult, baseDetails } from "./records.ts";
 import { agentId, messageId, type ResultBody, type ResultDetails, SEND_TO_LEADER, type StartRecord } from "./protocol.ts";
 
@@ -64,7 +64,7 @@ export class SubagentManager {
   views(): LiveView[] {
     return [...this.live.values()].map((l) => ({
       id: agentId(l.start.id),
-      scenario: l.start.scenario,
+      scenario: scenarioLabel(l.start.scenario),
       state: l.state,
       task: l.start.task,
       startedAt: l.start.startedAt,
@@ -81,7 +81,7 @@ export class SubagentManager {
   /** Starts the child and sends it the task. Returns at once; the result comes through `onResult`. */
   spawn(start: StartRecord): void {
     const child = this.deps.startChild(start);
-    const live: Live = { start, state: "spawning", line: `starting ${start.scenario}…`, progress: [], child, exited: false };
+    const live: Live = { start, state: "spawning", line: `starting ${scenarioLabel(start.scenario)}…`, progress: [], child, exited: false };
     this.live.set(start.id, live);
     child.onEvent((event) => this.event(live, event));
     child.onExit((exit) => this.exit(live, exit));

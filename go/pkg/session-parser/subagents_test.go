@@ -63,6 +63,18 @@ func TestSubagentsUseAnEndRecordWhenNoResultWasDelivered(t *testing.T) {
 	}
 }
 
+func TestSubagentsStartedWithoutAScenarioHaveAnEmptyScenario(t *testing.T) {
+	agents, err := parseLines(t,
+		`{"type":"custom","customType":"subagent-start","id":"s","parentId":null,"timestamp":"2026-11-16T06:46:36Z","data":{"id":1,"kind":"task","task":"t","startedAt":1,"taskMessageId":"m"}}`,
+	).Subagents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(agents) != 1 || agents[0].Scenario != "" || agents[0].Task != "t" {
+		t.Errorf("agents = %+v", agents)
+	}
+}
+
 func TestSubagentsOfABranchWithoutSubagentsIsNil(t *testing.T) {
 	agents, err := parseLines(t, entryLine("message", "a", "")).Subagents()
 	if err != nil || agents != nil {
