@@ -99,6 +99,42 @@ func TestMetadataLeavesWhatTheFileDoesNotHaveNil(t *testing.T) {
 	}
 }
 
+func TestMetadataLastActivityIsTheNewestUserOrAssistantMessageOnAnyBranch(t *testing.T) {
+	msg := func(id, parent, ts, role string) string {
+		return `{"type":"message","id":"` + id + `","parentId":` + parent + `,"timestamp":"` + ts + `","message":{"role":"` + role + `","content":[],"timestamp":1}}`
+	}
+	m, err := parseLines(t,
+		msg("u1", "null", "2026-11-16T07:00:00Z", "user"),
+		// The abandoned branch has the newest reply.
+		msg("a1", `"u1"`, "2026-11-16T09:00:00Z", "assistant"),
+		msg("t1", `"a1"`, "2026-11-16T09:30:00Z", "toolResult"),
+		// The current branch: newer entries, but none of them user or assistant messages.
+		msg("u2", `"u1"`, "2026-11-16T08:00:00Z", "user"),
+		`{"type":"model_change","id":"m1","parentId":"u2","timestamp":"2026-11-16T10:00:00Z","provider":"cpa","modelId":"opus"}`,
+		`{"type":"custom","customType":"pi-agent.session-version","id":"v1","parentId":"m1","timestamp":"2026-11-16T10:01:00Z","data":{"version":"0.12.0"}}`,
+		`{"type":"session_info","id":"i1","parentId":"v1","timestamp":"2026-11-16T10:02:00Z","name":"x"}`,
+	).Metadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC); !m.LastActivityAt.Equal(want) {
+		t.Errorf("LastActivityAt = %v, want %v (the entry time of the abandoned branch's reply)", m.LastActivityAt, want)
+	}
+}
+
+func TestMetadataLastActivityIsTheStartWithoutUserOrAssistantMessages(t *testing.T) {
+	m, err := parseLines(t,
+		`{"type":"model_change","id":"m1","parentId":null,"timestamp":"2026-11-16T10:00:00Z","provider":"cpa","modelId":"opus"}`,
+		entryLine("message", "x", "m1"), // no message payload: not a conversation message
+	).Metadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.LastActivityAt.Equal(m.StartedAt) || m.StartedAt.IsZero() {
+		t.Errorf("LastActivityAt = %v, want StartedAt %v", m.LastActivityAt, m.StartedAt)
+	}
+}
+
 func TestMetadataKeepsClearedTagsAsAnEmptyList(t *testing.T) {
 	m, err := parseLines(t,
 		`{"type":"custom","customType":"pi-agent.tags","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","data":{"version":1,"tags":[],"source":"command"}}`,
@@ -157,6 +193,7 @@ func TestMetadataFailsOnAnInvalidEntry(t *testing.T) {
 		"project bad kind":     custom(CustomTypeProject, `{"version":1,"name":"p","source":{"kind":"ftp"}}`),
 		"local without dir":    custom(CustomTypeProject, `{"version":1,"name":"p","source":{"kind":"local"}}`),
 		"remote without tag":   custom(CustomTypeProject, `{"version":1,"name":"p","source":{"kind":"remote","provider":"github","repo":"o/r","commit":"c"}}`),
+		"message not object":   `{"type":"message","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","message":"hi"}`,
 	}
 	for name, line := range tests {
 		t.Run(name, func(t *testing.T) {

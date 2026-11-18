@@ -13,8 +13,8 @@
 // [Parse] reads every entry's envelope and keeps the whole line in [Entry.Raw]. The data is
 // read in groups, each on its own:
 //
-//   - [Session.Metadata]: header fields, pi-agent version, tags, name, scenario, project,
-//     models, errors.
+//   - [Session.Metadata]: header fields, last activity, pi-agent version, tags, name, scenario,
+//     project, models, errors.
 //   - [Session.ToolCalls]: tool calls with their results and tool-ref handles; codemode calls
 //     with their script, its intent and the calls it made ([ToolCall.Codemode]).
 //   - [Session.Metrics]: the pi-agent.metrics totals and samples.

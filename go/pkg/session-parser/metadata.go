@@ -28,6 +28,11 @@ type Metadata struct {
 	SessionID string
 	CWD       string
 	StartedAt time.Time
+	// LastActivityAt is the newest entry time of a user or assistant message anywhere in the
+	// file (all branches); StartedAt when there is none. Other entries (tool results, model
+	// changes, custom entries, ...) are not activity: pi and its extensions also write them when
+	// a session is only opened or resumed.
+	LastActivityAt time.Time
 	// FormatVersion is pi's session format (header "version").
 	FormatVersion int
 	// ParentSession is the session file this one was forked from.
@@ -95,14 +100,15 @@ type AgentError struct {
 }
 
 // Metadata reads the session's metadata. Version, tags and name are per file, as their
-// extensions define them; models and errors come from the current branch. An invalid entry
-// of these types is an [*EntryError].
+// extensions define them; the last activity counts the messages of every branch; models and
+// errors come from the current branch. An invalid entry of these types is an [*EntryError].
 func (s *Session) Metadata() (*Metadata, error) {
 	m := &Metadata{
-		SessionID:     s.Header.ID,
-		CWD:           s.Header.CWD,
-		StartedAt:     s.Header.Timestamp,
-		FormatVersion: s.Header.FormatVersion(),
+		SessionID:      s.Header.ID,
+		CWD:            s.Header.CWD,
+		StartedAt:      s.Header.Timestamp,
+		LastActivityAt: s.Header.Timestamp,
+		FormatVersion:  s.Header.FormatVersion(),
 	}
 	if s.Header.ParentSession != "" {
 		m.ParentSession = new(s.Header.ParentSession)
@@ -120,6 +126,8 @@ func (s *Session) Metadata() (*Metadata, error) {
 			err = m.readScenario(e)
 		case e.isCustom(CustomTypeProject):
 			err = m.readProject(e)
+		case e.Type == TypeMessage:
+			err = m.readActivity(e)
 		}
 		if err != nil {
 			return nil, e.invalid(err)
@@ -252,6 +260,26 @@ func (m *Metadata) readProject(e Entry) error {
 	m.Project = &Project{Name: *d.Name, At: e.Timestamp, Source: ProjectSource{
 		Kind: s.Kind, Dir: s.Dir, Provider: s.Provider, Repo: s.Repo, Path: s.Path, Tag: s.Tag, Commit: s.Commit,
 	}}
+	return nil
+}
+
+// readActivity moves LastActivityAt to a user or assistant message's entry time when it is
+// newer. A message entry without a message payload is not activity.
+func (m *Metadata) readActivity(e Entry) error {
+	var d struct {
+		Message *struct {
+			Role string `json:"role"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(e.Raw, &d); err != nil {
+		return err
+	}
+	if d.Message == nil || (d.Message.Role != "user" && d.Message.Role != "assistant") {
+		return nil
+	}
+	if e.Timestamp.After(m.LastActivityAt) {
+		m.LastActivityAt = e.Timestamp
+	}
 	return nil
 }
 
