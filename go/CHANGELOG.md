@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0](https://github.com/Elven9/pi-agent/compare/go/v0.2.0...go/v0.3.0) (2026-11-19)
+
+
+### Features
+
+* **go:** read the session's last activity time ([b7a4c8d](https://github.com/Elven9/pi-agent/commit/b7a4c8d72936d1aaa9bf7c19ae6f80a4c80096f6))
+* **subagent:** allow spawning a general subagent without a scenario ([583b84c](https://github.com/Elven9/pi-agent/commit/583b84c24e11bb0209836728a7c166953ceec030))
+* **subagent:** choose a model and thinking level per subagent ([b43924c](https://github.com/Elven9/pi-agent/commit/b43924cbc5d47cdc211c4ac382f113dda38ae191))
+
 ## [0.2.0](https://github.com/Elven9/pi-agent/compare/go/v0.1.1...go/v0.2.0) (2026-11-17)
 
 
