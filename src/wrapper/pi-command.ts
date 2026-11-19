@@ -1,5 +1,5 @@
 import { PROJECT_FLAG, PROJECT_READ, SCENARIO_FLAG, SUBMIT_RESULT } from "../shared/protocol.ts";
-import { TAGS_FLAG } from "../shared/tags.ts";
+import { SKIP_TAG_HISTORY_FLAG, TAGS_FLAG } from "../shared/tags.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
 import { TOOL_REF_TOOLS } from "../shared/tool-ref.ts";
 import type { Task } from "../shared/task.ts";
@@ -38,7 +38,8 @@ export interface PiCommandOptions {
 /**
  * pi CLI arguments for one scenario run. Loads nothing implicitly: no discovered extensions,
  * skills, prompt templates, context files, themes, MCP or project config (the workdir is not
- * trusted). Only the runner, scenario profile, project, metrics, tags, session version and tool-ref extensions (tool-ref
+ * trusted). The tags extension records nothing in the tag history (`--skip-tag-history`):
+ * it would be thrown away with the sandbox. Only the runner, scenario profile, project, metrics, tags, session version and tool-ref extensions (tool-ref
  * last: no later extension may replace tool results and drop its trailers), the given skills
  * and the scenario's tools. The system prompt comes from the scenario profile extension (`--scenario`),
  * which also applies the tools and skills in-process; `--tools` and `--skill` stay as the hard
@@ -78,6 +79,7 @@ export function piArgs(o: PiCommandOptions): string[] {
     `--${SCENARIO_FLAG}`, scenario.name,
     ...(o.projectDir ? [`--${PROJECT_FLAG}`, o.projectDir] : []),
     ...(task.tags?.length ? [`--${TAGS_FLAG}`, task.tags.join(",")] : []),
+    `--${SKIP_TAG_HISTORY_FLAG}`,
     "--", task.prompt,
   ];
 }

@@ -137,9 +137,10 @@ pi --tags bug,ui            # at startup (also with -c / --session): replaces th
 
 - `/tags` shows the tags, `/tags a,b` replaces them, `/tags --clear` clears them. Completion
   is a small tree: the cwd's default tag (as above), the frequently used tags of `tags.presets`
-  in `settings.json` (global or project), then tags used before in this session and the other
-  sessions in its folder (`used`). Typing filters the tags of every section alike (not the
-  section names); a tag shows once, in its first section. Typing `,` opens the menu again for
+  in `settings.json` (global or project), then the tags used recently in this folder (`here`)
+  and in other folders (`other`), most recent first, from the tag history (below). Typing
+  filters the tags of every section alike (not the section names); a tag shows once, in its
+  first section. Typing `,` opens the menu again for
   the next tag.
 
   ```
@@ -147,7 +148,7 @@ pi --tags bug,ui            # at startup (also with -c / --session): replaces th
   → work ├ bug
          └ review
     ops  └ deployment
-    used └ release
+    here └ release
   ```
 
   `tags.presets` is a list (one `presets` section) or named groups, shown in the order given;
@@ -168,6 +169,12 @@ pi --tags bug,ui            # at startup (also with -c / --session): replaces th
   (`{ "version": 1, "tags": [...], "source": "flag" | "command" | "default" }`); the **last entry in the
   file** is the session's tags (the whole session, not per branch). Nothing is written when the
   list does not change. `src/shared/tags.ts` reads them (`currentTags`, `sessionFileTags`).
+- Tag history: tags set with `--tags` or `/tags` are appended to
+  `~/.pi/agent/pi-agent/tag-history.jsonl` (pi's agent dir, `PI_CODING_AGENT_DIR`), one line per
+  change: `{ "cwd": "/a/repo", "tags": ["bug"], "at": "<ISO time>" }`. The cwd's default tag and
+  the `tags.presets` tags are left out (completion offers them anyway). Only the 10 most recently
+  used tags of each folder count; the file is compacted to those once it passes 64 KB. Appends
+  are safe with parallel sessions. Sandbox runs pass `--skip-tag-history` and record nothing.
 - `--tags` only applies at startup; `/new`, `/resume`, `/fork` and `/reload` keep the
   tags of the session they open. `--tags` cannot be repeated (pi keeps the last one): use one
   comma-separated list. An invalid `--tags` stops pi with an error.
@@ -306,7 +313,7 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 
 ```
 pi-agent run ──spawn──▶ pi --mode json -ne -e builtin:codemode -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/tags.js -e dist/session-version.js -e dist/tool-ref.js
-     ▲                    │    --scenario <name> [--project <dir>] [--tags <a,b>] … -- <prompt>
+     ▲                    │    --scenario <name> [--project <dir>] [--tags <a,b>] --skip-tag-history … -- <prompt>
      │                    │  scenario-profile: owns --scenario; system prompt, tools, skills
      │                    │  extension: submit_result + instruction, nudge once
      │                    │  project:   project sections in the system prompt, cache split

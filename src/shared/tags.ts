@@ -10,6 +10,12 @@ import { ENTRY } from "./protocol.ts";
 /** Extension CLI flag: `pi --tags a,b`. pi keeps only the last of a repeated flag, so one comma-separated value. */
 export const TAGS_FLAG = "tags";
 
+/**
+ * Extension CLI flag: `pi --skip-tag-history` records nothing in the tag history (src/tags/history.ts).
+ * The wrapper passes it: a sandbox run's history would be thrown away with the sandbox.
+ */
+export const SKIP_TAG_HISTORY_FLAG = "skip-tag-history";
+
 /** Lowercase letters, digits and `. _ : / -`. */
 export const TAG_PATTERN = /^[a-z0-9._:/-]+$/;
 export const MAX_TAG_LENGTH = 64;

@@ -46,6 +46,7 @@ test("piArgs loads nothing implicitly and passes the scenario profile", () => {
     "--scenario", "s",
     "--project", "/project",
     "--tags", "bug,ui",
+    "--skip-tag-history",
     "--", "-starts with a dash",
   ]);
 });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -16,7 +16,15 @@ const realTheme = () => themeModule.theme;
 const tagEntry = (tags: string[]) => ({ type: "custom", customType: ENTRY.tags, data: { version: 1, tags, source: "command" } });
 
 /** Minimal ExtensionAPI: entries appended go into the "session file" the next start reads. */
-function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mode?: string; cwd?: string; settings?: object } = {}) {
+/** A fresh tag history file (in a temp folder) per fake pi, unless one is given. */
+let historyFiles = 0;
+const tmpRoot = mkdtemp(join(tmpdir(), "pi-agent-tags-"));
+const newHistoryPath = async () => join(await tmpRoot, `history-${historyFiles++}.jsonl`);
+
+async function fakePi(
+  o: { flag?: string; skipHistory?: boolean; entries?: unknown[]; mode?: string; cwd?: string; settings?: object; historyPath?: string; now?: () => Date } = {},
+) {
+  const historyPath = o.historyPath ?? (await newHistoryPath());
   const handlers = new Map<string, (event: any, ctx: any) => any>();
   const commands = new Map<string, any>();
   const entries: any[] = [...(o.entries ?? [])];
@@ -28,7 +36,7 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
   let shutdown = false;
   const pi = {
     registerFlag() {},
-    getFlag: (name: string) => (name === "tags" ? o.flag : undefined),
+    getFlag: (name: string) => (name === "tags" ? o.flag : name === "skip-tag-history" ? o.skipHistory ?? false : undefined),
     on: (event: string, handler: any) => void handlers.set(event, handler),
     registerCommand: (name: string, options: any) => void commands.set(name, options),
     appendEntry: (customType: string, data: unknown) => void entries.push({ type: "custom", customType, data }),
@@ -46,7 +54,7 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
     shutdown: () => (shutdown = true),
     sessionManager: {
       getEntries: () => [...entries],
-      getSessionDir: () => o.sessionDir ?? "/nowhere",
+      getSessionDir: () => "/nowhere",
       getSessionFile: () => undefined,
       getCwd: () => "/w",
       getSessionId: () => "s",
@@ -65,8 +73,9 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
       },
     },
   };
-  sessionTags(pi);
+  sessionTags(pi, { historyPath, now: o.now });
   return {
+    historyPath,
     entries,
     notices,
     status,
@@ -95,7 +104,7 @@ function fakePi(o: { flag?: string; entries?: unknown[]; sessionDir?: string; mo
 }
 
 test("--tags at startup: one normalized entry, shown in the footer", async () => {
-  const pi = fakePi({ flag: "Bug, ui,bug" });
+  const pi = await fakePi({ flag: "Bug, ui,bug" });
   await pi.start();
   assert.deepEqual(pi.tagEntries().map((e) => e.data), [{ version: 1, tags: ["bug", "ui"], source: "flag" }]);
   assert.equal(pi.status.size, 0);
@@ -103,27 +112,27 @@ test("--tags at startup: one normalized entry, shown in the footer", async () =>
 });
 
 test("no --tags and no entries: the cwd's last segment as the default tag", async () => {
-  const pi = fakePi({ cwd: "/home/me/My Repo" });
+  const pi = await fakePi({ cwd: "/home/me/My Repo" });
   await pi.start();
   assert.deepEqual(pi.tagEntries().map((e) => e.data), [{ version: 1, tags: ["my-repo"], source: "default" }]);
   assert.ok(pi.footer);
 });
 
 test("default tag: also on /new; not over existing or cleared tags, nor on resume/fork/reload", async () => {
-  const fresh = fakePi();
+  const fresh = await fakePi();
   await fresh.start("new");
   assert.deepEqual(currentTags(fresh.entries), ["w"]);
   for (const reason of ["resume", "fork", "reload"]) {
-    const pi = fakePi();
+    const pi = await fakePi();
     await pi.start(reason);
     assert.equal(pi.entries.length, 0, reason);
   }
   for (const tags of [["kept"], []]) {
-    const pi = fakePi({ entries: [tagEntry(tags)] });
+    const pi = await fakePi({ entries: [tagEntry(tags)] });
     await pi.start();
     assert.equal(pi.tagEntries().length, 1);
   }
-  const root = fakePi({ cwd: "/" });
+  const root = await fakePi({ cwd: "/" });
   await root.start();
   assert.equal(root.entries.length, 0);
   // pi's own footer (a part left by an earlier test may be installed, then removed).
@@ -140,17 +149,17 @@ test("defaultTag: last segment, sanitized", () => {
 });
 
 test("resuming with --tags replaces the tags; the same list writes nothing", async () => {
-  const pi = fakePi({ flag: "b", entries: [tagEntry(["a"])] });
+  const pi = await fakePi({ flag: "b", entries: [tagEntry(["a"])] });
   await pi.start();
   assert.deepEqual(currentTags(pi.entries), ["b"]);
-  const again = fakePi({ flag: "b", entries: pi.entries });
+  const again = await fakePi({ flag: "b", entries: pi.entries });
   await again.start();
   assert.equal(again.tagEntries().length, 2);
 });
 
 test("--tags is applied only at startup, not on /new, /resume, /fork or /reload", async () => {
   for (const reason of ["new", "resume", "fork", "reload"]) {
-    const pi = fakePi({ flag: "x", entries: [tagEntry(["kept"])] });
+    const pi = await fakePi({ flag: "x", entries: [tagEntry(["kept"])] });
     await pi.start(reason);
     assert.deepEqual(currentTags(pi.entries), ["kept"], reason);
     assert.ok(pi.footer, reason);
@@ -158,7 +167,7 @@ test("--tags is applied only at startup, not on /new, /resume, /fork or /reload"
 });
 
 test("invalid --tags: error entry and shutdown", async () => {
-  const pi = fakePi({ flag: "ok,not ok" });
+  const pi = await fakePi({ flag: "ok,not ok" });
   const error = console.error;
   console.error = () => {};
   try {
@@ -172,7 +181,7 @@ test("invalid --tags: error entry and shutdown", async () => {
 });
 
 test("/tags shows, overrides and clears; unchanged lists write nothing", async () => {
-  const pi = fakePi({ entries: [tagEntry(["a"])] });
+  const pi = await fakePi({ entries: [tagEntry(["a"])] });
   await pi.start();
   await pi.tags("");
   assert.deepEqual(pi.notices.at(-1), ["Tags: a", "info"]);
@@ -193,25 +202,56 @@ test("/tags shows, overrides and clears; unchanged lists write nothing", async (
   assert.equal(pi.notices.at(-1)![0], "No tags. Set them with /tags a,b");
 });
 
-test("completion: tags used before in this session and the folder's other sessions", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pi-agent-tags-"));
-  await writeFile(join(dir, "old.jsonl"), [JSON.stringify({ type: "session" }), JSON.stringify(tagEntry(["release", "ui"]))].join("\n"));
-  await writeFile(join(dir, "notes.txt"), JSON.stringify(tagEntry(["ignored"])));
-  const pi = fakePi({ sessionDir: dir, entries: [tagEntry(["bug"]), tagEntry(["regression"])] });
+test("completion: tags used here, then in other folders, from the history file", async () => {
+  const historyPath = await newHistoryPath();
+  const lines = [
+    { cwd: "/other", tags: ["release", "ui"], at: "2026-01-01T00:00:00Z" },
+    { cwd: "/w", tags: ["bug"], at: "2026-01-02T00:00:00Z" },
+    { cwd: "/w", tags: ["regression"], at: "2026-01-03T00:00:00Z" },
+  ];
+  await writeFile(historyPath, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  const pi = await fakePi({ historyPath, entries: [tagEntry(["kept"])] });
   await pi.start();
-  // The cwd's default tag ("w") comes first.
-  assert.deepEqual((await pi.complete("")).map((i: any) => i.value), ["w", "bug", "regression", "release", "ui"]);
+  // The cwd's default tag ("w") comes first, then this folder's tags, most recent first.
+  assert.deepEqual((await pi.complete("")).map((i: any) => i.value), ["w", "regression", "bug", "release", "ui"]);
   assert.deepEqual((await pi.complete("re")).map((i: any) => i.value), ["regression", "release"]);
   assert.deepEqual((await pi.complete("bug, R")).map((i: any) => i.value), ["bug,regression", "bug,release"]);
-  assert.deepEqual((await pi.complete("ui,")).map((i: any) => i.label), ["cwd  └ w", "used ├ bug", "     ├ regression", "     └ release"]);
+  assert.deepEqual((await pi.complete("ui,")).map((i: any) => i.label), ["cwd   └ w", "here  ├ regression", "      └ bug", "other └ release"]);
   assert.deepEqual((await pi.complete("--c")).map((i: any) => i.value), ["--clear"]);
   assert.equal(await pi.complete("zzz"), null);
 });
 
+test("history: --tags and /tags are recorded without the cwd tag and presets; completion sees them", async () => {
+  const pi = await fakePi({ flag: "w,a", settings: { tags: { presets: ["p"] } }, now: () => new Date("2026-11-19T00:00:00Z") });
+  await pi.start();
+  await pi.tags("p,b");
+  await pi.tags("--clear");
+  assert.deepEqual((await pi.complete("")).map((i: any) => i.label), ["cwd     └ w", "presets └ p", "here    ├ b", "        └ a"]);
+  const lines = (await readFile(pi.historyPath, "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(lines, [
+    { cwd: "/w", tags: ["a"], at: "2026-11-19T00:00:00.000Z" },
+    { cwd: "/w", tags: ["b"], at: "2026-11-19T00:00:00.000Z" },
+  ]);
+});
+
+test("history: the default tag alone writes nothing; --skip-tag-history writes nothing", async () => {
+  const pi = await fakePi();
+  await pi.start();
+  await pi.complete("");
+  await assert.rejects(readFile(pi.historyPath, "utf8"));
+  const skip = await fakePi({ flag: "a", skipHistory: true });
+  await skip.start();
+  await skip.tags("b");
+  await skip.complete("");
+  await assert.rejects(readFile(skip.historyPath, "utf8"));
+});
+
 test("completion: a tree of the cwd tag, preset groups, then tags used before; invalid presets warned", async () => {
-  const pi = fakePi({
+  const historyPath = await newHistoryPath();
+  await writeFile(historyPath, JSON.stringify({ cwd: "/home/me/My Repo", tags: ["bug", "infra", "zz"], at: "2026-01-01T00:00:00Z" }) + "\n");
+  const pi = await fakePi({
+    historyPath,
     cwd: "/home/me/My Repo",
-    entries: [tagEntry(["bug", "infra", "zz"])],
     settings: { tags: { presets: { work: ["Bug", "review", "my-repo"], ops: ["infra", "not ok", 3], bad: "x" } } },
   });
   await pi.start("resume");
@@ -221,7 +261,7 @@ test("completion: a tree of the cwd tag, preset groups, then tags used before; i
     ["bug", "work ├ bug"],
     ["review", "     └ review"],
     ["infra", "ops  └ infra"],
-    ["zz", "used └ zz"],
+    ["zz", "here └ zz"],
   ]);
   // Filtering looks at every group's tags, not the group names.
   assert.deepEqual((await pi.complete("my-repo,r")).map((i: any) => [i.value, i.label]), [["my-repo,review", "work └ review"]]);
@@ -229,7 +269,7 @@ test("completion: a tree of the cwd tag, preset groups, then tags used before; i
 });
 
 test("completion: a plain presets list is the 'presets' section", async () => {
-  const pi = fakePi({ settings: { tags: { presets: ["a", "b"] } } });
+  const pi = await fakePi({ settings: { tags: { presets: ["a", "b"] } } });
   await pi.start("resume");
   assert.deepEqual((await pi.complete("")).map((i: any) => i.label), ["cwd     └ w", "presets ├ a", "        └ b"]);
 });
@@ -245,24 +285,24 @@ test("presetTags: list or named groups, normalized, deduplicated across groups, 
 });
 
 test("the comma trigger wraps the editor once, in the TUI only", async () => {
-  const pi = fakePi();
+  const pi = await fakePi();
   await pi.start();
   const factory = pi.editorFactory;
   assert.equal(typeof factory, "function");
   await pi.start("new");
   assert.equal(pi.editorFactory, factory); // not wrapped again
-  const json = fakePi({ mode: "json" });
+  const json = await fakePi({ mode: "json" });
   await json.start();
   assert.equal(json.editorFactory, undefined);
 });
 
 test("without a UI (json mode) the footer is left alone; RPC gets a status", async () => {
-  const json = fakePi({ flag: "a", mode: "json" });
+  const json = await fakePi({ flag: "a", mode: "json" });
   await json.start();
   assert.equal(json.status.size, 0);
   assert.equal(json.footerCalls, 0);
   assert.equal(json.tagEntries().length, 1);
-  const rpc = fakePi({ flag: "a", mode: "rpc" });
+  const rpc = await fakePi({ flag: "a", mode: "rpc" });
   await rpc.start();
   assert.equal(rpc.status.get("tags"), "tags: a");
   assert.equal(rpc.footerCalls, 0);
@@ -270,7 +310,7 @@ test("without a UI (json mode) the footer is left alone; RPC gets a status", asy
 
 test("footer: pi's own footer with the tags left of the cwd, dimmed like it", async () => {
   initTheme("dark");
-  const pi = fakePi({ flag: "bug,ui" });
+  const pi = await fakePi({ flag: "bug,ui" });
   await pi.start();
   const lines = pi.renderFooter();
   // Both segments start with the same color escape (the theme's dim), so the tags look like the cwd.

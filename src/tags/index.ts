@@ -1,6 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
 import { decorate, footerSessionStart, setFooterPart } from "../shared/footer.ts";
 import { abortSession } from "../shared/abort.ts";
 import { ENTRY } from "../shared/protocol.ts";
@@ -9,20 +7,18 @@ import {
   defaultTag,
   parseTags,
   presetTags,
-  sessionFileTagEntries,
+  SKIP_TAG_HISTORY_FLAG,
   TAGS_ENTRY_VERSION,
   TAGS_FLAG,
-  tagHistory,
   type TagsEntry,
 } from "../shared/tags.ts";
 import { type Section, treeItems } from "./completion.ts";
 import { installCommaTrigger } from "./editor.ts";
+import { folderTags, historyPath, otherTags, readHistory, recordTags, type TagHistory } from "./history.ts";
 
 /** Status key, outside the TUI (RPC); the TUI shows the tags in the footer's cwd line. */
 const STATUS = "tags";
 const CLEAR = "--clear";
-/** Completion reads the tags of at most this many session files (newest first). */
-const MAX_SCANNED_SESSIONS = 200;
 
 const same = (a: string[] | undefined, b: string[]) => a !== undefined && a.length === b.length && a.every((t, i) => t === b[i]);
 
@@ -38,26 +34,46 @@ const same = (a: string[] | undefined, b: string[]) => a !== undefined && a.leng
  *   entry, so the default is not applied again).
  * - `/tags` shows them, `/tags a,b` replaces them, `/tags --clear` clears them; completion
  *   shows a small tree: the cwd's default tag, the `tags.presets` setting (a list, or named
- *   groups for display), then tags used before in this session folder. A comma opens it again.
+ *   groups for display), the tags used recently in this folder (`here`), then those of other
+ *   folders (`other`). A comma opens it again.
+ * - Tags set with `--tags` or `/tags` are recorded in the tag history (src/tags/history.ts,
+ *   `<agent dir>/pi-agent/tag-history.jsonl`): the 10 most recent per folder, without the cwd's
+ *   default tag and the presets. `--skip-tag-history` (sandbox runs) records nothing.
  * - The footer shows the current tags left of the cwd, dimmed like the rest of the footer.
  *
  * An entry is only written when the list changes. An invalid `--tags` is an error entry and
  * shuts pi down, like the other extensions' startup errors.
  */
-export default function sessionTags(pi: ExtensionAPI) {
+export interface SessionTagsOptions {
+  /** The tag history file; default in pi's agent dir (`historyPath`). */
+  historyPath?: string;
+  now?: () => Date;
+}
+
+export default function sessionTags(pi: ExtensionAPI, options: SessionTagsOptions = {}) {
+  const now = options.now ?? (() => new Date());
   let tags: string[] | undefined;
-  let sessionDir: string | undefined;
-  let currentFile: string | undefined;
-  /** Tags seen in other session files of the folder, loaded on the first completion. */
-  let known: Promise<string[]> | undefined;
-  /** Tags used in this session (every entry, not just the last). */
-  let ownHistory: string[] = [];
+  let cwd = "";
+  let lastCtx: ExtensionContext | undefined;
+  /** Record tag uses in the history file (not with --skip-tag-history). */
+  let recordHistory = false;
+  /** The history file, loaded on the first completion; reloaded after a write. */
+  let known: Promise<TagHistory> | undefined;
+  /** The last history write (completion waits for it). */
+  let writing: Promise<void> = Promise.resolve();
   /** Offered first by completion: the cwd's default tag, then `tags.presets` (settings.json). */
   let suggested: Section[] = [];
+
+  const file = () => options.historyPath ?? historyPath(getAgentDir());
 
   pi.registerFlag(TAGS_FLAG, {
     type: "string",
     description: "Comma-separated session tags (a-z 0-9 . _ : / -), recorded in the session file; /tags changes them",
+  });
+  pi.registerFlag(SKIP_TAG_HISTORY_FLAG, {
+    type: "boolean",
+    description: "Do not record the session's tags in the tag history (sandbox runs)",
+    default: false,
   });
 
   /** The tags left of the cwd in the footer (src/shared/footer.ts); a status outside the TUI. */
@@ -74,18 +90,34 @@ export default function sessionTags(pi: ExtensionAPI) {
     if (same(tags, next) || (tags === undefined && next.length === 0)) return false;
     pi.appendEntry<TagsEntry>(ENTRY.tags, { version: TAGS_ENTRY_VERSION, tags: next, source });
     tags = next;
-    for (const t of next) if (!ownHistory.includes(t)) ownHistory.push(t);
+    if (source !== "default") remember(next);
     return true;
+  };
+
+  /** Appends the tags to the history, without the ones completion offers anyway (cwd tag, presets). */
+  const remember = (next: string[]) => {
+    if (!recordHistory) return;
+    const offered = new Set(suggested.flatMap((s) => s.tags));
+    const used = next.filter((t) => !offered.has(t));
+    if (!used.length) return;
+    const path = file();
+    const dir = cwd;
+    const at = now();
+    writing = writing
+      .then(() => recordTags(path, dir, used, at))
+      .catch((err) => {
+        if (lastCtx?.hasUI) lastCtx.ui.notify(`[tags] tag history: ${(err as Error).message}`, "warning");
+      });
+    known = undefined;
   };
 
   pi.on("session_start", (event, ctx) => {
     // A new session may come with a new UI context: install the footer again.
     footerSessionStart(pi, ctx);
-    const entries = ctx.sessionManager.getEntries();
-    tags = currentTags(entries);
-    ownHistory = [...new Set(tagHistory(entries).flat())];
-    sessionDir = ctx.sessionManager.getSessionDir();
-    currentFile = ctx.sessionManager.getSessionFile();
+    tags = currentTags(ctx.sessionManager.getEntries());
+    cwd = ctx.cwd;
+    lastCtx = ctx;
+    recordHistory = pi.getFlag(SKIP_TAG_HISTORY_FLAG) !== true;
     known = undefined;
     // Read here, so a settings change applies after /reload.
     const presets = presetTags(pi.getSettings());
@@ -115,22 +147,6 @@ export default function sessionTags(pi: ExtensionAPI) {
     showStatus(ctx);
   });
 
-  /** Tags from the other session files in the folder, newest files first. */
-  const scan = async (): Promise<string[]> => {
-    if (!sessionDir) return [];
-    const dir = sessionDir;
-    const names = (await readdir(dir).catch(() => [] as string[])).filter((n) => n.endsWith(".jsonl"));
-    const files = await Promise.all(
-      names.map(async (n) => ({ path: join(dir, n), mtime: (await stat(join(dir, n)).catch(() => undefined))?.mtimeMs ?? 0 })),
-    );
-    const newest = files
-      .filter((f) => f.path !== currentFile)
-      .sort((a, b) => b.mtime - a.mtime)
-      .slice(0, MAX_SCANNED_SESSIONS);
-    const texts = await Promise.all(newest.map((f) => readFile(f.path, "utf8").catch(() => "")));
-    return [...new Set(texts.flatMap((text) => tagHistory(sessionFileTagEntries(text)).flat()))];
-  };
-
   pi.registerCommand("tags", {
     description: `Show the session's tags; "/tags a,b" replaces them, "/tags ${CLEAR}" clears them`,
     getArgumentCompletions: async (prefix) => {
@@ -140,11 +156,15 @@ export default function sessionTags(pi: ExtensionAPI) {
       if (cut < 0 && word.startsWith("-")) {
         return CLEAR.startsWith(word) ? [{ value: CLEAR, label: CLEAR, description: "Remove every tag" }] : null;
       }
-      known ??= scan();
+      known ??= writing.then(() => readHistory(file()));
+      const history = await known;
       const typed = head.split(",").map((t) => t.trim().toLowerCase());
       const fits = (t: string) => t.startsWith(word) && !typed.includes(t);
-      const used = [...new Set([...ownHistory, ...(await known)])].sort();
-      const items = treeItems([...suggested, { name: "used", tags: used }], head, fits);
+      const items = treeItems(
+        [...suggested, { name: "here", tags: folderTags(history, cwd) }, { name: "other", tags: otherTags(history, cwd) }],
+        head,
+        fits,
+      );
       return items.length ? items : null;
     },
     handler: async (args, ctx) => {
