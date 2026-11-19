@@ -657,17 +657,21 @@ don't trigger other workflows). Versions start at 0.1.0, the commit in `bootstra
 
 The Go module `github.com/Elven9/pi-agent/go` (`go/pkg/session-parser`, the session file
 parser for the session server) has its own version, separate from pi-agent's. release-please
-manages it as a second package (`go` in `release-please-config.json`):
+manages it as a separate package, with its own config and manifest
+(`release-please-config.go.json`, `.release-please-manifest.go.json`) and a second
+release-please step in the workflow:
 
 - Commits that change files under `go/` bump the Go module; all other commits bump pi-agent
   (`exclude-paths`). A commit touching both bumps both. Same rules: `feat` minor, `fix`
   patch, breaking changes minor below 1.0.0.
-- Both go into the one release pull request. Merging it tags `go/vX.Y.Z` (the form Go needs
-  for a module in a subfolder) next to pi-agent's `vX.Y.Z`, and adds a section to
-  `go/CHANGELOG.md`.
+- Each has its own release pull request. Merging the Go one tags `go/vX.Y.Z` (the form Go
+  needs for a module in a subfolder) and adds a section to `go/CHANGELOG.md`; merging
+  pi-agent's tags `vX.Y.Z`.
+- The two never share a file: with one shared manifest both pull requests edited neighbouring
+  lines of it, so merging one left the other conflicting, and release-please does not rebase a
+  release pull request whose notes did not change.
 - Import a release with `go get github.com/Elven9/pi-agent/go@v0.1.0` (Go strips the `go/`
   prefix of the tag).
-- The first release is 0.1.0 (`release-as`); remove `release-as` from the config after it.
 
 Policy:
 

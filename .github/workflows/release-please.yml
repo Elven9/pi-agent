@@ -13,17 +13,28 @@ jobs:
     runs-on: ubuntu-slim
     outputs:
       # The root package's release pull request branch when this run created or updated it, else ''.
-      # Each package gets its own release pull request (separate-pull-requests in
-      # release-please-config.json): with one combined pull request on release-please--branches--main,
+      # Each package gets its own release pull request on a branch named after its component
+      # (separate-pull-requests): with one combined pull request on release-please--branches--main,
       # release-please cannot tag a release that holds only the root package, as its branch has no
       # component and the root package's component is pi-agent.
       branch: ${{ contains(steps.release.outputs.prs, '"release-please--branches--main--components--pi-agent"') && 'release-please--branches--main--components--pi-agent' || '' }}
     steps:
+      # The two packages have separate configs and manifests and run release-please separately.
+      # With one shared manifest both release pull requests edit neighbouring lines of it, so
+      # merging one left the other conflicting, and release-please does not rebase a release pull
+      # request whose notes did not change (go 0.3.0, #20).
       - id: release
         uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      # The Go module in go/, tagged go/vX.Y.Z.
+      - id: release-go
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.go.json
+          manifest-file: .release-please-manifest.go.json
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
 
   # pi installs git packages without building them (npm install --omit=dev, no build step), so the
