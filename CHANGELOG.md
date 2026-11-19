@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/Elven9/pi-agent/compare/v0.14.0...v0.15.0) (2026-11-19)
+
+
+### Features
+
+* **code-writer:** require why/how/improved in commit messages ([ae0bf62](https://github.com/Elven9/pi-agent/commit/ae0bf62a684ef0e35c384e0055cb65c5ef3f9907))
+* **tags:** keep tag history per folder in the agent dir ([97f9bb0](https://github.com/Elven9/pi-agent/commit/97f9bb0a2a94583455b9de6238e6a39ec601e156))
+
 ## [0.14.0](https://github.com/Elven9/pi-agent/compare/v0.13.0...v0.14.0) (2026-11-18)
 
 
