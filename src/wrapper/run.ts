@@ -48,6 +48,8 @@ export interface RunOptions {
   projectExtensionPath: string;
   /** Bundled metrics extension (dist/metrics.js). */
   metricsExtensionPath: string;
+  /** Bundled skill loads extension (dist/skill-loads.js). */
+  skillLoadsExtensionPath: string;
   /** Bundled tags extension (dist/tags.js). */
   tagsExtensionPath: string;
   /** Bundled session version extension (dist/session-version.js). */
@@ -143,6 +145,7 @@ export async function runTask(o: RunOptions): Promise<Report> {
     scenarioProfileExtensionPath: o.scenarioProfileExtensionPath,
     projectExtensionPath: o.projectExtensionPath,
     metricsExtensionPath: o.metricsExtensionPath,
+    skillLoadsExtensionPath: o.skillLoadsExtensionPath,
     tagsExtensionPath: o.tagsExtensionPath,
     sessionVersionExtensionPath: o.sessionVersionExtensionPath,
     toolRefExtensionPath: o.toolRefExtensionPath,

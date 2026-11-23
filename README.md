@@ -10,6 +10,7 @@ My pi resources and the sandbox agent runner, in one repo.
 | `src/extension/` | pi extension (runner only): `submit_result`, one resubmit nudge |
 | `src/scenario-profile/` | pi extension: `--scenario <name>` applies the scenario's system prompt, tools and skills (runner and personal pi) |
 | `src/metrics/` | pi extension: session metrics as `pi-agent.metrics` entries in the session file (runner and personal pi) |
+| `src/skill-loads/` | pi extension: one `pi-agent.skill-load` entry in the session file per skill load (a read of its SKILL.md, also from codemode, or `/skill:name`); `/skills-loaded` lists them (runner and personal pi) |
 | `src/session-upload/` | pi extension (personal pi only): uploads the raw session file to a session server |
 | `src/quick-quit/` | pi extension (personal pi only): `/q!` quits at once, skipping every extension's shutdown work (session upload, metrics, ...) |
 | `src/tags/` | pi extension: session tags (`--tags`, `/tags`) as `pi-agent.tags` entries in the session file (runner and personal pi) |
@@ -312,7 +313,7 @@ gets only the report path. SIGINT/SIGTERM stop pi (whole process group) and stil
 ### How a run works
 
 ```
-pi-agent run ──spawn──▶ pi --mode json -ne -e builtin:codemode -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/tags.js -e dist/session-version.js -e dist/tool-ref.js
+pi-agent run ──spawn──▶ pi --mode json -ne -e builtin:codemode -e dist/extension.js -e dist/scenario-profile.js -e dist/project.js -e dist/metrics.js -e dist/skill-loads.js -e dist/tags.js -e dist/session-version.js -e dist/tool-ref.js
      ▲                    │    --scenario <name> [--project <dir>] [--tags <a,b>] --skip-tag-history … -- <prompt>
      │                    │  scenario-profile: owns --scenario; system prompt, tools, skills
      │                    │  extension: submit_result + instruction, nudge once
@@ -361,6 +362,15 @@ branch's earlier entries, so the newest entry is the total across resumes (and, 
 `--resume`, includes the earlier run; report.json covers only the current run except for
 `contextPeakPercent`). Percentiles are recomputed from all `samples`; the cache-miss check
 starts over after a resume.
+
+### Skill loads (`pi-agent.skill-load` entries)
+
+The skill loads extension (`src/skill-loads/`) appends one `custom` entry (not model context) per
+load of a skill: a successful `read` of a loaded skill's `SKILL.md` by the model (`via: "read"`) or
+from a codemode script (`via: "codemode"`; pi runs a script's calls through `tool_call` too), or a
+user message pi expanded from `/skill:name` (`via: "command"`). Data: `version: 1`, `name`,
+`location` (the skill's `SKILL.md`, as pi loaded it) and `toolCallId` for reads. Reads through
+other tools (`bash cat`) are not counted. `/skills-loaded` lists the loads on the current branch.
 
 ### Task file
 

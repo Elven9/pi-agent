@@ -318,7 +318,9 @@ var ENTRY = {
   /** `custom` entry with `ScenarioEntry` data (scenario-profile extension); the last one in the file is the session's scenario. */
   scenario: "pi-agent.scenario",
   /** `custom` entry with `ProjectEntry` data (project extension); the last one in the file is the session's project. */
-  project: "pi-agent.project"
+  project: "pi-agent.project",
+  /** `custom` entry with `SkillLoadEntry` data (skill-loads extension), one per load of a skill. */
+  skillLoad: "pi-agent.skill-load"
 };
 
 // src/shared/result.ts

@@ -128,6 +128,8 @@ export const ENTRY = {
   scenario: "pi-agent.scenario",
   /** `custom` entry with `ProjectEntry` data (project extension); the last one in the file is the session's project. */
   project: "pi-agent.project",
+  /** `custom` entry with `SkillLoadEntry` data (skill-loads extension), one per load of a skill. */
+  skillLoad: "pi-agent.skill-load",
 } as const;
 
 /** `pi.events` channel: `{ message }`, an extension could not run and is shutting pi down (shared/abort.ts). */

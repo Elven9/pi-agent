@@ -18,6 +18,8 @@ export interface PiCommandOptions {
   projectExtensionPath: string;
   /** Bundled metrics extension (dist/metrics.js): writes pi-agent.metrics entries. */
   metricsExtensionPath: string;
+  /** Bundled skill loads extension (dist/skill-loads.js): writes pi-agent.skill-load entries. */
+  skillLoadsExtensionPath: string;
   /** Bundled tags extension (dist/tags.js): records the task's tags in the session file. */
   tagsExtensionPath: string;
   /** Bundled session version extension (dist/session-version.js): records the pi-agent release in the session file. */
@@ -39,7 +41,7 @@ export interface PiCommandOptions {
  * pi CLI arguments for one scenario run. Loads nothing implicitly: no discovered extensions,
  * skills, prompt templates, context files, themes, MCP or project config (the workdir is not
  * trusted). The tags extension records nothing in the tag history (`--skip-tag-history`):
- * it would be thrown away with the sandbox. Only the runner, scenario profile, project, metrics, tags, session version and tool-ref extensions (tool-ref
+ * it would be thrown away with the sandbox. Only the runner, scenario profile, project, metrics, skill loads, tags, session version and tool-ref extensions (tool-ref
  * last: no later extension may replace tool results and drop its trailers), the given skills
  * and the scenario's tools. The system prompt comes from the scenario profile extension (`--scenario`),
  * which also applies the tools and skills in-process; `--tools` and `--skill` stay as the hard
@@ -62,6 +64,7 @@ export function piArgs(o: PiCommandOptions): string[] {
     ...(usesMcp(scenario) ? ["-e", `builtin:${MCP}`] : []),
     "-e", o.extensionPath, "-e", o.scenarioProfileExtensionPath,
     "-e", o.projectExtensionPath, "-e", o.metricsExtensionPath,
+    "-e", o.skillLoadsExtensionPath,
     "-e", o.tagsExtensionPath, "-e", o.sessionVersionExtensionPath,
     "-e", o.toolRefExtensionPath,
     ...(usesMcp(scenario) ? [] : ["--no-mcp"]),

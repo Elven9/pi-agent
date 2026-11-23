@@ -18,6 +18,7 @@
       "./dist/scenario-profile.js",
       "./src/project/index.ts",
       "./src/worktree/index.ts",
+      "./src/skill-loads/index.ts",
       "./src/activation-hint/index.ts",
       "./src/context-view/index.ts",
       "./src/metrics/index.ts",

@@ -21,7 +21,7 @@ const USAGE =
 
 /**
  * Where the extensions and the app root (with skills/) are. Bundled: dist/pi-agent.js next to
- * dist/extension.js, dist/scenario-profile.js, dist/project.js, dist/metrics.js, dist/tags.js, dist/session-version.js and dist/tool-ref.js. From source
+ * dist/extension.js, dist/scenario-profile.js, dist/project.js, dist/metrics.js, dist/skill-loads.js, dist/tags.js, dist/session-version.js and dist/tool-ref.js. From source
  * (node src/wrapper/main.ts): pi loads the .ts extensions, which import .md files, so pi needs the same loader hook as `npm run dev`.
  */
 function locate(): {
@@ -29,6 +29,7 @@ function locate(): {
   scenarioProfileExtensionPath: string;
   projectExtensionPath: string;
   metricsExtensionPath: string;
+  skillLoadsExtensionPath: string;
   tagsExtensionPath: string;
   sessionVersionExtensionPath: string;
   toolRefExtensionPath: string;
@@ -42,6 +43,7 @@ function locate(): {
       scenarioProfileExtensionPath: join(here, "scenario-profile.js"),
       projectExtensionPath: join(here, "project.js"),
       metricsExtensionPath: join(here, "metrics.js"),
+      skillLoadsExtensionPath: join(here, "skill-loads.js"),
       tagsExtensionPath: join(here, "tags.js"),
       sessionVersionExtensionPath: join(here, "session-version.js"),
       toolRefExtensionPath: join(here, "tool-ref.js"),
@@ -58,6 +60,7 @@ function locate(): {
     scenarioProfileExtensionPath: join(here, "../scenario-profile/index.ts"),
     projectExtensionPath: join(here, "../project/index.ts"),
     metricsExtensionPath: join(here, "../metrics/index.ts"),
+    skillLoadsExtensionPath: join(here, "../skill-loads/index.ts"),
     tagsExtensionPath: join(here, "../tags/index.ts"),
     sessionVersionExtensionPath: join(here, "../session-version/index.ts"),
     toolRefExtensionPath: join(here, "../tool-ref/index.ts"),
