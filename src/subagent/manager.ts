@@ -1,6 +1,7 @@
 import { exitText, type ChildExit, type ChildHandle, type RpcRecord } from "./rpc.ts";
 import { PROGRESS_KEEP, type LiveView, progressLine, scenarioLabel } from "./format.ts";
 import { abortedResult, baseDetails } from "./records.ts";
+import { sessionCost } from "./cost.ts";
 import { agentId, messageId, type ResultBody, type ResultDetails, SEND_TO_LEADER, type StartRecord } from "./protocol.ts";
 
 /** States of a live child (design: "States"). Finished children leave the manager. */
@@ -33,6 +34,8 @@ export interface ManagerDeps {
   now(): number;
   /** SIGTERM → SIGKILL grace period. */
   graceMs: number;
+  /** USD a child's session file records (default: sessionCost). */
+  sessionCost?(file: string): number | undefined;
 }
 
 /**
@@ -151,10 +154,12 @@ export class SubagentManager {
 
   private details(live: Live, body: ResultBody): ResultDetails {
     const now = this.deps.now();
+    const cost = live.sessionFile ? (this.deps.sessionCost ?? sessionCost)(live.sessionFile) : undefined;
     return {
       ...baseDetails(live.start),
       endedAt: now,
       ...(live.sessionFile && { childSessionFile: live.sessionFile }),
+      ...(cost !== undefined && { costUsd: cost }),
       envelope: {
         v: 1,
         id: messageId(now),

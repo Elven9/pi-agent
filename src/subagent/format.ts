@@ -1,6 +1,7 @@
 import { inputSummary, oneLine, scriptIntent } from "../tool-ref/format.ts";
 import type { Scenario } from "../shared/scenarios/index.ts";
 import { type ResultDetails, SEND_TO_LEADER, TOOL } from "./protocol.ts";
+import { formatCost } from "./cost.ts";
 
 /** Default and limits of the lookup tools (as tool-ref's). */
 export const DEFAULT_MAX_CHARS = 4000;
@@ -39,9 +40,12 @@ export const GENERAL = "general";
 /** The scenario's name, or GENERAL for a subagent without one. */
 export const scenarioLabel = (scenario: string | undefined): string => scenario ?? GENERAL;
 
-/** `a3 · review · ok · 2m14s` */
+/** ` · $0.06` when the result records its cost, else empty. */
+export const costPart = (d: Pick<ResultDetails, "costUsd">): string => (d.costUsd !== undefined ? ` · ${formatCost(d.costUsd)}` : "");
+
+/** `a3 · review · ok · 2m14s · $0.06` */
 export function resultHeader(d: ResultDetails): string {
-  return `${d.resultId} · ${scenarioLabel(d.scenario)} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}`;
+  return `${d.resultId} · ${scenarioLabel(d.scenario)} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}${costPart(d)}`;
 }
 
 /**
@@ -50,7 +54,7 @@ export function resultHeader(d: ResultDetails): string {
  */
 export function resultContent(d: ResultDetails): string {
   const body = d.envelope.body;
-  const lines = [`[subagent ${d.resultId}] ${scenarioLabel(d.scenario)} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}${provenance(d)}`, body.summary];
+  const lines = [`[subagent ${d.resultId}] ${scenarioLabel(d.scenario)} · ${statusLabel(d)} · ${formatDuration(d.endedAt - d.startedAt)}${costPart(d)}${provenance(d)}`, body.summary];
   if (body.detail !== undefined) lines.push(`(structured detail: ${TOOL.get} ${d.resultId})`);
   if (isAbnormal(d)) {
     lines.push("", `Task (${scenarioLabel(d.scenario)}${d.project ? `, project ${d.project}` : ""}):`, d.task, "", `Restart it with ${TOOL.restart} if it is still needed.`);
@@ -147,6 +151,7 @@ export function resultPage(d: ResultDetails): SectionedText {
     ...(d.startedBy === "user" ? ["started by user"] : []),
     ...(d.project ? [`project ${d.project}`] : []),
     ...modelParts(d),
+    ...(d.costUsd !== undefined ? [`cost ${formatCost(d.costUsd)}`] : []),
   ].join(" · ");
   const t: SectionedText = { lines: [meta], headings: [] };
   addSection(t, "task:", d.task.split("\n"));

@@ -4,7 +4,7 @@ import { SubagentManager } from "./manager.ts";
 import type { ResultDetails, StartRecord } from "./protocol.ts";
 import { FakeChild } from "./test-child.ts";
 
-function setup() {
+function setup(sessionCost?: (file: string) => number | undefined) {
   const children = new Map<number, FakeChild>();
   const results: ResultDetails[] = [];
   let changes = 0;
@@ -20,6 +20,7 @@ function setup() {
     onChange: () => changes++,
     now: () => (t += 1000),
     graceMs: 100,
+    sessionCost: sessionCost ?? (() => undefined),
   });
   const start = (id: number, extra: Partial<StartRecord> = {}): StartRecord => ({
     id,
@@ -34,6 +35,22 @@ function setup() {
 }
 
 const tick = () => new Promise((r) => setImmediate(r));
+
+test("a result records the cost of the child's session file; none when it is unknown", async () => {
+  const files: string[] = [];
+  const { manager, children, results, start } = setup((file) => (files.push(file), 0.0641));
+  manager.spawn(start(1));
+  await tick();
+  children.get(1)!.sendResult("ok", "done");
+  assert.deepEqual(files, ["/s/child.jsonl"]);
+  assert.equal(results[0]!.costUsd, 0.0641);
+
+  const none = setup();
+  none.manager.spawn(none.start(2));
+  await tick();
+  none.children.get(2)!.sendResult("ok", "done");
+  assert.equal("costUsd" in none.results[0]!, false);
+});
 
 test("spawn sends the prompt, tracks progress from tool calls, and reports the child's result once", async () => {
   const { manager, children, results, start } = setup();

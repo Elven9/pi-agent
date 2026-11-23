@@ -9,6 +9,7 @@ import {
   progressLine,
   provenance,
   resultContent,
+  resultHeader,
   userStartContent,
   statusText,
   taskPrompt,
@@ -48,6 +49,14 @@ test("resultContent: header and summary; abnormal results also carry the task an
   assert.match(aborted, /^\[subagent a5\] review · aborted · 2m14s\naborted: the leader session ended\n\nTask \(review, project \/p\):\ncheck the auth middleware\nfor token reuse\n\nRestart it with subagent_restart/);
   assert.match(resultContent(result(6, { status: "killed", reason: "user", summary: "killed by user" })), /review · killed by user ·/);
   assert.match(resultContent(result(7, { status: "aborted", reason: "reload" })), /review · aborted \(reload\) ·/);
+});
+
+test("cost: in the model's header, the lookup header and the page meta when recorded", () => {
+  const d = { ...result(3), costUsd: 0.0641 };
+  assert.equal(resultContent(d), "[subagent a3] review · ok · 2m14s · $0.06\nfound one reuse bug");
+  assert.equal(resultHeader(d), "a3 · review · ok · 2m14s · $0.06");
+  assert.match(resultLines(d)[0]!, / · cost \$0\.06$/);
+  assert.equal(resultHeader(result(3)), "a3 · review · ok · 2m14s");
 });
 
 test("resultPage / livePage: section headings by index; resultLines is the same text", () => {

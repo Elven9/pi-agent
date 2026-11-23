@@ -1,11 +1,12 @@
 import { DynamicBorder, type MessageRenderer, type Theme } from "@earendil-works/pi-coding-agent";
 import { Container, Text, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { formatDuration, isAbnormal, scenarioLabel, statusLabel } from "./format.ts";
+import { formatCost } from "./cost.ts";
 import type { ResultDetails } from "./protocol.ts";
 
 type Styler = Pick<Theme, "fg" | "bold">;
 
-/** Header row: `[subagent] a3 · review · ok · 2m14s`, the label like codemode's (accent), the status coloured. */
+/** Header row: `[subagent] a3 · review · ok · 2m14s · $0.06`, the label like codemode's (accent), the status coloured. */
 export function headerLine(d: ResultDetails, th: Styler): string {
   const status = statusLabel(d);
   const color = isAbnormal(d) || d.envelope.body.status === "error" ? "error" : "success";
@@ -18,6 +19,7 @@ export function headerLine(d: ResultDetails, th: Styler): string {
     th.fg(color, status),
     th.fg("muted", "·"),
     th.fg("dim", formatDuration(d.endedAt - d.startedAt)),
+    ...(d.costUsd !== undefined ? [th.fg("muted", "·"), th.fg("dim", formatCost(d.costUsd))] : []),
     ...(d.restartOf ? [th.fg("muted", "·"), th.fg("dim", `↻ ${d.restartOf}`)] : []),
   ].join(" ");
 }

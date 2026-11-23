@@ -462,6 +462,51 @@ function inputSummary(ref) {
   return oneLine(JSON.stringify(input));
 }
 
+// src/subagent/cost.ts
+import { readFileSync } from "node:fs";
+function sessionCost(file) {
+  let text2;
+  try {
+    text2 = readFileSync(file, "utf8");
+  } catch {
+    return void 0;
+  }
+  let total = 0;
+  let seen = false;
+  for (const line of text2.split("\n")) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const cost = costOf(entry);
+    if (cost !== void 0) {
+      total += cost;
+      seen = true;
+    }
+  }
+  return seen ? total : void 0;
+}
+function costOf(entry) {
+  let usage;
+  if (entry.type === "message") {
+    const message = entry.message;
+    if (message?.role !== "assistant") return void 0;
+    usage = message.usage;
+  } else if (entry.type === "usage" || entry.type === "compaction" || entry.type === "branch_summary") {
+    usage = entry.usage;
+  } else {
+    return void 0;
+  }
+  const total = usage?.cost?.total;
+  return typeof total === "number" && Number.isFinite(total) ? total : void 0;
+}
+function formatCost(usd) {
+  return usd > 0 && usd < 0.01 ? `$${usd.toFixed(3)}` : `$${usd.toFixed(2)}`;
+}
+
 // src/subagent/format.ts
 var DEFAULT_MAX_CHARS = 4e3;
 var MAX_IDS = 10;
@@ -487,12 +532,13 @@ function statusLabel(d) {
 var isAbnormal = (d) => !["ok", "error"].includes(d.envelope.body.status);
 var GENERAL = "general";
 var scenarioLabel = (scenario) => scenario ?? GENERAL;
+var costPart = (d) => d.costUsd !== void 0 ? ` \xB7 ${formatCost(d.costUsd)}` : "";
 function resultHeader(d) {
-  return `${d.resultId} \xB7 ${scenarioLabel(d.scenario)} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}`;
+  return `${d.resultId} \xB7 ${scenarioLabel(d.scenario)} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}${costPart(d)}`;
 }
 function resultContent(d) {
   const body = d.envelope.body;
-  const lines = [`[subagent ${d.resultId}] ${scenarioLabel(d.scenario)} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}${provenance(d)}`, body.summary];
+  const lines = [`[subagent ${d.resultId}] ${scenarioLabel(d.scenario)} \xB7 ${statusLabel(d)} \xB7 ${formatDuration(d.endedAt - d.startedAt)}${costPart(d)}${provenance(d)}`, body.summary];
   if (body.detail !== void 0) lines.push(`(structured detail: ${TOOL.get} ${d.resultId})`);
   if (isAbnormal(d)) {
     lines.push("", `Task (${scenarioLabel(d.scenario)}${d.project ? `, project ${d.project}` : ""}):`, d.task, "", `Restart it with ${TOOL.restart} if it is still needed.`);
@@ -560,7 +606,8 @@ function resultPage(d) {
     ...d.restartOf ? [`restart of ${d.restartOf}`] : [],
     ...d.startedBy === "user" ? ["started by user"] : [],
     ...d.project ? [`project ${d.project}`] : [],
-    ...modelParts(d)
+    ...modelParts(d),
+    ...d.costUsd !== void 0 ? [`cost ${formatCost(d.costUsd)}`] : []
   ].join(" \xB7 ");
   const t = { lines: [meta], headings: [] };
   addSection(t, "task:", d.task.split("\n"));
@@ -953,10 +1000,12 @@ ${tail}` : ""}` });
   }
   details(live, body) {
     const now = this.deps.now();
+    const cost = live.sessionFile ? (this.deps.sessionCost ?? sessionCost)(live.sessionFile) : void 0;
     return {
       ...baseDetails(live.start),
       endedAt: now,
       ...live.sessionFile && { childSessionFile: live.sessionFile },
+      ...cost !== void 0 && { costUsd: cost },
       envelope: {
         v: 1,
         id: messageId(now),
@@ -1039,6 +1088,7 @@ function headerLine(d, th) {
     th.fg(color, status),
     th.fg("muted", "\xB7"),
     th.fg("dim", formatDuration(d.endedAt - d.startedAt)),
+    ...d.costUsd !== void 0 ? [th.fg("muted", "\xB7"), th.fg("dim", formatCost(d.costUsd))] : [],
     ...d.restartOf ? [th.fg("muted", "\xB7"), th.fg("dim", `\u21BB ${d.restartOf}`)] : []
   ].join(" ");
 }

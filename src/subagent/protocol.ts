@@ -113,6 +113,8 @@ export interface ResultDetails {
   startedAt: number;
   endedAt: number;
   childSessionFile?: string;
+  /** USD the child's session cost up to its result (from childSessionFile); none when unknown or in older records. */
+  costUsd?: number;
   envelope: Envelope<ResultBody>;
 }
 

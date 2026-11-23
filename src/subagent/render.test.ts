@@ -19,6 +19,7 @@ const result = (body: Partial<ResultBody> = {}): ResultDetails => ({
 test("header: label like codemode's (accent), ID, scenario, coloured status, duration", () => {
   assert.equal(headerLine(result(), th), "<accent>[subagent] a3 <muted>· review <muted>· <success>ok <muted>· <dim>2m14s");
   assert.match(headerLine(result({ status: "error" }), th), /<error>error/);
+  assert.match(headerLine({ ...result(), costUsd: 0.0641 }, th), /<dim>2m14s <muted>· <dim>\$0\.06$/);
   assert.match(headerLine(result({ status: "killed", reason: "user" }), th), /<error>killed by user/);
   assert.match(headerLine(result({ status: "aborted", reason: "leader_exit" }), th), /<error>aborted /);
   assert.match(headerLine({ ...result(), restartOf: "a2" }, th), /<dim>2m14s <muted>· <dim>↻ a2$/);

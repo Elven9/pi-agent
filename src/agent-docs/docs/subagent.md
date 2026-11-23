@@ -16,7 +16,7 @@ A subagent works in the background and reports once; its result lands in the lea
 | `subagent_get(ids, lines?, maxChars?)` | Shows results by ID: task, summary and structured detail, numbered lines. |
 | `subagent_grep(pattern, ids?, context?)` | Finds results by regex, newest first. |
 
-- Results arrive by themselves as `[subagent a3] <scenario> · <status> · <duration>` messages and
+- Results arrive by themselves as `[subagent a3] <scenario> · <status> · <duration> · <cost>` messages and
   start a new turn when the leader is idle. Do not poll or wait for them.
 - Statuses: `ok` and `error` from the subagent; `failed` (crashed or stopped without a result),
   `killed` and `aborted` (the leader session ended) written by the leader. The header adds
@@ -39,6 +39,13 @@ A subagent works in the background and reports once; its result lands in the lea
 - `/agent` pages through all subagents (newest first), `/agent a3` shows one, `/agent grep <regex>`
   the matching results; `x` in the panel kills a running one. `/agent kill a3` and
   `/agent restart a3` do the same without the panel.
+
+## Cost
+
+- A result records what the subagent's session cost in USD (`costUsd`), summed from its session
+  file when the result is made: model calls, cache warming, compaction and branch summaries. It is
+  shown in the result header, `/agent` and `subagent_get`. Not recorded when the leader has no
+  session file (`--no-session`, so the subagent has none either) or for older results.
 
 ## Lifecycle
 
