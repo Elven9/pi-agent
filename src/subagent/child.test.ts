@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { makeSession } from "../tool-ref/test-harness.ts";
 import subagent from "./index.ts";
 import { SCENARIO_CHANNEL } from "../shared/protocol.ts";
 import { detailErrors } from "../shared/result.ts";
@@ -22,12 +24,32 @@ function fakePi() {
   return { pi, tools, commands, handlers, announce: (c: string, d: unknown) => listeners.get(c)?.(d) };
 }
 
-test("no nesting: a child registers only send_to_leader (no leader tools, commands or handlers)", () => {
+test("no nesting: a child registers only codemode and send_to_leader (no leader tools, commands or handlers)", () => {
   const f = fakePi();
   subagent(f.pi, { child: true });
-  assert.deepEqual([...f.tools.keys()], ["send_to_leader"]);
+  assert.deepEqual([...f.tools.keys()], ["codemode", "send_to_leader"]);
   assert.deepEqual(f.commands, []);
   assert.deepEqual(f.handlers, []);
+});
+
+test("a child is codemode-only even with codemode.mode \"on\": the model sees codemode and send_to_leader only", async () => {
+  const { session, faux } = await makeSession({
+    extensions: [(pi) => subagent(pi, { child: true })],
+    // send_to_leader listed: a plain-name allowlist drops unlisted extension tools (the CLI child keeps them).
+    tools: ["codemode", "read", "bash", "send_to_leader"],
+    settings: { codemode: { mode: "on" } },
+  });
+  let seen: string[] = [];
+  faux.setResponses([
+    (context) => {
+      // Declarations travel in the leading system message; hidden ones are left out.
+      seen = ((context.messages[0] as { toolsAdded?: { name: string }[] }).toolsAdded ?? []).map((t) => t.name);
+      return fauxAssistantMessage("ok");
+    },
+  ]);
+  await session.prompt("hi");
+  assert.deepEqual(seen.sort(), ["codemode", "send_to_leader"]);
+  session.dispose();
 });
 
 test("the leader has the leader tools and /agent, and no send_to_leader", () => {

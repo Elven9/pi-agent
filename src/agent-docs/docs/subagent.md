@@ -23,8 +23,10 @@ A subagent works in the background and reports once; its result lands in the lea
   `· restart of a2` and `· started by user` when they apply; a subagent the user starts is announced
   with a `[subagent a5] started by user` message. A result that did not
   finish by itself also repeats the task, for `subagent_restart`.
-- A subagent runs with the model it was given (else the leader's), its scenario's prompt and tools (pi's own without a
-  scenario), and only one extra tool: `send_to_leader`. Subagents cannot start subagents.
+- A subagent runs with the model it was given (else the leader's), its scenario's prompt and tools (pi's own plus
+  `codemode` without a scenario), and only one extra tool: `send_to_leader`. Subagents cannot start subagents.
+- Subagents are codemode-only whatever the user's `codemode.mode` setting: their other tools are
+  hidden from the model and called from codemode scripts; `send_to_leader` is called directly.
 
 ## For the user
 

@@ -320,6 +320,6 @@ test("childCommand and childArgs", () => {
   assert.deepEqual(childArgs({ ...start, project: undefined }, {}, undefined).slice(-1), ["--no-session"]);
   // Without a scenario: no --scenario, a general pi agent.
   assert.deepEqual(childArgs({ ...start, scenario: undefined, project: undefined }, {}, undefined), [
-    "--mode", "rpc", "--name", "subagent a3 (general)", "--no-session",
+    "--mode", "rpc", "--tools", "+codemode", "--name", "subagent a3 (general)", "--no-session",
   ]);
 });

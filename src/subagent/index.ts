@@ -99,7 +99,8 @@ export function childArgs(
   leader: { model?: { provider: string; id: string }; thinking?: ThinkingLevel },
   leaderSessionFile: string | undefined,
 ): string[] {
-  const args = ["--mode", "rpc", ...(start.scenario !== undefined ? ["--scenario", start.scenario] : []), "--name", `subagent ${agentId(start.id)} (${scenarioLabel(start.scenario)})`];
+  // A scenario sets its own tools; a general child gets pi's defaults plus codemode (children are codemode-only, see registerChild).
+  const args = ["--mode", "rpc", ...(start.scenario !== undefined ? ["--scenario", start.scenario] : ["--tools", "+codemode"]), "--name", `subagent ${agentId(start.id)} (${scenarioLabel(start.scenario)})`];
   if (start.project) args.push("--project", start.project);
   const model = start.model ?? (leader.model && modelName(leader.model));
   if (model) args.push("--model", model);

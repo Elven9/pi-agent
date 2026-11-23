@@ -296,6 +296,7 @@ function getScenario(name) {
 }
 
 // src/subagent/child.ts
+import { createCodemodeExtension } from "@earendil-works/pi-coding-agent";
 import { Type as Type7 } from "typebox";
 
 // src/shared/protocol.ts
@@ -391,6 +392,7 @@ var PARAMETERS = Type7.Object({
   )
 });
 function registerChild(pi) {
+  createCodemodeExtension({ mode: "only" })(pi);
   let scenario;
   pi.events.on(SCENARIO_CHANNEL, (data) => {
     try {
@@ -1251,7 +1253,7 @@ function childCommand(env = process.env, argv = process.argv) {
   return argv[1] ? [process.execPath, argv[1]] : ["pi"];
 }
 function childArgs(start, leader, leaderSessionFile) {
-  const args = ["--mode", "rpc", ...start.scenario !== void 0 ? ["--scenario", start.scenario] : [], "--name", `subagent ${agentId(start.id)} (${scenarioLabel(start.scenario)})`];
+  const args = ["--mode", "rpc", ...start.scenario !== void 0 ? ["--scenario", start.scenario] : ["--tools", "+codemode"], "--name", `subagent ${agentId(start.id)} (${scenarioLabel(start.scenario)})`];
   if (start.project) args.push("--project", start.project);
   const model = start.model ?? (leader.model && modelName(leader.model));
   if (model) args.push("--model", model);

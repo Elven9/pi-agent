@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createCodemodeExtension, type ExtensionAPI, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type, type TSchema } from "typebox";
 import { SCENARIO_CHANNEL, type ScenarioSelected } from "../shared/protocol.ts";
 import { detailErrors } from "../shared/result.ts";
@@ -26,8 +26,15 @@ const PARAMETERS = Type.Object({
  * reads the result from the tool's `details.body` in the child's RPC event stream
  * (`tool_execution_end`). `detail` is checked against the scenario's detail schema when the
  * scenario is known (SCENARIO_CHANNEL from the scenario profile extension).
+ *
+ * Children are codemode-only whatever the user's `codemode.mode` setting: registering a `codemode`
+ * tool while loading replaces pi's (replaceable) built-in codemode extension, and ours runs with
+ * `mode: "only"`, so the other active tools are reached through scripts. `send_to_leader` is
+ * `model-only` (never script-callable), so it stays declared. Whether `codemode` is active is still
+ * up to the scenario's tools (`--tools +codemode` for a general child, see childArgs).
  */
 export function registerChild(pi: ExtensionAPI): void {
+  createCodemodeExtension({ mode: "only" })(pi);
   let scenario: Scenario | undefined;
   pi.events.on(SCENARIO_CHANNEL, (data) => {
     try {
