@@ -20,7 +20,8 @@
 //   - [Session.Metrics]: the pi-agent.metrics totals and samples.
 //   - [Session.Subagents]: subagents started and their results.
 //   - [Session.Skills]: skills the prompt offers and the ones loaded (/skill:name, or a read of
-//     SKILL.md, also from codemode).
+//     SKILL.md, also from codemode): from "pi-agent.skill-load" custom entries when the branch
+//     has them, else from the transcript.
 //   - [Session.ProjectInstructions]: the project's workflows and docs, and their reads.
 //
 // Values a file doesn't have are nil. Parsing is strict: an invalid line fails [Parse] with a

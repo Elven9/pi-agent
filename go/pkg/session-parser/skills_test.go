@@ -128,3 +128,63 @@ func TestSkillsFailsOnAnInvalidSystemMessage(t *testing.T) {
 		t.Errorf("err = %v, want an EntryError for entry a", err)
 	}
 }
+
+func skillLoadLine(id, parent, data string) string {
+	return `{"type":"custom","customType":"pi-agent.skill-load","id":"` + id + `","parentId":"` + parent + `","timestamp":"2026-11-16T06:46:40Z","data":` + data + `}`
+}
+
+func TestSkillsPrefersRecordedLoadsOverTheTranscript(t *testing.T) {
+	// The assistant read in "r" would be inferred as a load; the recorded entries win.
+	sk := readSkills(t, parseLines(t, skillsSystem,
+		`{"type":"message","id":"r","parentId":"a","timestamp":"2026-11-16T06:46:37Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"c0","name":"read","arguments":{"path":"/s/go/SKILL.md"}}]}}`,
+		skillLoadLine("l1", "r", `{"version":1,"name":"go","location":"/s/go/SKILL.md","via":"codemode","toolCallId":"cm/1"}`),
+		skillLoadLine("l2", "l1", `{"version":1,"name":"pdf","location":"/s/pdf/SKILL.md","via":"command"}`),
+		skillLoadLine("l3", "l2", `{"version":1,"name":"go","location":"/s/go/SKILL.md","via":"read","toolCallId":"c9"}`),
+	))
+	at := time.Date(2026, 11, 16, 6, 46, 40, 0, time.UTC)
+	want := []SkillUse{
+		{Name: "go", Location: "/s/go/SKILL.md", Loads: []SkillLoad{
+			{Via: SkillViaCodemode, CallID: "cm/1", EntryID: "l1", At: at},
+			{Via: SkillViaRead, CallID: "c9", EntryID: "l3", At: at},
+		}},
+		{Name: "pdf", Location: "/s/pdf/SKILL.md", Loads: []SkillLoad{{Via: SkillViaCommand, EntryID: "l2", At: at}}},
+	}
+	if !sk.Recorded || !reflect.DeepEqual(sk.Used, want) {
+		t.Errorf("Recorded = %v, Used =\n%+v\nwant\n%+v", sk.Recorded, sk.Used, want)
+	}
+	if len(sk.Available) != 1 {
+		t.Errorf("Available = %+v, want the prompt's skill", sk.Available)
+	}
+}
+
+func TestSkillsReadsTheTranscriptWithoutRecordedLoads(t *testing.T) {
+	s, err := ParseFile("testdata/skills.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk := readSkills(t, s); sk.Recorded || len(sk.Used) == 0 {
+		t.Errorf("Recorded = %v, Used = %+v; want transcript loads", sk.Recorded, sk.Used)
+	}
+}
+
+func TestSkillsRejectsInvalidRecordedLoads(t *testing.T) {
+	for name, data := range map[string]string{
+		"no version":    `{"name":"go","location":"/s/go/SKILL.md","via":"read"}`,
+		"no name":       `{"version":1,"location":"/s/go/SKILL.md","via":"read"}`,
+		"no location":   `{"version":1,"name":"go","via":"read"}`,
+		"unknown via":   `{"version":1,"name":"go","location":"/s/go/SKILL.md","via":"cat"}`,
+		"null data":     `null`,
+		"wrong id type": `{"version":1,"name":"go","location":"/s/go/SKILL.md","via":"read","toolCallId":3}`,
+	} {
+		_, err := parseLines(t, skillsSystem, skillLoadLine("l1", "a", data)).Skills()
+		var entryErr *EntryError
+		if !errors.As(err, &entryErr) || entryErr.ID != "l1" {
+			t.Errorf("%s: err = %v, want an EntryError for l1", name, err)
+		}
+	}
+	_, err := parseLines(t, skillsSystem, skillLoadLine("l1", "a", `{"version":2,"name":"go","location":"/x","via":"read"}`)).Skills()
+	var versionErr *UnsupportedVersionError
+	if !errors.As(err, &versionErr) || versionErr.Version != 2 || versionErr.CustomType != CustomTypeSkillLoad {
+		t.Errorf("version 2: err = %v, want an UnsupportedVersionError", err)
+	}
+}

@@ -36,6 +36,8 @@ const (
 	CustomTypeError = "pi-agent.error"
 	// CustomTypeMetrics: session metrics, cumulative along the branch.
 	CustomTypeMetrics = "pi-agent.metrics"
+	// CustomTypeSkillLoad: one load of a skill, recorded by the skill-loads extension.
+	CustomTypeSkillLoad = "pi-agent.skill-load"
 	// CustomTypeSubagentStart: a subagent was started.
 	CustomTypeSubagentStart = "subagent-start"
 	// CustomTypeSubagentEnd: a subagent result recorded at session end, not yet delivered.

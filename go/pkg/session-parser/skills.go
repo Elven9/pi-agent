@@ -2,6 +2,7 @@ package sessionparser
 
 import (
 	"encoding/json"
+	"fmt"
 	"html"
 	"path/filepath"
 	"regexp"
@@ -13,6 +14,9 @@ const ToolRead = "read"
 
 // SkillFile is the file name of a skill's instructions.
 const SkillFile = "SKILL.md"
+
+// SkillLoadVersion is the pi-agent.skill-load payload version this package reads.
+const SkillLoadVersion = 1
 
 // How a skill was loaded ([SkillLoad.Via]).
 const (
@@ -31,6 +35,9 @@ type Skills struct {
 	Available []Skill
 	// Used are the skills loaded on the current branch, in the order of their first load.
 	Used []SkillUse
+	// Recorded is true when Used comes from the branch's pi-agent.skill-load entries, false
+	// when it is read from the transcript (files written without the skill-loads extension).
+	Recorded bool
 }
 
 // Skill is a skill the system prompt lists.
@@ -58,11 +65,13 @@ type SkillLoad struct {
 	Via string
 	// CallID is the read's tool call id (the nested call id for codemode); empty for a command.
 	CallID string
-	// EntryID is the user message (command) or the assistant message that made the call.
+	// EntryID is the user message (command) or the assistant message that made the call; for a
+	// recorded load ([Skills.Recorded]), the pi-agent.skill-load entry.
 	EntryID string
 	At      time.Time
 	// Failed is true when the read returned an error or was cancelled. A read without a result
-	// (pi stopped mid-call) is not failed.
+	// (pi stopped mid-call) is not failed. Recorded loads are never failed: the extension records
+	// successful reads only.
 	Failed bool
 }
 
@@ -75,11 +84,18 @@ var (
 )
 
 // Skills reads the skills of the current branch. The available ones replay the system prompt's
-// "skills" section (system messages and compaction checkpoints). A load is a /skill:name
-// command or a read of a SKILL.md, called directly or from a codemode script; a relative path
-// is resolved against the session's cwd. A read of a SKILL.md the prompt never listed still
-// counts. Reads through other tools (e.g. bash cat) are not seen. Invalid messages or codemode
-// details fail as [Session.ToolCalls] does.
+// "skills" section (system messages and compaction checkpoints).
+//
+// The loads come from the branch's pi-agent.skill-load entries when it has any ([Skills.Recorded]):
+// one per load, as the skill-loads extension saw it (a successful read of a loaded skill's
+// SKILL.md, directly or from a codemode script, or /skill:name). An invalid entry is an
+// [*EntryError], another payload version an [*UnsupportedVersionError].
+//
+// Without such entries they are read from the transcript: a /skill:name command or a read of a
+// SKILL.md, called directly or from a codemode script; a relative path is resolved against the
+// session's cwd. A read of a SKILL.md the prompt never listed still counts. Reads through other
+// tools (e.g. bash cat) are not seen. Invalid messages or codemode details fail as
+// [Session.ToolCalls] does.
 func (s *Session) Skills() (*Skills, error) {
 	calls, err := s.ToolCalls()
 	if err != nil {
@@ -91,10 +107,13 @@ func (s *Session) Skills() (*Skills, error) {
 	}
 	r := skillReader{cwd: s.Header.CWD, listed: map[string]Skill{}, used: map[string]int{}}
 	prompt := promptSections{}
+	recorded := skillReader{used: map[string]int{}}
 	for _, e := range s.Branch() {
 		system, err := prompt.apply(e)
 		switch {
 		case err != nil:
+		case e.isCustom(CustomTypeSkillLoad):
+			err = recorded.readEntry(e)
 		case system:
 			r.readSection(prompt["skills"])
 		case e.Type == TypeMessage:
@@ -112,7 +131,43 @@ func (s *Session) Skills() (*Skills, error) {
 			return nil, e.invalid(err)
 		}
 	}
+	if recorded.uses != nil {
+		return &Skills{Available: r.available, Used: recorded.uses, Recorded: true}, nil
+	}
 	return &Skills{Available: r.available, Used: r.uses}, nil
+}
+
+// skillLoadEntry is a pi-agent.skill-load payload (src/shared/skill-loads.ts).
+type skillLoadEntry struct {
+	Version    *int   `json:"version"`
+	Name       string `json:"name"`
+	Location   string `json:"location"`
+	Via        string `json:"via"`
+	ToolCallID string `json:"toolCallId"`
+}
+
+// readEntry adds a recorded load.
+func (r *skillReader) readEntry(e Entry) error {
+	var d skillLoadEntry
+	if err := e.decodeField("data", &d); err != nil {
+		return err
+	}
+	if err := checkVersion(CustomTypeSkillLoad, d.Version, SkillLoadVersion); err != nil {
+		return err
+	}
+	switch {
+	case d.Name == "":
+		return missing("name")
+	case d.Location == "":
+		return missing("location")
+	}
+	switch d.Via {
+	case SkillViaCommand, SkillViaRead, SkillViaCodemode:
+	default:
+		return fmt.Errorf("via %q is not command, read or codemode", d.Via)
+	}
+	r.add(d.Name, filepath.Clean(d.Location), SkillLoad{Via: d.Via, CallID: d.ToolCallID, EntryID: e.ID, At: e.Timestamp})
+	return nil
 }
 
 type skillReader struct {
