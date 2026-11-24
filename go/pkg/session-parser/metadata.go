@@ -37,6 +37,10 @@ type Metadata struct {
 	FormatVersion int
 	// ParentSession is the session file this one was forked from.
 	ParentSession *string
+	// Parent is the leader session that started this one as a subagent, from the last
+	// pi-agent.parent entry in the file; nil for a session that is not a subagent's. Not to be
+	// confused with ParentSession (a fork).
+	Parent *ParentLink
 
 	// AgentVersion is the pi-agent release of the last pi-agent.session-version entry in the
 	// file; nil for files written by pi-agent 0.11.0 or older, or without pi-agent.
@@ -86,6 +90,17 @@ type ProjectSource struct {
 	Provider, Repo, Path, Tag, Commit string
 }
 
+// ParentLink is a pi-agent.parent entry: the leader session that started this session as a
+// subagent. The leader is on the same machine; its subagent-start entry for AgentID records
+// this session's ID ([Subagent.ChildSessionID]).
+type ParentLink struct {
+	// SessionID is the leader's session ID (its header id).
+	SessionID string
+	// AgentID is this session's agent id in the leader, e.g. "a3".
+	AgentID string
+	At      time.Time
+}
+
 // ModelChange is a model_change entry.
 type ModelChange struct {
 	Provider string
@@ -99,7 +114,7 @@ type AgentError struct {
 	At      time.Time
 }
 
-// Metadata reads the session's metadata. Version, tags and name are per file, as their
+// Metadata reads the session's metadata. Version, tags, name and parent link are per file, as their
 // extensions define them; the last activity counts the messages of every branch; models and
 // errors come from the current branch. An invalid entry of these types is an [*EntryError].
 func (s *Session) Metadata() (*Metadata, error) {
@@ -126,6 +141,8 @@ func (s *Session) Metadata() (*Metadata, error) {
 			err = m.readScenario(e)
 		case e.isCustom(CustomTypeProject):
 			err = m.readProject(e)
+		case e.isCustom(CustomTypeParent):
+			err = m.readParent(e)
 		case e.Type == TypeMessage:
 			err = m.readActivity(e)
 		}
@@ -260,6 +277,21 @@ func (m *Metadata) readProject(e Entry) error {
 	m.Project = &Project{Name: *d.Name, At: e.Timestamp, Source: ProjectSource{
 		Kind: s.Kind, Dir: s.Dir, Provider: s.Provider, Repo: s.Repo, Path: s.Path, Tag: s.Tag, Commit: s.Commit,
 	}}
+	return nil
+}
+
+func (m *Metadata) readParent(e Entry) error {
+	var d struct {
+		SessionID string `json:"sessionId"`
+		AgentID   string `json:"agentId"`
+	}
+	if err := e.decodeField("data", &d); err != nil {
+		return err
+	}
+	if d.SessionID == "" || d.AgentID == "" {
+		return errors.New("missing data.sessionId or data.agentId")
+	}
+	m.Parent = &ParentLink{SessionID: d.SessionID, AgentID: d.AgentID, At: e.Timestamp}
 	return nil
 }
 

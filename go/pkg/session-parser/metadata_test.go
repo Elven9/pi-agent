@@ -54,6 +54,11 @@ func TestMetadataReadsFileWideValuesAndTheBranchsModelsAndErrors(t *testing.T) {
 	if m.Scenario == nil || *m.Scenario != "code-writer" {
 		t.Errorf("Scenario = %v, want code-writer", m.Scenario)
 	}
+	// pl1 is off the current branch: the link belongs to the whole file.
+	wantParent := &ParentLink{SessionID: "lead-1", AgentID: "a3", At: time.Date(2026, 11, 16, 7, 0, 30, 0, time.UTC)}
+	if !reflect.DeepEqual(m.Parent, wantParent) {
+		t.Errorf("Parent = %+v, want %+v", m.Parent, wantParent)
+	}
 	wantProject := &Project{Name: "pi-agent", Source: ProjectSource{Kind: ProjectLocal, Dir: "/w/project"}, At: time.Date(2026, 11, 16, 7, 1, 0, 0, time.UTC)}
 	if !reflect.DeepEqual(m.Project, wantProject) {
 		t.Errorf("Project = %+v, want %+v", m.Project, wantProject)
@@ -94,7 +99,7 @@ func TestMetadataLeavesWhatTheFileDoesNotHaveNil(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m.ParentSession != nil || m.AgentVersion != nil || m.Tags != nil || m.Name != nil || m.Models != nil || m.Errors != nil ||
-		m.Scenario != nil || m.Project != nil {
+		m.Scenario != nil || m.Project != nil || m.Parent != nil {
 		t.Errorf("Metadata = %+v, want only header fields", m)
 	}
 }
@@ -193,6 +198,8 @@ func TestMetadataFailsOnAnInvalidEntry(t *testing.T) {
 		"project bad kind":     custom(CustomTypeProject, `{"version":1,"name":"p","source":{"kind":"ftp"}}`),
 		"local without dir":    custom(CustomTypeProject, `{"version":1,"name":"p","source":{"kind":"local"}}`),
 		"remote without tag":   custom(CustomTypeProject, `{"version":1,"name":"p","source":{"kind":"remote","provider":"github","repo":"o/r","commit":"c"}}`),
+		"parent without agent": custom(CustomTypeParent, `{"sessionId":"lead-1"}`),
+		"parent empty session": custom(CustomTypeParent, `{"sessionId":"","agentId":"a3"}`),
 		"message not object":   `{"type":"message","id":"a","parentId":null,"timestamp":"2026-11-16T06:46:36Z","message":"hi"}`,
 	}
 	for name, line := range tests {

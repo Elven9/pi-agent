@@ -11,4 +11,5 @@
 {"type":"model_change","id":"m3","parentId":"v2","timestamp":"2026-11-16T06:46:36Z","provider":"cpa","modelId":"sonnet"}
 {"type":"custom","customType":"pi-agent.error","id":"x2","parentId":"m3","timestamp":"2026-11-16T06:46:36Z","data":{"message":"--tags: Invalid tag"}}
 {"type":"custom","customType":"pi-agent.scenario","id":"sc2","parentId":"x2","timestamp":"2026-11-16T06:46:36Z","data":{"version":1,"name":"code-writer"}}
+{"type":"custom","customType":"pi-agent.parent","id":"pl1","parentId":"sc2","timestamp":"2026-11-16T07:00:30Z","data":{"sessionId":"lead-1","agentId":"a3"}}
 {"type":"custom","customType":"pi-agent.project","id":"p1","parentId":"sc2","timestamp":"2026-11-16T07:01:00Z","data":{"version":1,"name":"pi-agent","source":{"kind":"local","dir":"/w/project"}}}

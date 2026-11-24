@@ -14,11 +14,11 @@
 // read in groups, each on its own:
 //
 //   - [Session.Metadata]: header fields, last activity, pi-agent version, tags, name, scenario,
-//     project, models, errors.
+//     project, the leader of a subagent's session ([Metadata.Parent]), models, errors.
 //   - [Session.ToolCalls]: tool calls with their results and tool-ref handles; codemode calls
 //     with their script, its intent and the calls it made ([ToolCall.Codemode]).
 //   - [Session.Metrics]: the pi-agent.metrics totals and samples.
-//   - [Session.Subagents]: subagents started and their results.
+//   - [Session.Subagents]: subagents started, their session IDs and their results.
 //   - [Session.Skills]: skills the prompt offers and the ones loaded (/skill:name, or a read of
 //     SKILL.md, also from codemode): from "pi-agent.skill-load" custom entries when the branch
 //     has them, else from the transcript.

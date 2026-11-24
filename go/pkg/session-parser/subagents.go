@@ -42,6 +42,10 @@ type Subagent struct {
 	StartedBy     string
 	StartedAt     time.Time
 	TaskMessageID string
+	// ChildSessionID is the subagent's session ID, chosen by the leader at spawn; its session
+	// records this session as its parent ([Metadata.Parent]). nil when the leader had no session
+	// file (the subagent ran without one) and in records from before it was recorded.
+	ChildSessionID *string
 	// EntryID is the subagent-start entry.
 	EntryID string
 	// Result is nil when the branch has none (still running, or the session ended abruptly).
@@ -130,6 +134,7 @@ func addStart(agents []Subagent, index map[string]int, e Entry) ([]Subagent, err
 		RestartOf     *int    `json:"restartOf"`
 		StartedBy     *string `json:"startedBy"`
 		TaskMessageID string  `json:"taskMessageId"`
+		ChildSession  *string `json:"childSessionId"`
 	}
 	if err := e.decodeField("data", &d); err != nil {
 		return nil, err
@@ -143,6 +148,8 @@ func addStart(agents []Subagent, index map[string]int, e Entry) ([]Subagent, err
 		return nil, fmt.Errorf("data.kind %q is not task", d.Kind)
 	case d.RestartOf != nil && *d.RestartOf < 1:
 		return nil, errors.New("data.restartOf is not an agent number")
+	case d.ChildSession != nil && *d.ChildSession == "":
+		return nil, errors.New("data.childSessionId is empty")
 	}
 	startedBy := "model"
 	if d.StartedBy != nil {
@@ -158,6 +165,7 @@ func addStart(agents []Subagent, index map[string]int, e Entry) ([]Subagent, err
 	a := Subagent{
 		ID: id, Scenario: d.Scenario, Kind: d.Kind, Task: *d.Task, Project: d.Project, Model: d.Model, Thinking: d.Thinking,
 		StartedBy: startedBy, StartedAt: time.UnixMilli(*d.StartedAt).UTC(), TaskMessageID: d.TaskMessageID, EntryID: e.ID,
+		ChildSessionID: d.ChildSession,
 	}
 	if d.RestartOf != nil {
 		a.RestartOf = new("a" + strconv.Itoa(*d.RestartOf))

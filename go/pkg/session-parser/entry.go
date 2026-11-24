@@ -36,6 +36,8 @@ const (
 	CustomTypeError = "pi-agent.error"
 	// CustomTypeMetrics: session metrics, cumulative along the branch.
 	CustomTypeMetrics = "pi-agent.metrics"
+	// CustomTypeParent: a subagent's session records the leader session that started it.
+	CustomTypeParent = "pi-agent.parent"
 	// CustomTypeSkillLoad: one load of a skill, recorded by the skill-loads extension.
 	CustomTypeSkillLoad = "pi-agent.skill-load"
 	// CustomTypeSubagentStart: a subagent was started.

@@ -27,7 +27,8 @@ func TestSubagentsJoinStartsWithTheirResultsOnTheBranch(t *testing.T) {
 
 	a1 := agents[0]
 	if a1.Scenario != "code-writer" || a1.Kind != "task" || a1.Task != "t" || *a1.Project != "/p" || a1.StartedBy != "model" ||
-		a1.RestartOf != nil || a1.TaskMessageID != "msg_1" || a1.EntryID != "s1e" || !a1.StartedAt.Equal(time.UnixMilli(1763275596000)) {
+		a1.RestartOf != nil || a1.TaskMessageID != "msg_1" || a1.EntryID != "s1e" ||
+		a1.ChildSessionID == nil || *a1.ChildSessionID != "019a8b2c-0000-7000-8000-000000000001" || !a1.StartedAt.Equal(time.UnixMilli(1763275596000)) {
 		t.Errorf("a1 = %+v", a1)
 	}
 	r := a1.Result
@@ -44,7 +45,7 @@ func TestSubagentsJoinStartsWithTheirResultsOnTheBranch(t *testing.T) {
 	if a3 := agents[2]; a3.RestartOf == nil || *a3.RestartOf != "a2" || a3.StartedBy != "user" || a3.Result != nil {
 		t.Errorf("a3 = %+v", a3)
 	}
-	if a4 := agents[3]; a4.Result != nil || a4.Project != nil || a4.Model != nil || a4.Thinking != nil {
+	if a4 := agents[3]; a4.Result != nil || a4.Project != nil || a4.Model != nil || a4.Thinking != nil || a4.ChildSessionID != nil {
 		t.Errorf("a4 = %+v", a4)
 	}
 }
@@ -100,6 +101,7 @@ func TestSubagentsFailOnAnInvalidRecord(t *testing.T) {
 		"start without task":     {start(`{"id":1,"scenario":"x","kind":"task","startedAt":1,"taskMessageId":"m"}`)},
 		"start of other kind":    {start(strings.Replace(ok, "task\",\"task", "herd\",\"task", 1))},
 		"start bad startedBy":    {start(strings.Replace(ok, `"id":1`, `"id":1,"startedBy":"cron"`, 1))},
+		"start empty child id":   {start(strings.Replace(ok, `"id":1`, `"id":1,"childSessionId":""`, 1))},
 		"second start":           {start(ok), `{"type":"custom","customType":"subagent-start","id":"s2","parentId":"s","timestamp":"2026-11-16T06:46:36Z","data":` + ok + "}"},
 		"result never started":   {start(ok), result(res("a7", `{"v":1,"id":"m2","body":`+body+"}"))},
 		"result bad agent id":    {start(ok), result(res("x1", `{"v":1,"id":"m2","body":`+body+"}"))},
