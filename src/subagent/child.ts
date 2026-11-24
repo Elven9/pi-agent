@@ -1,6 +1,7 @@
 import { createCodemodeExtension, type ExtensionAPI, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type, type TSchema } from "typebox";
-import { SCENARIO_CHANNEL, type ScenarioSelected } from "../shared/protocol.ts";
+import { parentLinkFromEnv, sessionParentLink } from "../shared/parent-link.ts";
+import { ENTRY, SCENARIO_CHANNEL, type ScenarioSelected } from "../shared/protocol.ts";
 import { detailErrors } from "../shared/result.ts";
 import { getScenario, type Scenario } from "../shared/scenarios/index.ts";
 import { type ResultBody, SEND_TO_LEADER } from "./protocol.ts";
@@ -32,9 +33,18 @@ const PARAMETERS = Type.Object({
  * `mode: "only"`, so the other active tools are reached through scripts. `send_to_leader` is
  * `model-only` (never script-callable), so it stays declared. Whether `codemode` is active is still
  * up to the scenario's tools (`--tools +codemode` for a general child, see childArgs).
+ *
+ * At session start the child records the leader session that started it (from `env`, set by the
+ * leader) as a `pi-agent.parent` entry, once (shared/parent-link.ts).
  */
-export function registerChild(pi: ExtensionAPI): void {
+export function registerChild(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
   createCodemodeExtension({ mode: "only" })(pi);
+  const link = parentLinkFromEnv(env);
+  if (link) {
+    pi.on("session_start", (_event, ctx) => {
+      if (!sessionParentLink(ctx.sessionManager.getEntries())) pi.appendEntry(ENTRY.parent, link);
+    });
+  }
   let scenario: Scenario | undefined;
   pi.events.on(SCENARIO_CHANNEL, (data) => {
     try {

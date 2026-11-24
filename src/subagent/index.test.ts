@@ -54,6 +54,10 @@ test("spawn → start record; the child's result becomes a custom message in con
   assert.equal(starts.length, 1);
   assert.equal(starts[0]!.id, 1);
   assert.equal(starts[0]!.scenario, "demo");
+  // The child's session ID is chosen and recorded at spawn (the leader has a session file).
+  assert.match(starts[0]!.childSessionId ?? "", /^[0-9a-f]{8}-[0-9a-f]{4}-7/);
+  const recorded = sessionManager.getEntries().find((e: any) => e.customType === "subagent-start") as any;
+  assert.equal(recorded.data.childSessionId, starts[0]!.childSessionId);
   const child = children.get(1)!;
   assert.match(String(child.requests[0]!.fields!.message), /^Task from your leader \(you are subagent a1, scenario demo\):\n\ncount the files/);
   const toolResult = sessionManager.getBranch().find((e: any) => e.type === "message" && e.message.role === "toolResult") as any;
@@ -72,6 +76,7 @@ test("spawn → start record; the child's result becomes a custom message in con
   const msg = sessionManager.getBranch()[at] as any;
   assert.match(msg.content, /^\[subagent a1\] demo · ok · \d+s\n3 files$/);
   assert.equal((msg.details as ResultDetails).envelope.body.summary, "3 files");
+  assert.equal((msg.details as ResultDetails).childSessionId, starts[0]!.childSessionId);
   // The model saw it: the last request's context has the result text.
   session.dispose();
 });
@@ -313,6 +318,11 @@ test("childCommand and childArgs", () => {
     "--mode", "rpc", "--scenario", "debugger", "--name", "subagent a3 (debugger)",
     "--project", "/p", "--model", "anthropic/claude-x", "--thinking", "low", "--session-dir", "/sessions/x/subagents",
   ]);
+  // A recorded child session ID: the child opens (creates) its session with it.
+  assert.deepEqual(childArgs({ ...start, childSessionId: "c-1" }, {}, "/sessions/x/leader.jsonl").slice(-4), [
+    "--session-dir", "/sessions/x/subagents", "--session-id", "c-1",
+  ]);
+  assert.deepEqual(childArgs({ ...start, childSessionId: "c-1" }, {}, undefined).slice(-1), ["--no-session"]);
   // A recorded model and thinking level win over the leader's.
   assert.deepEqual(childArgs({ ...start, model: "openai/gpt-x", thinking: "high" }, { model: { provider: "anthropic", id: "claude-x" }, thinking: "low" }, undefined).slice(-5), [
     "--model", "openai/gpt-x", "--thinking", "high", "--no-session",

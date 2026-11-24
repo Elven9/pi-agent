@@ -75,16 +75,17 @@ export function uploadUrl(settings: UploadSettings, sessionId: string): string {
 
 /**
  * Uploads the raw session file: `PUT <endpoint>/v1/sessions/<machineId>/<sessionId>`, body = the
- * JSONL file as is. The server replaces what it has. Throws on a non-2xx status, a timeout or a
+ * JSONL file as is. The server replaces what it has. `opts.extraHeaders` (e.g. the parent link of
+ * a subagent session, shared/parent-link.ts) are sent after the configured ones. Throws on a non-2xx status, a timeout or a
  * network error. Returns the number of bytes sent.
  */
 export async function uploadSession(
   settings: UploadSettings,
   sessionId: string,
   file: string,
-  opts: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+  opts: { env?: NodeJS.ProcessEnv; timeoutMs?: number; extraHeaders?: Record<string, string> } = {},
 ): Promise<number> {
-  const headers = resolveHeaders(settings.headers, opts.env);
+  const headers = { ...resolveHeaders(settings.headers, opts.env), ...opts.extraHeaders };
   const body = await readFile(file);
   const url = uploadUrl(settings, sessionId);
   let res: Response;

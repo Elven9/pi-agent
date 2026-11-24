@@ -52,4 +52,6 @@ A subagent works in the background and reports once; its result lands in the lea
 - Ending the session (`/exit`, `/new`, `/resume`, `/fork`, `/reload`) stops every subagent. `/new`
   and `/resume` ask first. Unfinished tasks get an `aborted` result in that session, written when
   it is next opened (also after a crash).
-- Subagent sessions are saved in a `subagents/` folder next to the leader's session file.
+- Subagent sessions are saved in a `subagents/` folder next to the leader's session file. The
+  leader records each child's session ID at spawn (`childSessionId` in `subagent-start`), and each
+  child records its leader in a `pi-agent.parent` entry (`{ sessionId, agentId }`).

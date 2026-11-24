@@ -169,8 +169,22 @@ One envelope for both directions:
 ### Start record
 
 At spawn the leader writes `pi.appendEntry("subagent-start", {...})`: `{ id, scenario, kind,
-task, project?, model?, thinking?, childSessionFile, startedAt, restartOf? }` (`scenario` missing for a general subagent). Not in the model's context. Used for
+task, project?, model?, thinking?, startedAt, restartOf?, childSessionId? }` (`scenario` missing for a general subagent). Not in the model's context. Used for
 the ID counter, for resume reconciliation and for `aborted` result text.
+
+### Session link
+
+Both directions are recorded when the leader has a session file (else children run `--no-session`):
+
+- **Leader → child:** the leader picks the child's session ID (a UUIDv7, pi's format) at spawn,
+  records it as `childSessionId` in the start record (copied into the result details) and starts the
+  child with `--session-dir <leader dir>/subagents --session-id <id>`. Its file is
+  `subagents/<timestamp>_<id>.jsonl`, known even when the child never reports (leader crash, early
+  failure).
+- **Child → leader:** the leader sets `PI_AGENT_PARENT_SESSION` (its session ID) and
+  `PI_AGENT_PARENT_AGENT` (`a3`) in the child's environment; the child appends a
+  `pi-agent.parent` entry `{ sessionId, agentId }` at session start (once). session-upload sends it
+  as `x-pi-parent-session-id` / `x-pi-parent-agent-id` headers (shared/parent-link.ts).
 
 ### Process group
 
@@ -391,7 +405,8 @@ Where v1 differs from or adds to the sections above:
   `killed` results (by user or leader) are recorded without starting a turn.
 - **`subagent-end`** entries carry the full result details (also a real result that arrived during
   shutdown, and results still waiting in the inbox).
-- **Start record:** no `childSessionFile` (only known after start); it is in the result details.
+- **Start record:** `childSessionId` (chosen at spawn), no `childSessionFile` (only known after
+  start, from `get_state`); both are in the result details.
   `startedBy: "user"` when the user started it (`/agent restart`); missing means the model.
 - **Who started it:** the model sees its own starts as `subagent_spawn`/`subagent_restart` calls,
   so those stay out of context. A user start also sends a `subagent-user-start` custom message

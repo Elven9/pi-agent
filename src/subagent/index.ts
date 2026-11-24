@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type, type TSchema } from "typebox";
 import { footerSessionStart, setFooterPart } from "../shared/footer.ts";
+import { newSessionId, parentLinkEnv } from "../shared/parent-link.ts";
 import { getScenario, scenarioNames, type Scenario } from "../shared/scenarios/index.ts";
 import { registerChild } from "./child.ts";
 import {
@@ -62,6 +63,8 @@ import { type AgentPage, AgentViewer, VIEWER_OVERLAY } from "./viewer.ts";
 export interface SubagentOptions {
   /** Child side; default: PI_AGENT_SUBAGENT=1 in the environment. */
   child?: boolean;
+  /** Child side: environment with the parent link (default: process.env). */
+  env?: NodeJS.ProcessEnv;
   /** Starts a child process (tests inject fakes). */
   startChild?: (start: StartRecord, ctx: ExtensionContext) => ChildHandle;
   /** SIGTERM → SIGKILL grace period (default 2 s). */
@@ -73,7 +76,7 @@ const GRACE_MS = 2000;
 
 export default function subagent(pi: ExtensionAPI, options: SubagentOptions = {}): void {
   if (options.child ?? process.env[SUBAGENT_ENV] === "1") {
-    registerChild(pi);
+    registerChild(pi, options.env);
     return;
   }
   registerLeader(pi, options);
@@ -92,7 +95,7 @@ export function childCommand(env: NodeJS.ProcessEnv = process.env, argv: readonl
 
 /**
  * CLI arguments of a child: RPC mode, the scenario, project, its model and thinking level
- * (recorded, else the leader's current ones), its session folder.
+ * (recorded, else the leader's current ones), its session folder and ID.
  */
 export function childArgs(
   start: StartRecord,
@@ -107,8 +110,11 @@ export function childArgs(
   const thinking = start.thinking ?? leader.thinking;
   if (thinking) args.push("--thinking", thinking);
   // Child sessions next to the leader's, in their own folder (kept out of the leader's /resume list).
-  if (leaderSessionFile) args.push("--session-dir", join(dirname(leaderSessionFile), "subagents"));
-  else args.push("--no-session");
+  if (leaderSessionFile) {
+    args.push("--session-dir", join(dirname(leaderSessionFile), "subagents"));
+    // Chosen by the leader and recorded at spawn, so the link does not depend on the child reporting.
+    if (start.childSessionId) args.push("--session-id", start.childSessionId);
+  } else args.push("--no-session");
   return args;
 }
 
@@ -133,7 +139,14 @@ function defaultStartChild(start: StartRecord, ctx: ExtensionContext): ChildHand
   const args = [...prefix, ...childArgs(start, { model: ctx.model, thinking: ctx.thinkingLevel }, ctx.sessionManager.getSessionFile())];
   // In the leader's entered worktree, if any (the worktree extension keeps ctx.cwd unchanged).
   const cwd = enteredWorktree(ctx.sessionManager.getBranch() as unknown as EntryLike[]) ?? ctx.cwd;
-  return new RpcChild(command!, args, { cwd, env: { ...process.env, [SUBAGENT_ENV]: "1" } });
+  // The child records the leader's session as its parent (child.ts); only when both have sessions.
+  const link = start.childSessionId !== undefined && { ...parentLinkEnv({ sessionId: leaderSessionId(ctx), agentId: agentId(start.id) }) };
+  return new RpcChild(command!, args, { cwd, env: { ...process.env, [SUBAGENT_ENV]: "1", ...link } });
+}
+
+/** The leader's session ID: its header's, as session-upload uses. */
+function leaderSessionId(ctx: ExtensionContext): string {
+  return ctx.sessionManager.getHeader()?.id ?? ctx.sessionManager.getSessionId();
 }
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: {} });
@@ -243,6 +256,8 @@ function registerLeader(pi: ExtensionAPI, options: SubagentOptions): void {
       ...(spec.restartOf !== undefined && { restartOf: spec.restartOf }),
       ...(startedBy === "user" && { startedBy }),
       taskMessageId: messageId(now()),
+      // The child's session ID, when it gets a session file (the leader has one).
+      ...(c.sessionManager.getSessionFile() && { childSessionId: newSessionId(now()) }),
     };
     pi.appendEntry(ENTRY.start, start);
     // The model sees its own spawns as tool calls; a user's start needs a notice in context. No

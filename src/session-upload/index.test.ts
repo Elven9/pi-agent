@@ -9,7 +9,7 @@ import { METRICS_FLUSH_CHANNEL, SESSION_ABORTED_CHANNEL } from "../shared/protoc
 import { server } from "./test-server.ts";
 
 /** Minimal stand-in for the parts of ExtensionAPI the extension uses. */
-async function fakePi(settings: object | string | undefined, sessionFile: string | undefined, o: { mode?: string } = {}) {
+async function fakePi(settings: object | string | undefined, sessionFile: string | undefined, o: { mode?: string; entries?: unknown[] } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "pi-agent-upload-ext-"));
   const settingsPath = join(dir, "session-upload.json");
   if (settings !== undefined) await writeFile(settingsPath, typeof settings === "string" ? settings : JSON.stringify(settings));
@@ -45,6 +45,7 @@ async function fakePi(settings: object | string | undefined, sessionFile: string
       getSessionFile: () => sessionFile,
       getHeader: () => ({ type: "session", id: "sess-1" }),
       getSessionId: () => "sess-1",
+      getEntries: () => o.entries ?? [],
     },
   };
   const stream = { isTTY: true, write: (s: string) => terminal.push(s) > 0 };
@@ -78,6 +79,22 @@ test("uploads on quit, new, resume and fork, not on reload; flushes metrics firs
     assert.equal(pi.flushes.length, 4);
     assert.equal(srv.requests[0].url, "/v1/sessions/mac-1/sess-1");
     assert.equal(srv.requests[0].headers["cf-access-client-id"], "id-1");
+  } finally {
+    srv.close();
+  }
+});
+
+test("a subagent session is sent with its parent link headers; others without", async () => {
+  const srv = await server(200);
+  try {
+    const entries = [{ type: "custom", customType: "pi-agent.parent", data: { sessionId: "lead-1", agentId: "a3" } }];
+    const child = await fakePi({ machineId: "mac-1", endpoint: srv.endpoint }, await sessionFile(), { entries });
+    await child.shutdown("quit");
+    const plain = await fakePi({ machineId: "mac-1", endpoint: srv.endpoint }, await sessionFile());
+    await plain.shutdown("quit");
+    assert.equal(srv.requests[0].headers["x-pi-parent-session-id"], "lead-1");
+    assert.equal(srv.requests[0].headers["x-pi-parent-agent-id"], "a3");
+    assert.equal(srv.requests[1].headers["x-pi-parent-session-id"], undefined);
   } finally {
     srv.close();
   }

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { parentHeaders, sessionParentLink } from "../shared/parent-link.ts";
 import { METRICS_FLUSH_CHANNEL, SESSION_ABORTED_CHANNEL } from "../shared/protocol.ts";
 import { type ProgressOptions, seconds, startProgress } from "./progress.ts";
 import { loadUploadSettings, SETTINGS_FILE, uploadSession, type UploadSettings } from "./upload.ts";
@@ -16,6 +17,11 @@ const UPLOAD_ON = new Set(["quit", "new", "resume", "fork"]);
  *
  * - `/upload`: now, with a notification,
  * - on `/quit`, `/new`, `/resume` and `/fork`: the session being left, failures on stderr only.
+ *
+ * A subagent's session (one with a `pi-agent.parent` entry, shared/parent-link.ts) is sent with
+ * `x-pi-parent-session-id` and `x-pi-parent-agent-id` headers: the leader's session ID (same
+ * machine ID) and the subagent's agent ID there. Children load this extension too and upload on
+ * their way out (SIGTERM from the leader ends them with `quit`).
  *
  * Before each upload it asks the metrics extension to append its latest totals, so the file
  * ends with them. A session with no file yet (nothing said) is skipped.
@@ -70,7 +76,8 @@ function register(pi: ExtensionAPI, opts: { settingsPath?: string; env?: NodeJS.
     const id = ctx.sessionManager.getHeader()?.id ?? ctx.sessionManager.getSessionId();
     const progress = startProgress(ctx, ctx.mode === "tui" ? where : "none", opts.progress);
     try {
-      const bytes = await uploadSession(settings, id, file, { env: opts.env });
+      const extraHeaders = parentHeaders(sessionParentLink(ctx.sessionManager.getEntries()));
+      const bytes = await uploadSession(settings, id, file, { env: opts.env, extraHeaders });
       return { id, bytes, ms: progress.stop() };
     } catch (err) {
       progress.stop();

@@ -130,6 +130,8 @@ export const ENTRY = {
   project: "pi-agent.project",
   /** `custom` entry with `SkillLoadEntry` data (skill-loads extension), one per load of a skill. */
   skillLoad: "pi-agent.skill-load",
+  /** `custom` entry with `ParentLink` data (subagent extension, child side): the leader session that started this one. */
+  parent: "pi-agent.parent",
 } as const;
 
 /** `pi.events` channel: `{ message }`, an extension could not run and is shutting pi down (shared/abort.ts). */

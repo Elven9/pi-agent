@@ -102,6 +102,8 @@ notification), and on `/quit`, `/new`, `/resume` and `/fork` for the session bei
 (failures go to stderr; `/reload` does not upload). Before each upload the metrics extension
 appends its latest totals, so the file ends with them. A session with no file yet is skipped;
 the timeout is 15 s, no retry. A crashed session is not uploaded; its file stays on disk.
+A subagent's session (it has a `pi-agent.parent` entry) is sent with `x-pi-parent-session-id`
+(the leader's session ID, same `machineId`) and `x-pi-parent-agent-id` (e.g. `a3`) headers.
 Sandbox runs never load it (`-ne`): the orchestrator uploads the session and report.
 
 ### herdr session name
@@ -267,7 +269,9 @@ result row shows the task (cut with `...`); `/agent` opens a panel over all suba
 row opens its result, `x` kills a running one); `/agent a3`, `/agent grep <regex>`, `/agent kill a3`, `/agent restart a3`. Ending the
 session stops them all (`/new` and `/resume` ask first); unfinished tasks get an `aborted` result
 the next time the session is opened. Child sessions go to `subagents/` next to the leader's
-session file. `PI_AGENT_SUBAGENT_COMMAND` (a JSON argv) overrides how a child pi is started.
+session file, with an ID the leader chooses and records at spawn (`childSessionId` in
+`subagent-start`); each child records its leader as a `pi-agent.parent` entry
+(`{ sessionId, agentId }`). `PI_AGENT_SUBAGENT_COMMAND` (a JSON argv) overrides how a child pi is started.
 
 Never put
 `~/.pi/agent` itself under git: it mixes secrets (`auth.json`, `models.json` keys), state

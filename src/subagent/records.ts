@@ -105,6 +105,7 @@ export function baseDetails(start: StartRecord): Omit<ResultDetails, "endedAt" |
     ...(start.restartOf !== undefined && { restartOf: agentId(start.restartOf) }),
     ...(start.startedBy === "user" && { startedBy: "user" as const }),
     startedAt: start.startedAt,
+    ...(start.childSessionId !== undefined && { childSessionId: start.childSessionId }),
   };
 }
 

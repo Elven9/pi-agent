@@ -91,6 +91,12 @@ export interface StartRecord {
   startedBy?: StartedBy;
   /** Id of the `task` envelope sent to the child. */
   taskMessageId: string;
+  /**
+   * Session ID of the child (`--session-id`), chosen at spawn: its file is
+   * `<leader session dir>/subagents/<timestamp>_<childSessionId>.jsonl`. None when the leader has no
+   * session file (the child runs with `--no-session`) and in older records.
+   */
+  childSessionId?: string;
 }
 
 /** `details` of a `subagent-result` message, and the payload of a `subagent-end` entry. */
@@ -112,6 +118,8 @@ export interface ResultDetails {
   /** Epoch ms. */
   startedAt: number;
   endedAt: number;
+  /** From the start record (none without a child session and in older records). */
+  childSessionId?: string;
   childSessionFile?: string;
   /** USD the child's session cost up to its result (from childSessionFile); none when unknown or in older records. */
   costUsd?: number;

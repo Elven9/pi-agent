@@ -91,6 +91,65 @@ function footerSession(pi, ctx) {
   };
 }
 
+// src/shared/parent-link.ts
+import { randomBytes } from "node:crypto";
+
+// src/shared/protocol.ts
+var SCENARIO_CHANNEL = "pi-agent.scenario";
+var ENTRY = {
+  /** `custom_message` with the scenario's result format, sent once after the task prompt. */
+  resultFormat: "pi-agent.result-format",
+  /** `custom_message` with RESUBMIT_PROMPT. */
+  resubmit: "pi-agent.resubmit",
+  /** `custom` entry with `SessionMetricsEntry` data (metrics extension), appended when the agent settles. */
+  metrics: "pi-agent.metrics",
+  /** `custom` entry with `{ message }` when an extension cannot run (scenario, project, load order). */
+  error: "pi-agent.error",
+  /** `custom` entry with `TagsEntry` data (tags extension); the last one in the file is the session's tags. */
+  tags: "pi-agent.tags",
+  /** `custom` entry with `WorktreeEntry` data (worktree extension); the last one on the branch is the entered worktree. */
+  worktree: "pi-agent.worktree",
+  /** `custom` entry with `SessionVersionEntry` data (session-version extension): the pi-agent release that wrote what follows. */
+  sessionVersion: "pi-agent.session-version",
+  /** `custom` entry with `ScenarioEntry` data (scenario-profile extension); the last one in the file is the session's scenario. */
+  scenario: "pi-agent.scenario",
+  /** `custom` entry with `ProjectEntry` data (project extension); the last one in the file is the session's project. */
+  project: "pi-agent.project",
+  /** `custom` entry with `SkillLoadEntry` data (skill-loads extension), one per load of a skill. */
+  skillLoad: "pi-agent.skill-load",
+  /** `custom` entry with `ParentLink` data (subagent extension, child side): the leader session that started this one. */
+  parent: "pi-agent.parent"
+};
+
+// src/shared/parent-link.ts
+var PARENT_SESSION_ENV = "PI_AGENT_PARENT_SESSION";
+var PARENT_AGENT_ENV = "PI_AGENT_PARENT_AGENT";
+function parentLinkFromEnv(env = process.env) {
+  const sessionId = env[PARENT_SESSION_ENV];
+  const agentId2 = env[PARENT_AGENT_ENV];
+  return sessionId && agentId2 ? { sessionId, agentId: agentId2 } : void 0;
+}
+function parentLinkEnv(link) {
+  return { [PARENT_SESSION_ENV]: link.sessionId, [PARENT_AGENT_ENV]: link.agentId };
+}
+function sessionParentLink(entries) {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (e?.type !== "custom" || e.customType !== ENTRY.parent) continue;
+    const { sessionId, agentId: agentId2 } = e.data ?? {};
+    if (typeof sessionId === "string" && sessionId && typeof agentId2 === "string" && agentId2) return { sessionId, agentId: agentId2 };
+  }
+  return void 0;
+}
+function newSessionId(now = Date.now()) {
+  const b = randomBytes(16);
+  b.writeUIntBE(now, 0, 6);
+  b[6] = b[6] & 15 | 112;
+  b[8] = b[8] & 63 | 128;
+  const h = b.toString("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 // src/shared/scenarios/code-writer.ts
 import { Type } from "typebox";
 
@@ -299,31 +358,6 @@ function getScenario(name) {
 import { createCodemodeExtension } from "@earendil-works/pi-coding-agent";
 import { Type as Type7 } from "typebox";
 
-// src/shared/protocol.ts
-var SCENARIO_CHANNEL = "pi-agent.scenario";
-var ENTRY = {
-  /** `custom_message` with the scenario's result format, sent once after the task prompt. */
-  resultFormat: "pi-agent.result-format",
-  /** `custom_message` with RESUBMIT_PROMPT. */
-  resubmit: "pi-agent.resubmit",
-  /** `custom` entry with `SessionMetricsEntry` data (metrics extension), appended when the agent settles. */
-  metrics: "pi-agent.metrics",
-  /** `custom` entry with `{ message }` when an extension cannot run (scenario, project, load order). */
-  error: "pi-agent.error",
-  /** `custom` entry with `TagsEntry` data (tags extension); the last one in the file is the session's tags. */
-  tags: "pi-agent.tags",
-  /** `custom` entry with `WorktreeEntry` data (worktree extension); the last one on the branch is the entered worktree. */
-  worktree: "pi-agent.worktree",
-  /** `custom` entry with `SessionVersionEntry` data (session-version extension): the pi-agent release that wrote what follows. */
-  sessionVersion: "pi-agent.session-version",
-  /** `custom` entry with `ScenarioEntry` data (scenario-profile extension); the last one in the file is the session's scenario. */
-  scenario: "pi-agent.scenario",
-  /** `custom` entry with `ProjectEntry` data (project extension); the last one in the file is the session's project. */
-  project: "pi-agent.project",
-  /** `custom` entry with `SkillLoadEntry` data (skill-loads extension), one per load of a skill. */
-  skillLoad: "pi-agent.skill-load"
-};
-
 // src/shared/result.ts
 import { Type as Type6 } from "typebox";
 import { Value } from "typebox/value";
@@ -391,8 +425,14 @@ var PARAMETERS = Type7.Object({
     )
   )
 });
-function registerChild(pi) {
+function registerChild(pi, env = process.env) {
   createCodemodeExtension({ mode: "only" })(pi);
+  const link = parentLinkFromEnv(env);
+  if (link) {
+    pi.on("session_start", (_event, ctx) => {
+      if (!sessionParentLink(ctx.sessionManager.getEntries())) pi.appendEntry(ENTRY.parent, link);
+    });
+  }
   let scenario;
   pi.events.on(SCENARIO_CHANNEL, (data) => {
     try {
@@ -885,7 +925,8 @@ function baseDetails(start) {
     ...start.thinking !== void 0 && { thinking: start.thinking },
     ...start.restartOf !== void 0 && { restartOf: agentId(start.restartOf) },
     ...start.startedBy === "user" && { startedBy: "user" },
-    startedAt: start.startedAt
+    startedAt: start.startedAt,
+    ...start.childSessionId !== void 0 && { childSessionId: start.childSessionId }
   };
 }
 function pendingResults(index, now, live = /* @__PURE__ */ new Set()) {
@@ -1288,7 +1329,7 @@ var AgentViewer = class {
 var GRACE_MS = 2e3;
 function subagent(pi, options = {}) {
   if (options.child ?? process.env[SUBAGENT_ENV] === "1") {
-    registerChild(pi);
+    registerChild(pi, options.env);
     return;
   }
   registerLeader(pi, options);
@@ -1309,8 +1350,10 @@ function childArgs(start, leader, leaderSessionFile) {
   if (model) args.push("--model", model);
   const thinking = start.thinking ?? leader.thinking;
   if (thinking) args.push("--thinking", thinking);
-  if (leaderSessionFile) args.push("--session-dir", join(dirname(leaderSessionFile), "subagents"));
-  else args.push("--no-session");
+  if (leaderSessionFile) {
+    args.push("--session-dir", join(dirname(leaderSessionFile), "subagents"));
+    if (start.childSessionId) args.push("--session-id", start.childSessionId);
+  } else args.push("--no-session");
   return args;
 }
 var modelName = (m) => `${m.provider}/${m.id}`;
@@ -1325,7 +1368,11 @@ function defaultStartChild(start, ctx) {
   const [command, ...prefix] = childCommand();
   const args = [...prefix, ...childArgs(start, { model: ctx.model, thinking: ctx.thinkingLevel }, ctx.sessionManager.getSessionFile())];
   const cwd = enteredWorktree(ctx.sessionManager.getBranch()) ?? ctx.cwd;
-  return new RpcChild(command, args, { cwd, env: { ...process.env, [SUBAGENT_ENV]: "1" } });
+  const link = start.childSessionId !== void 0 && { ...parentLinkEnv({ sessionId: leaderSessionId(ctx), agentId: agentId(start.id) }) };
+  return new RpcChild(command, args, { cwd, env: { ...process.env, [SUBAGENT_ENV]: "1", ...link } });
+}
+function leaderSessionId(ctx) {
+  return ctx.sessionManager.getHeader()?.id ?? ctx.sessionManager.getSessionId();
 }
 var text = (t) => ({ content: [{ type: "text", text: t }], details: {} });
 function scenarioOf(name) {
@@ -1409,7 +1456,9 @@ function registerLeader(pi, options) {
       startedAt: now(),
       ...spec.restartOf !== void 0 && { restartOf: spec.restartOf },
       ...startedBy === "user" && { startedBy },
-      taskMessageId: messageId(now())
+      taskMessageId: messageId(now()),
+      // The child's session ID, when it gets a session file (the leader has one).
+      ...c.sessionManager.getSessionFile() && { childSessionId: newSessionId(now()) }
     };
     pi.appendEntry(ENTRY2.start, start);
     if (startedBy === "user") {

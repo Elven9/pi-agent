@@ -52,6 +52,17 @@ test("a child is codemode-only even with codemode.mode \"on\": the model sees co
   session.dispose();
 });
 
+test("a child records its leader session once as a pi-agent.parent entry; none without the link", async () => {
+  const env = { PI_AGENT_PARENT_SESSION: "lead-1", PI_AGENT_PARENT_AGENT: "a3" };
+  const { session, sessionManager } = await makeSession({ tools: [], extensions: [(pi) => subagent(pi, { child: true, env })] });
+  const parents = () => sessionManager.getEntries().filter((e: any) => e.customType === "pi-agent.parent").map((e: any) => e.data);
+  assert.deepEqual(parents(), [{ sessionId: "lead-1", agentId: "a3" }]);
+  session.dispose();
+  const plain = await makeSession({ tools: [], extensions: [(pi) => subagent(pi, { child: true, env: {} })] });
+  assert.equal(plain.sessionManager.getEntries().filter((e: any) => e.customType === "pi-agent.parent").length, 0);
+  plain.session.dispose();
+});
+
 test("the leader has the leader tools and /agent, and no send_to_leader", () => {
   const f = fakePi();
   subagent(f.pi, { child: false });

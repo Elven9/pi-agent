@@ -32,7 +32,9 @@ var ENTRY = {
   /** `custom` entry with `ProjectEntry` data (project extension); the last one in the file is the session's project. */
   project: "pi-agent.project",
   /** `custom` entry with `SkillLoadEntry` data (skill-loads extension), one per load of a skill. */
-  skillLoad: "pi-agent.skill-load"
+  skillLoad: "pi-agent.skill-load",
+  /** `custom` entry with `ParentLink` data (subagent extension, child side): the leader session that started this one. */
+  parent: "pi-agent.parent"
 };
 var SESSION_ABORTED_CHANNEL = "pi-agent.session-aborted";
 
