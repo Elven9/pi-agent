@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.0](https://github.com/Elven9/pi-agent/compare/v0.14.0...v0.15.0) (2026-11-25)
+
+
+### Features
+
+* **code-writer:** require why/how/improved in commit messages ([ae0bf62](https://github.com/Elven9/pi-agent/commit/ae0bf62a684ef0e35c384e0055cb65c5ef3f9907))
+* **debugger:** forensic investigation prompt with evidence recording rules ([39f43b4](https://github.com/Elven9/pi-agent/commit/39f43b4106dcb9a65d430bfa6e2c3d43d931e30b))
+* **skill-loads:** record each skill load as a pi-agent.skill-load entry ([6d21aa6](https://github.com/Elven9/pi-agent/commit/6d21aa6d73d594204b265bbc0b61cf11ce928e29))
+* **subagent:** link subagent sessions to their leader both ways ([5f3877d](https://github.com/Elven9/pi-agent/commit/5f3877dd8a0840c6a52da3a63d314cf0b07cae3a))
+* **subagent:** make subagents codemode-only regardless of settings ([4baacf7](https://github.com/Elven9/pi-agent/commit/4baacf74162604fe3446e701e5b31d81969260bf))
+* **subagent:** record and show each subagent's cost ([b4e6dba](https://github.com/Elven9/pi-agent/commit/b4e6dba6800fb43b73074733bee4991adabf0d3e))
+* **tags:** keep tag history per folder in the agent dir ([97f9bb0](https://github.com/Elven9/pi-agent/commit/97f9bb0a2a94583455b9de6238e6a39ec601e156))
+
 ## [0.14.0](https://github.com/Elven9/pi-agent/compare/v0.13.0...v0.14.0) (2026-11-18)
 
 
