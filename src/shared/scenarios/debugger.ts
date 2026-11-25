@@ -3,8 +3,8 @@ import systemPrompt from "./prompts/debugger.md";
 import { defineScenario } from "./types.ts";
 
 /**
- * Investigates bugs: gathers facts and, when asked why something goes wrong, proposes the potential
- * root cause. Reads the code, never changes it.
+ * Forensic investigation of bugs and systems: gathers evidence (logs, system state, code, history)
+ * and, when asked why something goes wrong, proposes the potential root cause. Never changes anything.
  */
 export const debuggerScenario = defineScenario({
   name: "debugger",
