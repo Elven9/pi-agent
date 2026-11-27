@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/Elven9/pi-agent/compare/go/v0.3.0...go/v0.4.0) (2026-11-27)
+
+
+### Features
+
+* **session-parser:** read recorded skill loads from pi-agent.skill-load entries ([8d5e7d8](https://github.com/Elven9/pi-agent/commit/8d5e7d88d698f21182d6eca38988ffcba5dc7853))
+* **session-parser:** read subagent session links both ways ([fa28395](https://github.com/Elven9/pi-agent/commit/fa28395e7ec07744433705fee3b274c61ecd09b9))
+
 ## [0.3.0](https://github.com/Elven9/pi-agent/compare/go/v0.2.0...go/v0.3.0) (2026-11-19)
 
 
